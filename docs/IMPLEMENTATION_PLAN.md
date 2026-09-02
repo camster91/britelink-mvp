@@ -2,6 +2,15 @@
 
 This plan tracks the active goal against `REAL_WORLD_REVIEW.md`. A checked item means current repository evidence exists; it does not imply production launch approval.
 
+## GitHub tracking
+
+- Repository: <https://github.com/camster91/britelink-mvp>
+- Governing roadmap: <https://github.com/camster91/britelink-mvp/issues/14>
+- Open release gates: issues [#1](https://github.com/camster91/britelink-mvp/issues/1) through [#13](https://github.com/camster91/britelink-mvp/issues/13)
+- Verified local-foundation summaries: issues [#15](https://github.com/camster91/britelink-mvp/issues/15) through [#18](https://github.com/camster91/britelink-mvp/issues/18)
+
+GitHub issues are the execution units; this document and `docs/RELEASE_READINESS.md` remain the evidence ledger. An issue closes only when its stated acceptance criteria and required evidence pass.
+
 ## Phase 0 — Product integrity
 
 - [x] Clearly label the frontend as an interactive demo.

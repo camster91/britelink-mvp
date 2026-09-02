@@ -2,6 +2,8 @@
 
 Last reconciled: 2026-09-01. This ledger distinguishes repository evidence from deployed or customer-validated evidence.
 
+GitHub execution tracking is governed by [roadmap issue #14](https://github.com/camster91/britelink-mvp/issues/14). Open evidence gates are tracked in [issues #1–#13](https://github.com/camster91/britelink-mvp/issues); verified local foundations are preserved in closed issues #15–#18.
+
 ## Current honest state
 
 - Product state: implemented interactive demo, locally rendered authenticated parent intake/plan/service/privacy journey, and backend/schema foundations.
