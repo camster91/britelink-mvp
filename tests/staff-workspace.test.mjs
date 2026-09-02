@@ -1,0 +1,107 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  latestForCase,
+  loadStaffWorkspaceData,
+  nextStaffStatuses,
+  prioritizedCases,
+  staffIntakeRows,
+} from "../src/staff-workspace.js";
+test("staff queue prioritizes urgent workflow and then SLA", () => {
+  const cases = [
+    { id: "c1", status: "triage", sla_due_at: "2026-09-02" },
+    { id: "c2", status: "overdue" },
+    { id: "c3", status: "revision_requested" },
+    { id: "c4", status: "triage", sla_due_at: "2026-09-01" },
+  ];
+  assert.deepEqual(
+    prioritizedCases(cases).map((item) => item.id),
+    ["c2", "c3", "c4", "c1"],
+  );
+});
+test("case helpers select latest plan and reserve submitted-to-triage for usable-intake acceptance", () => {
+  assert.equal(
+    latestForCase(
+      [
+        { case_id: "c", version: 1 },
+        { case_id: "c", version: 3 },
+        { case_id: "x", version: 8 },
+      ],
+      "c",
+    ).version,
+    3,
+  );
+  assert.deepEqual(nextStaffStatuses("drafting"), [
+    "internal_review",
+    "on_hold",
+  ]);
+  assert.deepEqual(nextStaffStatuses("submitted"), ["clarification"]);
+  assert.deepEqual(nextStaffStatuses("closed"), []);
+});
+test("staff intake summary preserves every canonical planning field with explicit empty values", () => {
+  const rows = staffIntakeRows({
+    subjects: ["Language", "Math"],
+    goals: "Build fluency",
+    accessibilityNeeds: "Large print",
+  });
+  assert.deepEqual(
+    rows.map((row) => row.key),
+    [
+      "subjects",
+      "priorAttainment",
+      "strengthsInterests",
+      "goals",
+      "learningSupports",
+      "language",
+      "weeklySchedule",
+      "caregiverAvailability",
+      "deviceAccess",
+      "resourceBudget",
+      "contentConstraints",
+      "accessibilityNeeds",
+    ],
+  );
+  assert.equal(
+    rows.find((row) => row.key === "subjects").value,
+    "Language, Math",
+  );
+  assert.equal(
+    rows.find((row) => row.key === "weeklySchedule").value,
+    "Not provided",
+  );
+  assert.equal(
+    rows.find((row) => row.key === "accessibilityNeeds").value,
+    "Large print",
+  );
+});
+test("staff workspace keeps core triage available when an auxiliary panel fails", async () => {
+  const repository = {};
+  for (const method of [
+    "listCases",
+    "listLearners",
+    "listStaffProfiles",
+    "listStaffPlans",
+    "listStaffReviews",
+    "listStaffRevisions",
+    "listEducatorCapacities",
+    "listStaffDeliveries",
+    "listStaffMessages",
+  ])
+    repository[method] = async () =>
+      method === "listStaffDeliveries"
+        ? Promise.reject(new Error("delivery provider unavailable"))
+        : [{ id: method }];
+  const data = await loadStaffWorkspaceData(repository, "household-a");
+  assert.equal(data.cases.length, 1);
+  assert.deepEqual(data.deliveries, []);
+  assert.deepEqual(data.warnings, [
+    { panel: "deliveries", message: "delivery provider unavailable" },
+  ]);
+  repository.listCases = async () => {
+    throw new Error("case access unavailable");
+  };
+  await assert.rejects(
+    () => loadStaffWorkspaceData(repository, "household-a"),
+    /case access unavailable/,
+  );
+});

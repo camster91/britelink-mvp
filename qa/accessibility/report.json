@@ -1,0 +1,1073 @@
+{
+  "generatedAt": "2026-09-01T10:01:02.193Z",
+  "standard": "axe WCAG 2 A/AA/2.1 AA",
+  "zoomMethod": "Responsive CSS viewport equivalence at 200% (640 CSS px) and 400% (320 CSS px) for a 1280px reference; real browser zoom and VoiceOver remain manual gates.",
+  "viewports": [
+    {
+      "name": "desktop",
+      "width": 1280,
+      "height": 900
+    },
+    {
+      "name": "zoom-200-equivalent",
+      "width": 640,
+      "height": 720
+    },
+    {
+      "name": "zoom-400-equivalent",
+      "width": 320,
+      "height": 720
+    }
+  ],
+  "results": [
+    {
+      "view": "overview",
+      "viewport": "desktop",
+      "layout": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "01Use the learning planMove between eight weeks and distinct weekdays, then open",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "02Review sample intakeSee structured planning context and guardian-consent handl",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "03Educator workflowExercise role-checked case transitions, internal review, publ",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BODY",
+            "label": "OverviewLearning planLearner profileEducator demoDemo supportNo sensitive dataTh",
+            "outlineWidth": "3px",
+            "outlineStyle": "none"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 11,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "plan",
+      "viewport": "desktop",
+      "layout": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Print sample week",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 1Patterns in our worldSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 2Stories and point of viewSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 3Habitats and adaptationSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 4Fractions in everyday lifeSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 5Communities and changeSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 6Forces, motion and designSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 7Measurement through makingSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "intake",
+      "viewport": "desktop",
+      "layout": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "SELECT",
+            "label": "Choose gradeGrade 3Grade 4Grade 5",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "SELECT",
+            "label": "Choose jurisdictionOntarioOther / clarify with educator",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "TEXTAREA",
+            "label": "Animals, building things, drawing maps, and everyday machines.",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "TEXTAREA",
+            "label": "Start work more independently and build confidence with longer reading assignmen",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "educator",
+      "viewport": "desktop",
+      "layout": {
+        "scrollWidth": 1280,
+        "clientWidth": 1280
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "intake pending",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "cancelled",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "refunded",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "chargeback",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "overview",
+      "viewport": "zoom-200-equivalent",
+      "layout": {
+        "scrollWidth": 640,
+        "clientWidth": 640
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "01Use the learning planMove between eight weeks and distinct weekdays, then open",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "02Review sample intakeSee structured planning context and guardian-consent handl",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "03Educator workflowExercise role-checked case transitions, internal review, publ",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BODY",
+            "label": "OverviewLearning planLearner profileEducator demoDemo supportNo sensitive dataTh",
+            "outlineWidth": "3px",
+            "outlineStyle": "none"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 11,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "plan",
+      "viewport": "zoom-200-equivalent",
+      "layout": {
+        "scrollWidth": 640,
+        "clientWidth": 640
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Print sample week",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 1Patterns in our worldSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 2Stories and point of viewSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 3Habitats and adaptationSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 4Fractions in everyday lifeSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 5Communities and changeSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 6Forces, motion and designSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 7Measurement through makingSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "intake",
+      "viewport": "zoom-200-equivalent",
+      "layout": {
+        "scrollWidth": 640,
+        "clientWidth": 640
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "SELECT",
+            "label": "Choose gradeGrade 3Grade 4Grade 5",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "SELECT",
+            "label": "Choose jurisdictionOntarioOther / clarify with educator",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "TEXTAREA",
+            "label": "Animals, building things, drawing maps, and everyday machines.",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "TEXTAREA",
+            "label": "Start work more independently and build confidence with longer reading assignmen",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "educator",
+      "viewport": "zoom-200-equivalent",
+      "layout": {
+        "scrollWidth": 640,
+        "clientWidth": 640
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "intake pending",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "cancelled",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "refunded",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "chargeback",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "overview",
+      "viewport": "zoom-400-equivalent",
+      "layout": {
+        "scrollWidth": 320,
+        "clientWidth": 320
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "01Use the learning planMove between eight weeks and distinct weekdays, then open",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "02Review sample intakeSee structured planning context and guardian-consent handl",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "03Educator workflowExercise role-checked case transitions, internal review, publ",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BODY",
+            "label": "OverviewLearning planLearner profileEducator demoDemo supportNo sensitive dataTh",
+            "outlineWidth": "3px",
+            "outlineStyle": "none"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 11,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "plan",
+      "viewport": "zoom-400-equivalent",
+      "layout": {
+        "scrollWidth": 320,
+        "clientWidth": 320
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Print sample week",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 1Patterns in our worldSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 2Stories and point of viewSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 3Habitats and adaptationSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 4Fractions in everyday lifeSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 5Communities and changeSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 6Forces, motion and designSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Week 7Measurement through makingSample",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "intake",
+      "viewport": "zoom-400-equivalent",
+      "layout": {
+        "scrollWidth": 320,
+        "clientWidth": 320
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "SELECT",
+            "label": "Choose gradeGrade 3Grade 4Grade 5",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "SELECT",
+            "label": "Choose jurisdictionOntarioOther / clarify with educator",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "TEXTAREA",
+            "label": "Animals, building things, drawing maps, and everyday machines.",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "TEXTAREA",
+            "label": "Start work more independently and build confidence with longer reading assignmen",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    },
+    {
+      "view": "educator",
+      "viewport": "zoom-400-equivalent",
+      "layout": {
+        "scrollWidth": 320,
+        "clientWidth": 320
+      },
+      "keyboard": {
+        "visited": [
+          {
+            "tag": "BUTTON",
+            "label": "Overview",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learning plan",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Learner profile",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "intake pending",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "cancelled",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "refunded",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "chargeback",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "INPUT",
+            "label": "",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          }
+        ],
+        "interactiveCount": 12,
+        "visibleFocus": true
+      },
+      "violations": []
+    }
+  ],
+  "summary": {
+    "seriousOrCritical": [],
+    "horizontalOverflow": [],
+    "keyboardFocusFailures": []
+  }
+}

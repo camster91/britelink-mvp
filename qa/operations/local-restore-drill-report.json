@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-28T21:55:31.552Z",
+  "scope": "local disposable PostgreSQL logical restore rehearsal",
+  "productionRestore": false,
+  "encryptedArchive": true,
+  "databaseSchemaDataRestored": true,
+  "authDependencyRestored": true,
+  "storageObjectBytesRestored": true,
+  "storageMetadataChecksumMatched": true,
+  "publicTableCount": 26,
+  "allPublicTablesRlsEnabled": true,
+  "rowFingerprintsMatched": true,
+  "crossHouseholdReadDenied": true,
+  "ownHouseholdReadAllowed": true,
+  "postRestoreWriteSucceeded": true,
+  "rehearsalDurationMs": 2300,
+  "localSnapshotRpoSeconds": 0,
+  "attachmentSha256": "30f590934ea979bb3f614bfe9e46fcd29bf9745e3b88a69917145de001e23491"
+}
