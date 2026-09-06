@@ -2,6 +2,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
+import { resolveChromeExecutablePath } from "./resolve-chrome.mjs";
 const origin = "http://127.0.0.1:4319";
 const server = spawn(
   process.execPath,
@@ -21,8 +22,7 @@ try {
   await wait();
   const browser = await chromium.launch({
     headless: true,
-    executablePath:
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    executablePath: resolveChromeExecutablePath(),
   });
   const context = await browser.newContext({
     viewport: { width: 1280, height: 1000 },
