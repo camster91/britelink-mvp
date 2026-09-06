@@ -97,8 +97,8 @@
   .next-up{padding:18px}
 }
 @media(max-width:420px){
-  .sidebar nav{grid-template-columns:1fr}
-  .nav{font-size:15px}
+  .sidebar nav{grid-template-columns:1fr 1fr}
+  .nav{font-size:14px}
 }
 
 /* Authenticated surfaces: keep metadata at 13px, never 9–11px */
