@@ -334,14 +334,13 @@ function Plan({ plan, activity, saveActivity }) {
             ))}
           </div>
           <div className="lesson-workspace" id={dayPanelId} role="tabpanel" aria-labelledby={`plan-day-tab-${day.id}`}>
-            <div className="lessons" role="listbox" aria-label={`${day.label} lessons`}>
+            <div className="lessons" aria-label={`${day.label} lessons`}>
               {day.lessons.map((item, i) => {
                 const itemStatus = getLessonStatus(activity, item.id);
                 return (
                   <button
-                    role="option"
                     className={lesson.id === item.id ? "selected" : ""}
-                    aria-selected={lesson.id === item.id}
+                    aria-pressed={lesson.id === item.id}
                     onClick={() => setSelectedLessonId(item.id)}
                     key={item.id}
                   >
