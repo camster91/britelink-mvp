@@ -99,4 +99,12 @@
 .intake-progress{display:flex;flex-wrap:wrap;gap:8px;margin:0;padding:0;list-style:none}
 .intake-progress li{min-height:36px;padding:8px 12px;border-radius:99px;background:#edf4fd;color:#235fae;font-size:13px;font-weight:800}
 .header{flex-wrap:wrap}
-.plan,.schedule,.lesson-workspace,.ops-grid,.form-shell,.live-parent-grid,.staff-grid,.weeks,.days{min-width:0}
+.plan,.schedule,.lesson-workspace,.ops-grid,.form-shell,.live-parent-grid,.staff-grid,.weeks,.days{min-width:0;max-width:100%}
+@media(max-width:560px){
+  .reschedule{grid-template-columns:1fr}
+  .days{display:flex}
+  .days button{min-width:64px;flex:0 0 auto}
+  .header .ghost,.complete{display:none}
+  .lessons button{grid-template-columns:42px 8px minmax(0,1fr)}
+  .lesson-status{grid-column:3;justify-self:start}
+}
