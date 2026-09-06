@@ -791,7 +791,7 @@ function ParentWorkspace({
                 </div>
               )}
             </>
-          )}
+          ) : null}
         </section>
         <section className="live-messages" aria-labelledby="messages-heading">
           <header>
