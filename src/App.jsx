@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   calculateProgress,
   createDemoPlan,
@@ -15,6 +15,13 @@ import {
 } from "./domain.js";
 import { CASE_TRANSITIONS, InMemoryBriteLinkRepository, createServiceSeed } from "./service-domain.js";
 import { staffNextAction, staffPriorityLabel } from "./staff-workspace.js";
+
+const VIEW_TITLES = {
+  home: "Overview",
+  plan: "Learning plan",
+  intake: "Learner profile",
+  educator: "Educator demo",
+};
 
 function useDeviceState(key, fallback) {
   const [value, setValue] = useState(() => safeParseStored(globalThis.localStorage?.getItem(key), fallback));
@@ -143,7 +150,7 @@ function Overview({ setView, plan, activity }) {
         <img src="/assets/britely-mascot.webp" alt="Briteley, the BriteLink learning companion" />
       </section>
       <section className="next-up" aria-labelledby="next-up-heading">
-        <span className="eyebrow">Start here</span>
+        <span className="eyebrow">What to do today</span>
         <h2 id="next-up-heading">{next ? "Your next sample lesson" : "Sample plan complete on this device"}</h2>
         {next ? (
           <>
@@ -158,7 +165,10 @@ function Overview({ setView, plan, activity }) {
             </button>
           </>
         ) : (
-          <p>Every sample lesson is marked complete or skipped in this browser. Open the plan to review or change a status.</p>
+          <p>
+            Every sample lesson is marked complete or skipped in this browser. Open the plan to review or change a
+            status. This is still fictional demo data only.
+          </p>
         )}
       </section>
       <section className="next">
@@ -200,13 +210,16 @@ function Plan({ plan, activity, saveActivity }) {
   const [scheduleReason, setScheduleReason] = useState("illness");
   const [scheduledFor, setScheduledFor] = useState("");
   const [scheduleMessage, setScheduleMessage] = useState("");
+  const [scheduleFailed, setScheduleFailed] = useState(false);
   const [statusToast, setStatusToast] = useState("");
+  const lessonHeadingRef = useRef(null);
   const week = plan.weeks[weekIndex];
   const day = week.days[dayIndex];
   const lesson = day.lessons.find((item) => item.id === selectedLessonId) ?? day.lessons[0];
   const status = getLessonStatus(activity, lesson.id);
   const weekDone = week.days.flatMap((item) => item.lessons).filter((item) => getLessonStatus(activity, item.id) === "completed").length;
   const weekTotal = week.days.flatMap((item) => item.lessons).length;
+  const dayPanelId = `plan-day-panel-${day.id}`;
   const setStatus = (nextStatus) => {
     saveActivity(updateLessonActivity(activity, lesson.id, nextStatus, activity[lesson.id]?.note ?? ""));
     const labels = { in_progress: "started", paused: "paused", completed: "completed", skipped: "skipped" };
@@ -217,8 +230,10 @@ function Plan({ plan, activity, saveActivity }) {
   const reschedule = () => {
     try {
       saveActivity(updateLessonSchedule(activity, lesson.id, scheduleReason, scheduledFor));
+      setScheduleFailed(false);
       setScheduleMessage(`Moved to ${scheduledFor}. Existing progress and notes were preserved.`);
     } catch (error) {
+      setScheduleFailed(true);
       setScheduleMessage(error.message);
     }
   };
@@ -229,6 +244,7 @@ function Plan({ plan, activity, saveActivity }) {
     setWeekIndex(nextWeek);
     setDayIndex(nextDay);
     setSelectedLessonId(next.lesson.id);
+    requestAnimationFrame(() => lessonHeadingRef.current?.focus());
   };
   return (
     <>
@@ -293,10 +309,21 @@ function Plan({ plan, activity, saveActivity }) {
             {week.days.map((item, i) => (
               <button
                 role="tab"
+                id={`plan-day-tab-${item.id}`}
+                aria-controls={dayPanelId}
                 aria-selected={dayIndex === i}
+                tabIndex={dayIndex === i ? 0 : -1}
                 className={dayIndex === i ? "active" : ""}
                 onClick={() => {
                   setDayIndex(i);
+                  setSelectedLessonId(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+                  event.preventDefault();
+                  const delta = event.key === "ArrowRight" ? 1 : -1;
+                  const nextIndex = (i + delta + week.days.length) % week.days.length;
+                  setDayIndex(nextIndex);
                   setSelectedLessonId(null);
                 }}
                 key={item.id}
@@ -306,14 +333,15 @@ function Plan({ plan, activity, saveActivity }) {
               </button>
             ))}
           </div>
-          <div className="lesson-workspace">
-            <div className="lessons" aria-label={`${day.label} lessons`}>
+          <div className="lesson-workspace" id={dayPanelId} role="tabpanel" aria-labelledby={`plan-day-tab-${day.id}`}>
+            <div className="lessons" role="listbox" aria-label={`${day.label} lessons`}>
               {day.lessons.map((item, i) => {
                 const itemStatus = getLessonStatus(activity, item.id);
                 return (
                   <button
+                    role="option"
                     className={lesson.id === item.id ? "selected" : ""}
-                    aria-pressed={lesson.id === item.id}
+                    aria-selected={lesson.id === item.id}
                     onClick={() => setSelectedLessonId(item.id)}
                     key={item.id}
                   >
@@ -329,12 +357,14 @@ function Plan({ plan, activity, saveActivity }) {
                 );
               })}
             </div>
-            <section className="lesson-detail" aria-label="Selected lesson details">
+            <section className="lesson-detail" aria-labelledby="selected-lesson-heading">
               <div>
                 <span className="eyebrow">
                   {day.label} · {lesson.minutes} min
                 </span>
-                <h3>{lesson.title}</h3>
+                <h3 id="selected-lesson-heading" ref={lessonHeadingRef} tabIndex={-1}>
+                  {lesson.title}
+                </h3>
                 <StatusLabel status={status} />
               </div>
               <p>
@@ -371,15 +401,19 @@ function Plan({ plan, activity, saveActivity }) {
                 ))}
               </div>
               {statusToast ? (
-                <div className="status-toast" role="status" aria-live="polite">
+                <div className="status-toast" role="status" aria-live="polite" aria-atomic="true">
                   {statusToast}
                 </div>
               ) : null}
               <fieldset className="reschedule">
                 <legend>Move this lesson</legend>
-                <label>
+                <label htmlFor="demo-schedule-reason">
                   Reason
-                  <select value={scheduleReason} onChange={(event) => setScheduleReason(event.target.value)}>
+                  <select
+                    id="demo-schedule-reason"
+                    value={scheduleReason}
+                    onChange={(event) => setScheduleReason(event.target.value)}
+                  >
                     <option value="illness">Illness</option>
                     <option value="travel">Travel</option>
                     <option value="caregiver_schedule">Caregiver schedule</option>
@@ -387,20 +421,32 @@ function Plan({ plan, activity, saveActivity }) {
                     <option value="other">Other</option>
                   </select>
                 </label>
-                <label>
+                <label htmlFor="demo-schedule-date">
                   New date
-                  <input type="date" value={scheduledFor} onChange={(event) => setScheduledFor(event.target.value)} />
+                  <input
+                    id="demo-schedule-date"
+                    type="date"
+                    value={scheduledFor}
+                    aria-invalid={scheduleFailed || undefined}
+                    aria-describedby="demo-schedule-message"
+                    onChange={(event) => setScheduledFor(event.target.value)}
+                  />
                 </label>
                 <button type="button" onClick={reschedule}>
                   Move lesson
                 </button>
-                <span role="status" aria-live="polite">
+                <span
+                  id="demo-schedule-message"
+                  role={scheduleFailed ? "alert" : "status"}
+                  aria-live="polite"
+                >
                   {scheduleMessage}
                 </span>
               </fieldset>
-              <label className="note-field">
+              <label className="note-field" htmlFor="demo-caregiver-note">
                 Private demo note
                 <textarea
+                  id="demo-caregiver-note"
                   value={activity[lesson.id]?.note ?? ""}
                   onChange={(event) => setNote(event.target.value)}
                   placeholder="Add a caregiver note saved on this device"
@@ -418,20 +464,44 @@ function Plan({ plan, activity, saveActivity }) {
 }
 
 function Intake({ profile, saveProfile }) {
+  const formId = useId();
   const [draft, setDraft] = useState(profile);
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState("idle");
+  const summaryRef = useRef(null);
+  const gradeRef = useRef(null);
+  const jurisdictionRef = useRef(null);
+  const interestsRef = useRef(null);
+  const goalsRef = useRef(null);
+  const consentRef = useRef(null);
+  const fieldRefs = {
+    grade: gradeRef,
+    jurisdiction: jurisdictionRef,
+    interests: interestsRef,
+    goals: goalsRef,
+    guardianConsent: consentRef,
+  };
   const field = (name) => (event) =>
     setDraft({ ...draft, [name]: event.target.type === "checkbox" ? event.target.checked : event.target.value });
+  const describedBy = (name) => (errors[name] ? `${formId}-${name}-error` : undefined);
   const submit = (event) => {
     event.preventDefault();
     const nextErrors = validateProfile(draft);
     setErrors(nextErrors);
-    if (Object.keys(nextErrors).length) {
-      setMessage("Review the highlighted fields. Nothing was saved.");
+    const invalidKeys = Object.keys(nextErrors);
+    if (invalidKeys.length) {
+      setMessageTone("error");
+      setMessage(`Review ${invalidKeys.length} highlighted field${invalidKeys.length === 1 ? "" : "s"}. Nothing was saved.`);
+      requestAnimationFrame(() => {
+        const first = fieldRefs[invalidKeys[0]]?.current;
+        if (first) first.focus();
+        else summaryRef.current?.focus();
+      });
       return;
     }
     saveProfile(draft);
+    setMessageTone("success");
     setMessage("Sample profile saved on this device. It was not submitted to BriteLink.");
   };
   return (
@@ -455,76 +525,168 @@ function Intake({ profile, saveProfile }) {
             <li>Consent</li>
           </ol>
         </aside>
-        <form onSubmit={submit} noValidate>
+        <form onSubmit={submit} noValidate aria-describedby={`${formId}-status`}>
+          {messageTone === "error" ? (
+            <div
+              className="form-error-summary"
+              role="alert"
+              tabIndex={-1}
+              ref={summaryRef}
+              aria-labelledby={`${formId}-error-heading`}
+            >
+              <strong id={`${formId}-error-heading`}>Fix these fields before saving</strong>
+              <ul>
+                {Object.entries(errors).map(([name, text]) => (
+                  <li key={name}>
+                    <a
+                      href={`#${formId}-${name}`}
+                      onClick={(event) => {
+                        event.preventDefault();
+                        fieldRefs[name]?.current?.focus();
+                      }}
+                    >
+                      {text}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <fieldset className="intake-group">
             <legend>1. Learning context</legend>
             <div className="form-row">
-              <label>
+              <label htmlFor={`${formId}-grade`}>
                 Grade level
-                <select value={draft.grade} onChange={field("grade")} aria-invalid={Boolean(errors.grade)}>
+                <select
+                  id={`${formId}-grade`}
+                  ref={fieldRefs.grade}
+                  value={draft.grade}
+                  onChange={field("grade")}
+                  aria-invalid={Boolean(errors.grade) || undefined}
+                  aria-describedby={describedBy("grade")}
+                  required
+                >
                   <option value="">Choose grade</option>
                   <option>Grade 3</option>
                   <option>Grade 4</option>
                   <option>Grade 5</option>
                 </select>
-                {errors.grade ? <small className="error">{errors.grade}</small> : null}
+                {errors.grade ? (
+                  <small id={`${formId}-grade-error`} className="error">
+                    {errors.grade}
+                  </small>
+                ) : null}
               </label>
-              <label>
+              <label htmlFor={`${formId}-jurisdiction`}>
                 Curriculum jurisdiction
                 <select
+                  id={`${formId}-jurisdiction`}
+                  ref={fieldRefs.jurisdiction}
                   value={draft.jurisdiction}
                   onChange={field("jurisdiction")}
-                  aria-invalid={Boolean(errors.jurisdiction)}
+                  aria-invalid={Boolean(errors.jurisdiction) || undefined}
+                  aria-describedby={describedBy("jurisdiction")}
+                  required
                 >
                   <option value="">Choose jurisdiction</option>
                   <option>Ontario</option>
                   <option>Other / clarify with educator</option>
                 </select>
-                {errors.jurisdiction ? <small className="error">{errors.jurisdiction}</small> : null}
+                {errors.jurisdiction ? (
+                  <small id={`${formId}-jurisdiction-error`} className="error">
+                    {errors.jurisdiction}
+                  </small>
+                ) : null}
               </label>
             </div>
-            <label>
+            <label htmlFor={`${formId}-interests`}>
               Learner interests
-              <textarea value={draft.interests} onChange={field("interests")} aria-invalid={Boolean(errors.interests)} />
-              {errors.interests ? <small className="error">{errors.interests}</small> : null}
+              <textarea
+                id={`${formId}-interests`}
+                ref={fieldRefs.interests}
+                value={draft.interests}
+                onChange={field("interests")}
+                aria-invalid={Boolean(errors.interests) || undefined}
+                aria-describedby={describedBy("interests")}
+                required
+              />
+              {errors.interests ? (
+                <small id={`${formId}-interests-error`} className="error">
+                  {errors.interests}
+                </small>
+              ) : null}
             </label>
-            <label>
+            <label htmlFor={`${formId}-goals`}>
               Term goals
-              <textarea value={draft.goals} onChange={field("goals")} aria-invalid={Boolean(errors.goals)} />
-              {errors.goals ? <small className="error">{errors.goals}</small> : null}
+              <textarea
+                id={`${formId}-goals`}
+                ref={fieldRefs.goals}
+                value={draft.goals}
+                onChange={field("goals")}
+                aria-invalid={Boolean(errors.goals) || undefined}
+                aria-describedby={describedBy("goals")}
+                required
+              />
+              {errors.goals ? (
+                <small id={`${formId}-goals-error`} className="error">
+                  {errors.goals}
+                </small>
+              ) : null}
             </label>
           </fieldset>
           <fieldset className="intake-group">
             <legend>2. Household setup</legend>
             <div className="form-row">
-              <label>
+              <label htmlFor={`${formId}-language`}>
                 Learning language
-                <input value={draft.language} onChange={field("language")} />
+                <input id={`${formId}-language`} value={draft.language} onChange={field("language")} />
               </label>
-              <label>
+              <label htmlFor={`${formId}-device`}>
                 Device and printing access
-                <input value={draft.deviceAccess} onChange={field("deviceAccess")} />
+                <input id={`${formId}-device`} value={draft.deviceAccess} onChange={field("deviceAccess")} />
               </label>
             </div>
-            <label>
+            <label htmlFor={`${formId}-availability`}>
               Caregiver availability
-              <input value={draft.caregiverAvailability} onChange={field("caregiverAvailability")} />
+              <input
+                id={`${formId}-availability`}
+                value={draft.caregiverAvailability}
+                onChange={field("caregiverAvailability")}
+              />
             </label>
           </fieldset>
-          <section className="consent-copy">
-            <h3>3. Guardian notice for this prototype</h3>
+          <section className="consent-copy" aria-labelledby={`${formId}-consent-heading`}>
+            <h3 id={`${formId}-consent-heading`}>3. Guardian notice for this prototype</h3>
             <p>
               This browser-only demo must not contain real child, health, diagnosis, IEP, address, or school information.
               A production intake will need approved privacy notice, retention, correction, export and deletion controls.
             </p>
-            <label>
-              <input type="checkbox" checked={draft.guardianConsent} onChange={field("guardianConsent")} /> I understand
-              this is fictional demo data stored only on this device.
+            <label htmlFor={`${formId}-guardianConsent`}>
+              <input
+                id={`${formId}-guardianConsent`}
+                ref={fieldRefs.guardianConsent}
+                type="checkbox"
+                checked={draft.guardianConsent}
+                onChange={field("guardianConsent")}
+                aria-invalid={Boolean(errors.guardianConsent) || undefined}
+                aria-describedby={describedBy("guardianConsent")}
+                required
+              />{" "}
+              I understand this is fictional demo data stored only on this device.
             </label>
-            {errors.guardianConsent ? <small className="error">{errors.guardianConsent}</small> : null}
+            {errors.guardianConsent ? (
+              <small id={`${formId}-guardianConsent-error`} className="error">
+                {errors.guardianConsent}
+              </small>
+            ) : null}
           </section>
           <footer>
-            <span role="status" aria-live="polite">
+            <span
+              id={`${formId}-status`}
+              role={messageTone === "error" ? "alert" : "status"}
+              aria-live="polite"
+              aria-atomic="true"
+            >
               {message || "Sample changes are not sent anywhere."}
             </span>
             <button className="primary">Validate and save demo</button>
@@ -543,34 +705,47 @@ function EducatorDemo({ repository }) {
   const [review, setReview] = useState(DEFAULT_REVIEW);
   const [message, setMessage] = useState("");
   const [notice, setNotice] = useState("");
+  const [noticeFailed, setNoticeFailed] = useState(false);
+  const actionRef = useRef(null);
   const serviceCase = repository.getCase(STAFF_ACTOR, "case-a");
   const nextStates = CASE_TRANSITIONS[serviceCase.status] ?? [];
+  const preferredNext = nextStates[0] ?? null;
+  const announce = (text, failed = false) => {
+    setNoticeFailed(failed);
+    setNotice(text);
+  };
   const advance = (status) => {
     try {
       repository.transitionCase(STAFF_ACTOR, "case-a", status);
-      setNotice(`Case moved to ${status.replaceAll("_", " ")}.`);
+      announce(`Case moved to ${status.replaceAll("_", " ")}.`);
       setRevision(revision + 1);
+      requestAnimationFrame(() => actionRef.current?.focus());
     } catch (error) {
-      setNotice(error.message);
+      announce(error.message, true);
     }
   };
   const saveReview = () => {
     try {
       const result = repository.savePlanReview(STAFF_ACTOR, "case-a", review, "Demo checklist");
-      setNotice(result.approvedAt ? "Internal review approved. Publishing is now available." : "Complete every check before publishing.");
+      announce(
+        result.approvedAt
+          ? "Internal review approved. Publishing is now available."
+          : "Complete every check before publishing.",
+        !result.approvedAt,
+      );
       setRevision(revision + 1);
     } catch (error) {
-      setNotice(error.message);
+      announce(error.message, true);
     }
   };
   const send = () => {
     try {
       repository.sendMessage(STAFF_ACTOR, "case-a", message, "clarification");
       setMessage("");
-      setNotice("Demo clarification saved to this in-memory case.");
+      announce("Demo clarification saved to this in-memory case.");
       setRevision(revision + 1);
     } catch (error) {
-      setNotice(error.message);
+      announce(error.message, true);
     }
   };
   const messages = repository.listMessages(STAFF_ACTOR, "case-a");
@@ -584,21 +759,34 @@ function EducatorDemo({ repository }) {
       <section className="staff-focus" aria-labelledby="staff-focus-heading">
         <div>
           <span className="eyebrow">Current case</span>
-          <h2 id="staff-focus-heading">Riley Morgan · BL-DEMO-001</h2>
+          <h2 id="staff-focus-heading" ref={actionRef} tabIndex={-1}>
+            Riley Morgan · BL-DEMO-001
+          </h2>
           <p>BritePath Complete · fictional Grade 4 intake</p>
         </div>
         <div className="staff-focus-status">
           <span className={`queue-priority ${serviceCase.status}`}>{staffPriorityLabel(serviceCase.status)}</span>
           <span className="case-status">{serviceCase.status.replaceAll("_", " ")}</span>
         </div>
-        <p className="staff-next-copy">{staffNextAction(serviceCase.status)}</p>
+        <div className="staff-next-panel">
+          <p className="staff-next-copy">{staffNextAction(serviceCase.status)}</p>
+          {preferredNext ? (
+            <button className="primary" type="button" onClick={() => advance(preferredNext)}>
+              Next action: {preferredNext.replaceAll("_", " ")}
+            </button>
+          ) : (
+            <p className="empty" role="status">
+              No further demo transitions are available from this state.
+            </p>
+          )}
+        </div>
       </section>
       <div className="ops-grid">
-        <section className="case-card">
+        <section className="case-card" aria-labelledby="case-move-heading">
           <div className="case-top">
             <div>
               <span className="eyebrow">Allowed next states</span>
-              <h2>Move this case</h2>
+              <h2 id="case-move-heading">Move this case</h2>
               <p>Transitions are role-checked and audited by the demo service layer. This is not a live queue.</p>
             </div>
           </div>
@@ -616,10 +804,15 @@ function EducatorDemo({ repository }) {
               <dd>Keisa A. · demo educator</dd>
             </div>
           </dl>
-          <div className="transition-actions">
+          <div className="transition-actions" aria-label="Other allowed transitions">
             {nextStates.length ? (
               nextStates.map((status) => (
-                <button key={status} onClick={() => advance(status)}>
+                <button
+                  key={status}
+                  className={status === preferredNext ? "primary" : undefined}
+                  aria-current={status === preferredNext ? "step" : undefined}
+                  onClick={() => advance(status)}
+                >
                   {status.replaceAll("_", " ")}
                 </button>
               ))
@@ -627,13 +820,18 @@ function EducatorDemo({ repository }) {
               <p className="empty">No further demo transitions are available from this state.</p>
             )}
           </div>
-          <span className="save-hint" role="status" aria-live="polite">
+          <span
+            className="save-hint"
+            role={noticeFailed ? "alert" : "status"}
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {notice || "Choose one allowed next state. History stays on this page until you reload."}
           </span>
         </section>
-        <section className="review-card">
+        <section className="review-card" aria-labelledby="review-heading">
           <span className="eyebrow">Publish quality gate</span>
-          <h2>Internal review checklist</h2>
+          <h2 id="review-heading">Internal review checklist</h2>
           <p>A plan cannot be published until all four checks have an approved review record.</p>
           {Object.entries({
             curriculum: "Curriculum mapping",
@@ -641,8 +839,9 @@ function EducatorDemo({ repository }) {
             accessibility: "Accessibility",
             resourceRights: "Resource rights",
           }).map(([key, label]) => (
-            <label key={key}>
+            <label key={key} htmlFor={`demo-review-${key}`}>
               <input
+                id={`demo-review-${key}`}
                 type="checkbox"
                 checked={review[key]}
                 onChange={(event) => setReview({ ...review, [key]: event.target.checked })}
@@ -654,10 +853,10 @@ function EducatorDemo({ repository }) {
             Save review
           </button>
         </section>
-        <section className="message-card">
+        <section className="message-card" aria-labelledby="message-heading">
           <span className="eyebrow">Case clarification</span>
-          <h2>Secure case thread</h2>
-          <div className="thread">
+          <h2 id="message-heading">Secure case thread</h2>
+          <div className="thread" aria-live="polite">
             {messages.length ? (
               messages.map((item) => (
                 <p key={item.id}>
@@ -669,9 +868,10 @@ function EducatorDemo({ repository }) {
               <p className="empty">No messages yet. Use this thread for a focused intake clarification.</p>
             )}
           </div>
-          <label>
+          <label htmlFor="demo-staff-message">
             Message
             <textarea
+              id="demo-staff-message"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               placeholder="Ask a focused intake clarification"
@@ -681,9 +881,9 @@ function EducatorDemo({ repository }) {
             Save demo message
           </button>
         </section>
-        <section className="audit-card">
+        <section className="audit-card" aria-labelledby="audit-heading">
           <span className="eyebrow">Audit trail</span>
-          <h2>Recent case events</h2>
+          <h2 id="audit-heading">Recent case events</h2>
           <ol>
             {repository.data.audits
               .filter((item) => item.householdId === "house-a")
@@ -708,11 +908,14 @@ export function App() {
   const repository = useMemo(() => new InMemoryBriteLinkRepository(createServiceSeed()), []);
   const [activity, saveActivity] = useDeviceState(STORAGE_KEYS.activity, {});
   const [profile, saveProfile] = useDeviceState(STORAGE_KEYS.profile, DEMO_PROFILE);
+  useEffect(() => {
+    document.title = `BriteLink demo · ${VIEW_TITLES[view] ?? "Workspace"}`;
+  }, [view]);
   return (
     <div className="shell">
       <SkipLink />
       <Sidebar view={view} setView={setView} />
-      <main id="workspace-main">
+      <main id="workspace-main" aria-label={VIEW_TITLES[view] ?? "Workspace"}>
         <DemoBanner />
         {view === "home" && <Overview setView={setView} plan={plan} activity={activity} />}
         {view === "plan" && <Plan plan={plan} activity={activity} saveActivity={saveActivity} />}

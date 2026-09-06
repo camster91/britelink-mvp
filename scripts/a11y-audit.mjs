@@ -19,7 +19,12 @@ async function keyboardEvidence(page){
 
 try{
   await waitForServer(); await mkdir(new URL("../qa/accessibility/",import.meta.url),{recursive:true});
-  const browser=await chromium.launch({headless:true,executablePath:"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"});
+  const browser=await chromium.launch({
+    headless:true,
+    executablePath:process.env.PLAYWRIGHT_CHROME_PATH
+      || (process.platform==="darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined)
+      || "/usr/local/bin/google-chrome"
+  });
   const results=[];
   for(const viewport of viewports){
     const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},reducedMotion:"reduce"});

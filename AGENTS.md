@@ -15,4 +15,7 @@ Build app UI in `src/`. Keep `.openai/hosting.json`, `worker/index.js`, `scripts
 - Metadata and status text stay at 13px or larger. Interactive controls are at least 44px tall. Mobile navigation is a wrapping 2-up grid, not 10px tabs.
 - Intake is a guided three-part form (learning context, household setup, consent), not a multi-page wizard that hides fields.
 - Privacy actions stay grouped as “Your plan” vs “Your data” so export, consent withdrawal, and deletion feel deliberate and safe.
-- Product Design `get-context` and Mobbin were unavailable in this environment; later visual work should re-check those sources before changing tokens or layout.
+- Form errors must name the affected fields, use `aria-invalid` / `aria-describedby`, announce via a live region or alert summary, and move focus to the first invalid control.
+- Demo and authenticated shells keep a skip link, labelled `main`, and per-view document titles so a later VoiceOver pass can start from a predictable landmark order.
+- Product Design `get-context` and Mobbin remain unavailable in this environment; re-check those sources before changing tokens or layout system.
+- Staging operators follow `docs/STAGING_HANDOFF.md`; do not fake hosted Auth, counsel approval, or VoiceOver completion.

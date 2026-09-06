@@ -310,10 +310,9 @@ export function EducatorWorkspace({
           ) : null}
         </div>
       </header>
-      <p>
-        Cases are prioritized by overdue, revision, clarification, SLA, and
-        workflow state. Every mutation is role-checked and audited by the
-        backend.
+      <p className="staff-lead">
+        Queue → case → next action. Priority is overdue, revision, clarification, then SLA. Mutations stay
+        role-checked and audited.
       </p>
       {data.warnings.length ? (
         <div className="live-operation failure" role="alert">
@@ -347,6 +346,9 @@ export function EducatorWorkspace({
                   onClick={() => {
                     setSelectedId(item.id);
                     setOperation({ status: "idle", message: "" });
+                    requestAnimationFrame(() =>
+                      document.getElementById("selected-case-heading")?.focus(),
+                    );
                   }}
                 >
                   <strong>{name}</strong>
@@ -365,15 +367,27 @@ export function EducatorWorkspace({
             <header>
               <div>
                 <span className="eyebrow">Selected case</span>
-                <h3>
+                <h3 id="selected-case-heading" tabIndex={-1}>
                   {learner?.preferred_name ?? "Learner"} ·{" "}
                   {selected.package_code}
                 </h3>
-                <p className="staff-next-copy">{staffNextAction(selected.status)}</p>
+                <div className="staff-next-panel">
+                  <p className="staff-next-copy">{staffNextAction(selected.status)}</p>
+                  {allowed[0] ? (
+                    <p className="staff-next-hint">
+                      Preferred next status: <strong>{allowed[0].replaceAll("_", " ")}</strong>
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <span className="case-status">
-                {selected.status.replaceAll("_", " ")}
-              </span>
+              <div className="staff-focus-status">
+                <span className={`queue-priority ${selected.status}`}>
+                  {staffPriorityLabel(selected.status)}
+                </span>
+                <span className="case-status">
+                  {selected.status.replaceAll("_", " ")}
+                </span>
+              </div>
             </header>
             <div className="staff-summary">
               <article>
@@ -438,22 +452,28 @@ export function EducatorWorkspace({
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
+                  const status = transition.status || allowed[0];
+                  if (!status) return;
                   act("Case transition", () =>
                     repository.transitionStaffCase({
                       householdId: household.household_id,
                       caseId: selected.id,
-                      status: transition.status,
+                      status,
                       reason: transition.reason,
                     }),
                   );
                 }}
               >
                 <h4>Move case forward</h4>
+                <p className="staff-next-hint">
+                  {staffNextAction(selected.status)} Choose one allowed status
+                  below.
+                </p>
                 <label>
                   Next status
                   <select
                     required
-                    value={transition.status}
+                    value={transition.status || allowed[0] || ""}
                     onChange={(event) =>
                       setTransition((value) => ({
                         ...value,
@@ -465,6 +485,7 @@ export function EducatorWorkspace({
                     {allowed.map((value) => (
                       <option key={value} value={value}>
                         {value.replaceAll("_", " ")}
+                        {value === allowed[0] ? " (suggested)" : ""}
                       </option>
                     ))}
                   </select>

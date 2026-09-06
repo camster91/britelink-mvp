@@ -53,3 +53,15 @@ At each level verify:
 ## Pass criteria and evidence
 
 The gate passes only when all three VoiceOver journeys and all eight view/zoom combinations complete without a critical or serious blocker. Medium findings require an owner and documented private-beta decision; minor findings require a backlog entry. Store sanitized evidence under `qa/accessibility/manual/` and add a dated summary to `qa/accessibility/manual-report.md`. Do not mark the implementation-plan checkbox complete until those artifacts exist and have been reviewed.
+
+## Linux / CI preparation (does not close the gate)
+
+Before a macOS tester starts, confirm locally:
+
+- Skip link reaches `#workspace-main` or `#live-main`.
+- Overview / parent plan expose a clear “what to do next” control.
+- Intake invalid submits announce errors tied to fields and move focus to the first invalid control.
+- Educator queue selection moves focus to the selected case heading; preferred next status is obvious.
+- `npm run test:a11y` is green (axe A/AA, keyboard focus outline, 640px/320px overflow equivalence).
+
+These checks reduce VoiceOver churn. They are **not** evidence that VoiceOver or true Chrome zoom passed.

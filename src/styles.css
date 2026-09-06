@@ -58,6 +58,15 @@
 .staff-focus p{margin:0;color:#536174;line-height:1.5}
 .staff-focus-status{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;justify-content:flex-end}
 .staff-next-copy{grid-column:1/-1;padding:12px 14px;border-radius:10px;background:#edf4fd;color:#1e3a5f;font-weight:600}
+.staff-next-panel{grid-column:1/-1;display:grid;gap:12px;align-items:start}
+.staff-next-panel .primary{justify-self:start}
+.staff-next-hint{margin:0;color:#45566c;font-size:14px;line-height:1.5}
+.form-error-summary{margin:0 0 18px;padding:14px 16px;border:1px solid #e4c7c7;border-radius:12px;background:#fff7f7;color:#8f2f2f}
+.form-error-summary strong{display:block;margin-bottom:8px}
+.form-error-summary ul{margin:0;padding-left:18px}
+.form-error-summary a{color:#8f2f2f;font-weight:700}
+.lesson-detail h3:focus{outline:none}
+.lesson-detail h3:focus-visible,.staff-focus h2:focus-visible,#selected-case-heading:focus-visible{outline:3px solid #f3ad2b;outline-offset:3px}
 .queue-priority{display:inline-flex;padding:7px 10px;border-radius:99px;background:#eef2f7;color:#334155;font-size:12px;font-weight:800}
 .queue-priority.overdue,.queue-priority.clarification,.queue-priority.revision_requested{background:#fff1db;color:#7a4d0b}
 .queue-priority.submitted,.queue-priority.internal_review,.queue-priority.published{background:#e7f6ef;color:#247154}
