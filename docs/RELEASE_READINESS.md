@@ -1,6 +1,6 @@
 # BriteLink MVP Release Readiness
 
-Last reconciled: 2026-09-01. This ledger distinguishes repository evidence from deployed or customer-validated evidence.
+Last reconciled: 2026-09-06. This ledger distinguishes repository evidence from deployed or customer-validated evidence. The remaining-work sequence is `docs/GOAL_COMPLETION_PLAN.md`.
 
 GitHub execution tracking is governed by [roadmap issue #14](https://github.com/camster91/britelink-mvp/issues/14). Open evidence gates are tracked in [issues #1–#13](https://github.com/camster91/britelink-mvp/issues); verified local foundations are preserved in closed issues #15–#18.
 
@@ -28,7 +28,7 @@ GitHub execution tracking is governed by [roadmap issue #14](https://github.com/
 
 ## Highest-leverage next action
 
-Provision development and staging Supabase projects, apply migrations, configure passwordless guardian/staff Auth, seed two synthetic households, and run deployed cross-household denial plus save/reload tests. This requires project credentials and authorization to create or configure external infrastructure.
+Follow `docs/GOAL_COMPLETION_PLAN.md`. If only local work is available, finish Sites packaging evidence and the manual VoiceOver / true 200%/400% zoom protocol. If infrastructure approval is granted, provision development and staging Supabase projects, apply migrations, configure passwordless guardian/staff Auth, seed two synthetic households, and run deployed cross-household denial plus save/reload tests. Send counsel and educator review packets in parallel; those approvals are on the critical path and do not need a live project.
 
 ## Approval boundaries
 

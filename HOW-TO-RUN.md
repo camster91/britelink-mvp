@@ -164,6 +164,7 @@ Some tests (especially restore drill) can take 30+ seconds. This is expected.
 
 ## Next Steps
 
+- Review `docs/GOAL_COMPLETION_PLAN.md` for the sequenced plan to close every remaining official goal
 - Review `docs/IMPLEMENTATION_PLAN.md` for implementation status
 - Review `REAL_WORLD_REVIEW.md` for known gaps and blockers
 - Review `docs/RELEASE_READINESS.md` for launch gates

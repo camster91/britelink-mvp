@@ -11,6 +11,8 @@ This plan tracks the active goal against `REAL_WORLD_REVIEW.md`. A checked item 
 
 GitHub issues are the execution units; this document and `docs/RELEASE_READINESS.md` remain the evidence ledger. An issue closes only when its stated acceptance criteria and required evidence pass.
 
+The sequenced plan to close every remaining official goal is `docs/GOAL_COMPLETION_PLAN.md`. Use it for order of work, dependencies, and destination evidence. Do not treat a local checkbox as private-beta approval.
+
 ## Phase 0 — Product integrity
 
 - [x] Clearly label the frontend as an interactive demo.
