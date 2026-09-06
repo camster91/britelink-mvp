@@ -160,6 +160,15 @@ export function StaffAuthoring({
     ) : null;
   return (
     <div className="staff-authoring">
+      <header className="authoring-intro">
+        <span className="eyebrow">Author, review, and deliver</span>
+        <h4>Plan production</h4>
+        <p>
+          Build a complete week/day/lesson plan here. Saving creates an immutable
+          version. Independent review and delivery stay on this case, not in a
+          separate dump of tools.
+        </p>
+      </header>
       {editable ? (
         <section className="draft-recovery" aria-label="Plan draft recovery">
           {recovered ? (

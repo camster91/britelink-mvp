@@ -3,8 +3,10 @@ import test from "node:test";
 import {
   calculateProgress,
   createDemoPlan,
+  findNextLesson,
   getLessonStatus,
   safeParseStored,
+  statusLabel,
   updateLessonActivity,
   updateLessonSchedule,
   validateProfile,
@@ -52,6 +54,21 @@ test("profile validation requires planning context and guardian consent", () => 
   const errors = validateProfile({ grade: "", jurisdiction: "", interests: "", goals: "", guardianConsent: false });
   assert.deepEqual(Object.keys(errors).sort(), ["goals", "grade", "guardianConsent", "interests", "jurisdiction"]);
   assert.deepEqual(validateProfile({ grade: "4", jurisdiction: "Ontario", interests: "Machines", goals: "Reading", guardianConsent: true }), {});
+});
+
+test("next lesson is the first incomplete block and skips finished work", () => {
+  const plan = createDemoPlan();
+  const first = plan.weeks[0].days[0].lessons[0];
+  const second = plan.weeks[0].days[0].lessons[1];
+  assert.equal(findNextLesson(plan, {}).lesson.id, first.id);
+  assert.equal(statusLabel("in_progress"), "In progress");
+  const started = updateLessonActivity({}, first.id, "completed");
+  assert.equal(findNextLesson(plan, started).lesson.id, second.id);
+  const allDone = plan.weeks.flatMap((week) => week.days.flatMap((day) => day.lessons)).reduce(
+    (state, lesson) => updateLessonActivity(state, lesson.id, lesson.id.endsWith("-l1") ? "skipped" : "completed"),
+    {},
+  );
+  assert.equal(findNextLesson(plan, allDone), null);
 });
 
 test("stored JSON parsing fails safely", () => {

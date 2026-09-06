@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   activityMap,
   caseForLearner,
+  findNextPublishedLesson,
   latestPublishedPlan,
   messageIsUnread,
   orderedPlanWeeks,
@@ -66,6 +67,10 @@ function SignIn({ repository }) {
             {message}
           </span>
         </form>
+        <p className="auth-recovery">
+          If you were not invited, this form cannot create an account. Contact
+          BriteLink support from the email that received your invitation.
+        </p>
         <small>
           Do not send child, health, school, diagnosis, or IEP information by
           email.
@@ -442,8 +447,22 @@ function ParentWorkspace({
     }
   };
 
+  const nextLesson = findNextPublishedLesson(weeks, activities);
+  const jumpToNextLesson = () => {
+    if (!nextLesson) return;
+    setWeekIndex(nextLesson.weekIndex);
+    setDayIndex(nextLesson.dayIndex);
+    setSelectedLessonId(nextLesson.lesson.id);
+  };
   return (
     <>
+      <nav className="household-jump" aria-label="Household sections">
+        <a href="#learner-heading">Learner</a>
+        <a href="#intake-heading">Intake</a>
+        <a href="#plan-heading">Plan</a>
+        <a href="#messages-heading">Messages</a>
+        <a href="#service-heading">Privacy</a>
+      </nav>
       <section className="live-selector" aria-labelledby="learner-heading">
         <div>
           <span className="eyebrow">Parent plan workspace</span>
@@ -482,25 +501,49 @@ function ParentWorkspace({
             ) : null}
           </header>
           {planState.status === "loading" ? (
-            <p role="status">Loading the published plan and saved activity…</p>
+            <p className="plan-state" role="status">Loading the published plan and saved activity…</p>
           ) : planState.status === "error" ? (
-            <div>
+            <div className="plan-state">
               <p role="alert">{planState.error}</p>
               <button className="ghost" onClick={loadPlan}>
                 Try again
               </button>
             </div>
           ) : !plan ? (
-            <p>
+            <p className="parent-empty">
               No published plan is available yet. Draft plans are never shown
-              here.
+              here. If intake is complete, wait for your educator to publish.
             </p>
           ) : !weeks.length ? (
-            <p>
+            <p className="parent-empty">
               This published plan has no scheduled weeks yet. Contact BriteLink
-              support.
+              support without sending child details by email.
             </p>
           ) : (
+            <>
+              {nextLesson ? (
+                <section className="next-up compact" aria-labelledby="parent-next-heading">
+                  <div>
+                    <span className="eyebrow">Do this next</span>
+                    <h3 id="parent-next-heading">{nextLesson.lesson.title}</h3>
+                    <p>
+                      Week {nextLesson.week.week_number} · Day {nextLesson.day.day_number} ·{" "}
+                      {(nextLesson.status ?? "not_started").replaceAll("_", " ")}
+                    </p>
+                  </div>
+                  <button className="primary" type="button" onClick={jumpToNextLesson}>
+                    Open next lesson
+                  </button>
+                </section>
+              ) : (
+                <p className="parent-empty" role="status">
+                  Every published lesson is complete or skipped. You can still open any
+                  day to review notes or change a status.
+                </p>
+              )}
+            </>
+          )}
+          {plan && weeks.length && planState.status === "success" ? (
             <>
               <div
                 className="live-week-tabs"
@@ -762,14 +805,14 @@ function ParentWorkspace({
             ) : null}
           </header>
           {!selectedCase ? (
-            <p>
+            <p className="parent-empty">
               No service case is linked to this learner, so messaging is
               unavailable.
             </p>
           ) : messages.status === "loading" ? (
-            <p role="status">Loading case messages…</p>
+            <p className="plan-state" role="status">Loading case messages…</p>
           ) : messages.status === "error" ? (
-            <div>
+            <div className="plan-state">
               <p role="alert">{messages.error}</p>
               <button className="ghost" onClick={loadMessages}>
                 Try again
@@ -990,12 +1033,12 @@ export function Workspace({
     return (
       <main className="auth-page">
         <section className="auth-card">
-          <h1>No household access is assigned</h1>
-          <p>
-            Your account is authenticated, but it has no BriteLink household
-            membership. Contact BriteLink support without sending child
-            information by email.
-          </p>
+        <h1>No household access is assigned</h1>
+        <p>
+          Your account is signed in, but it has no invited BriteLink household
+          membership. Sign-in is invitation-only. Contact BriteLink support
+          from the invited email without sending child information.
+        </p>
           <button className="ghost" onClick={() => repository.signOut()}>
             Sign out
           </button>
@@ -1005,6 +1048,9 @@ export function Workspace({
   const isStaff = ["educator", "admin"].includes(state.household.role);
   return (
     <div className="live-shell">
+      <a className="skip-link" href="#live-main">
+        Skip to main content
+      </a>
       <header>
         <img src="/assets/britelink-logo.png" alt="BriteLink" />
         <div>
@@ -1013,7 +1059,7 @@ export function Workspace({
           <button onClick={() => repository.signOut()}>Sign out</button>
         </div>
       </header>
-      <main>
+      <main id="live-main">
         <div className="live-notice" role="note">
           <strong>Secure backend mode</strong>
           <span>

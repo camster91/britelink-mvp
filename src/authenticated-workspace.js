@@ -27,3 +27,17 @@ export function messageIsUnread(message, userId) {
 export function caseForLearner(cases, learnerId) {
   return (cases ?? []).find((item) => item.learner_id === learnerId) ?? null;
 }
+
+export function findNextPublishedLesson(weeks = [], activitiesByLessonId = {}) {
+  for (const [weekIndex, week] of weeks.entries()) {
+    for (const [dayIndex, day] of (week.plan_days ?? []).entries()) {
+      for (const lesson of day.lessons ?? []) {
+        const status = activitiesByLessonId[lesson.id]?.status ?? "not_started";
+        if (status !== "completed" && status !== "skipped") {
+          return { week, day, lesson, status, weekIndex, dayIndex };
+        }
+      }
+    }
+  }
+  return null;
+}

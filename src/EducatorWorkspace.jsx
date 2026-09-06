@@ -5,6 +5,8 @@ import {
   nextStaffStatuses,
   prioritizedCases,
   staffIntakeRows,
+  staffNextAction,
+  staffPriorityLabel,
 } from "./staff-workspace.js";
 import "./staff-workspace.css";
 import { StaffAuthoring } from "./StaffAuthoring.jsx";
@@ -288,6 +290,9 @@ export function EducatorWorkspace({
         <div>
           <span className="eyebrow">Authenticated staff operations</span>
           <h2 id="staff-heading">Educator workbench</h2>
+          <p className="staff-lead">
+            Work the highest-priority case first. Queue order is overdue, revision, clarification, then SLA.
+          </p>
         </div>
         <div className="staff-header-actions">
           <span className="case-status">{membership.role}</span>
@@ -345,6 +350,7 @@ export function EducatorWorkspace({
                   }}
                 >
                   <strong>{name}</strong>
+                  <span className={`queue-priority ${item.status}`}>{staffPriorityLabel(item.status)}</span>
                   <span>{item.status.replaceAll("_", " ")}</span>
                   <small>
                     {item.sla_due_at
@@ -363,6 +369,7 @@ export function EducatorWorkspace({
                   {learner?.preferred_name ?? "Learner"} ·{" "}
                   {selected.package_code}
                 </h3>
+                <p className="staff-next-copy">{staffNextAction(selected.status)}</p>
               </div>
               <span className="case-status">
                 {selected.status.replaceAll("_", " ")}

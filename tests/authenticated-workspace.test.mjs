@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, latestPublishedPlan, messageIsUnread, orderedPlanWeeks } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, findNextPublishedLesson, latestPublishedPlan, messageIsUnread, orderedPlanWeeks } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -23,6 +23,13 @@ test("activity and message helpers remain learner and user specific",()=>{
   assert.equal(messageIsUnread(message,"guardian-a"),true);
   assert.equal(messageIsUnread(message,"guardian-b"),false);
   assert.equal(messageIsUnread({...message,sender_user_id:"guardian-a"},"guardian-a"),false);
+});
+
+test("next published lesson skips completed and skipped work",()=>{
+  const weeks=[{week_number:1,plan_days:[{day_number:1,lessons:[{id:"done",title:"Done"},{id:"next",title:"Next"}]}]}];
+  assert.equal(findNextPublishedLesson(weeks,{}).lesson.id,"done");
+  assert.equal(findNextPublishedLesson(weeks,{done:{status:"completed"}}).lesson.id,"next");
+  assert.equal(findNextPublishedLesson(weeks,{done:{status:"skipped"},next:{status:"completed"}}),null);
 });
 
 test("case selection never falls through to another learner",()=>{
