@@ -188,9 +188,11 @@
 
 5. **Educator onboarding** (2–4 hours per educator)
    - [ ] Create staff accounts (Cameron + 1–2 credentialed educators)
+   - [ ] Complete `docs/PRIVATE_BETA_EDUCATOR_ONBOARDING.md` training
    - [ ] Walk through workbench: Triage → Assign → Author → Review → Publish → Deliver
+   - [ ] Shadow cases and co-author first plans
    - [ ] Verify: Staff can't see other households, review gate works, delivery tracked
-   - **Status:** Workbench UI complete, needs hosted Auth + real staff accounts
+   - **Status:** Workbench UI complete, onboarding guide ready, needs hosted Auth + real staff accounts
 
 **Timeline:** 1 week (can run in parallel with Phase 0 infrastructure)
 
@@ -203,8 +205,18 @@
 1. **Family recruitment** (Cameron-led)
    - [ ] Identify 5–10 consented families (existing network, homeschool groups)
    - [ ] Obtain explicit written consent for beta testing
+   - [ ] Send `docs/PRIVATE_BETA_FAMILY_GUIDE.md` to prepare families
    - [ ] Set expectations: Human service, 5–7 day SLA, named support contact
    - **Gate:** Cameron confirms families + consent collected
+
+   **Family guide covers:**
+   - What BriteLink is (and isn't) — Human educator vs AI tutor
+   - Beta expectations — What might happen, what won't
+   - Getting started — Account access, intake, plan delivery, execution
+   - Using the service — Messaging, revisions, rescheduling
+   - Privacy rights — Export, correction, deletion
+   - Troubleshooting — Common issues and support contacts
+   - Providing feedback — Weekly check-ins and what to report
 
 2. **Beta monitoring** (daily for first 2 weeks)
    - [ ] Daily check: Monitoring dashboard, error logs, case SLAs
@@ -613,12 +625,31 @@
 
 ## Cross-References
 
+### Implementation & Release
+
 - **Implementation tracking:** See `docs/IMPLEMENTATION_PLAN.md` for detailed checklist
 - **Release readiness:** See `docs/RELEASE_READINESS.md` for current evidence ledger
+- **Goal completion:** See `docs/GOAL_COMPLETION_PLAN.md` for sequenced gate plan
+
+### Operations & Reliability
+
 - **Incident response:** See `docs/INCIDENT_RESPONSE.md` for operational runbooks
 - **Privacy operations:** See `docs/PRIVACY_OPERATIONS.md` for GDPR/CCPA workflows
-- **Accessibility:** See `docs/MANUAL_ACCESSIBILITY_QA.md` for test protocol
 - **Monitoring:** See `docs/MONITORING_OPERATIONS.md` for observability setup
+- **Recovery:** See `docs/RECOVERY_OPERATIONS.md` for backup/restore procedures
+
+### Quality & Accessibility
+
+- **Accessibility protocol:** See `docs/MANUAL_ACCESSIBILITY_QA.md` for VoiceOver/zoom testing
+- **Pre-VoiceOver checklist:** See `docs/PRE_VOICEOVER_CHECKLIST.md` for Linux-verifiable foundations
+- **Empty states audit:** See `docs/EMPTY_STATES_AUDIT.md` for UX polish verification
+- **Demo robustness:** See `docs/DEMO_ROBUSTNESS_AUDIT.md` for edge case handling
+
+### Private Beta Rehearsal
+
+- **Family onboarding:** See `docs/PRIVATE_BETA_FAMILY_GUIDE.md` — Comprehensive guide for beta families covering what BriteLink is, how to use it, privacy rights, and how to provide feedback
+- **Educator onboarding:** See `docs/PRIVATE_BETA_EDUCATOR_ONBOARDING.md` — Complete training for educators including workflows, quality standards, messaging best practices, and beta-specific guidance
+- **Staging handoff:** See `docs/STAGING_HANDOFF.md` for operator setup checklist
 
 ---
 
