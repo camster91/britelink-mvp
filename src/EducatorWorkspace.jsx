@@ -328,8 +328,8 @@ export function EducatorWorkspace({
       ) : null}
       {!queue.length ? (
         <div className="live-empty">
-          <h3>No cases in this household</h3>
-          <p>There is no operational work to triage.</p>
+          <h3>No active cases</h3>
+          <p>This household has no cases requiring attention right now.</p>
         </div>
       ) : (
         <div className="staff-grid">

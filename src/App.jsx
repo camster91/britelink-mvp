@@ -92,7 +92,7 @@ function DemoBanner() {
   return (
     <div className="demo-banner" role="note">
       <strong>Interactive demo</strong>
-      <span>Fictional family data · Saved only in this browser · Not connected to BriteLink operations</span>
+      <span>Explore with sample family data · Your changes stay in this browser · Not connected to live BriteLink accounts</span>
     </div>
   );
 }
@@ -130,28 +130,27 @@ function Overview({ setView, plan, activity }) {
       <section className="hero">
         <div>
           <span className="pill">Sample plan ready</span>
-          <h2>Explore Riley’s fictional learning plan.</h2>
+          <h2>Welcome to Riley's learning journey.</h2>
           <p>
-            This demo shows how a delivered BritePath plan could work. It does not show a live order, educator status, or
-            delivery estimate.
+            Explore how BriteLink brings personalized learning plans to life. This demo uses sample data to show the parent experience.
           </p>
           <div className="progress">
             <progress
               max={progress.total}
               value={progress.completed}
-              aria-label={`${progress.completed} of ${progress.total} sample lessons completed`}
+              aria-label={`${progress.completed} of ${progress.total} lessons completed`}
             />
             <strong>{progress.percent}%</strong>
           </div>
           <small>
-            {progress.completed} of {progress.total} sample lessons marked complete on this device
+            {progress.completed} of {progress.total} lessons complete in this demo
           </small>
         </div>
         <img src="/assets/britely-mascot.webp" alt="Briteley, the BriteLink learning companion" />
       </section>
       <section className="next-up" aria-labelledby="next-up-heading">
         <span className="eyebrow">What to do today</span>
-        <h2 id="next-up-heading">{next ? "Your next sample lesson" : "Sample plan complete on this device"}</h2>
+        <h2 id="next-up-heading">{next ? "Your next lesson" : "All lessons complete"}</h2>
         {next ? (
           <>
             <p>
@@ -166,32 +165,31 @@ function Overview({ setView, plan, activity }) {
           </>
         ) : (
           <p>
-            Every sample lesson is marked complete or skipped in this browser. Open the plan to review or change a
-            status. This is still fictional demo data only.
+            Every lesson in this demo has been completed or skipped. Open the learning plan to review your progress or adjust any lesson status.
           </p>
         )}
       </section>
       <section className="next">
-        <span className="eyebrow">Explore the prototype</span>
-        <h2>Three parts of the proposed experience.</h2>
+        <span className="eyebrow">Explore the demo</span>
+        <h2>See how BriteLink works for families and educators</h2>
         <div className="cards">
           <button onClick={() => setView("plan")}>
             <em>01</em>
-            <h3>Use the learning plan</h3>
-            <p>Move between eight weeks and distinct weekdays, then open a lesson.</p>
-            <strong>Open sample plan</strong>
+            <h3>Learning plan</h3>
+            <p>Navigate weekly lessons with detailed instructions, materials, and progress tracking.</p>
+            <strong>Open learning plan</strong>
           </button>
           <button onClick={() => setView("intake")}>
             <em>02</em>
-            <h3>Review sample intake</h3>
-            <p>See structured planning context and guardian-consent handling.</p>
-            <strong>Open sample profile</strong>
+            <h3>Learner profile</h3>
+            <p>Review the intake form that helps educators create personalized plans.</p>
+            <strong>View profile</strong>
           </button>
           <button onClick={() => setView("educator")}>
             <em>03</em>
-            <h3>Educator workflow</h3>
-            <p>Exercise role-checked case transitions, internal review, publishing, clarification, and audit history.</p>
-            <strong>Open educator demo</strong>
+            <h3>Educator workspace</h3>
+            <p>See how educators manage cases, create plans, and communicate with families.</p>
+            <strong>Open workspace</strong>
           </button>
         </div>
       </section>
@@ -775,7 +773,7 @@ function EducatorDemo({ repository }) {
             </button>
           ) : (
             <p className="empty" role="status">
-              No further demo transitions are available from this state.
+              This case is at its final state in this demo.
             </p>
           )}
         </div>
@@ -816,7 +814,7 @@ function EducatorDemo({ repository }) {
                 </button>
               ))
             ) : (
-              <p className="empty">No further demo transitions are available from this state.</p>
+              <p className="empty">This case is at its final state in this demo.</p>
             )}
           </div>
           <span
@@ -864,7 +862,7 @@ function EducatorDemo({ repository }) {
                 </p>
               ))
             ) : (
-              <p className="empty">No messages yet. Use this thread for a focused intake clarification.</p>
+              <p className="empty">No messages yet. Use this secure thread to ask focused questions about Riley's learning needs.</p>
             )}
           </div>
           <label htmlFor="demo-staff-message">

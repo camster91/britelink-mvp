@@ -511,13 +511,11 @@ function ParentWorkspace({
             </div>
           ) : !plan ? (
             <p className="parent-empty">
-              No published plan is available yet. Draft plans are never shown
-              here. If intake is complete, wait for your educator to publish.
+              Your educator is working on your personalized plan. You'll see it here once it's ready to start.
             </p>
           ) : !weeks.length ? (
             <p className="parent-empty">
-              This published plan has no scheduled weeks yet. Contact BriteLink
-              support without sending child details by email.
+              This plan is being prepared. If this persists, contact BriteLink support (remember: no child details by email).
             </p>
           ) : (
             <>
@@ -537,8 +535,7 @@ function ParentWorkspace({
                 </section>
               ) : (
                 <p className="parent-empty" role="status">
-                  Every published lesson is complete or skipped. You can still open any
-                  day to review notes or change a status.
+                  All lessons complete! You can still review any day or adjust lesson statuses.
                 </p>
               )}
             </>
@@ -806,8 +803,7 @@ function ParentWorkspace({
           </header>
           {!selectedCase ? (
             <p className="parent-empty">
-              No service case is linked to this learner, so messaging is
-              unavailable.
+              Messaging will be available once your educator starts working on this learner's plan.
             </p>
           ) : messages.status === "loading" ? (
             <p className="plan-state" role="status">Loading case messages…</p>
