@@ -32,6 +32,8 @@ Provision development and staging Supabase projects, apply migrations, configure
 
 Operator handoff before that work: `docs/STAGING_HANDOFF.md` (env checklist, invited-only Auth, Sites packaging, and human-only evidence). Sequenced gate plan: `docs/GOAL_COMPLETION_PLAN.md`. Manual assistive-technology protocol: `docs/MANUAL_ACCESSIBILITY_QA.md` (not closable from automated Linux audits).
 
+See `docs/END_TO_END_SHIP_PLAN.md` for complete roadmap from current state to paid launch, including competitor parity analysis, phased implementation, and what 100% means for BriteLink vs AI tutors.
+
 ## Approval boundaries
 
 Explicit approval is required immediately before provisioning paid/external infrastructure, production deployment, real-family data collection, external communications, customer-visible pricing changes, or a private-beta invitation. Local code, tests, documentation, and synthetic preview work remain reversible and in scope.

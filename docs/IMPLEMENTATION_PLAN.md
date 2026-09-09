@@ -2,6 +2,8 @@
 
 This plan tracks the active goal against `REAL_WORLD_REVIEW.md`. A checked item means current repository evidence exists; it does not imply production launch approval.
 
+For complete end-to-end ship planning including competitor parity, phased roadmap, and private beta → paid launch path, see `docs/END_TO_END_SHIP_PLAN.md`.
+
 ## GitHub tracking
 
 - Repository: <https://github.com/camster91/britelink-mvp>
