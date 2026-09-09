@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T10:01:02.193Z",
+  "generatedAt": "2026-09-06T20:16:11.077Z",
   "standard": "axe WCAG 2 A/AA/2.1 AA",
   "zoomMethod": "Responsive CSS viewport equivalence at 200% (640 CSS px) and 400% (320 CSS px) for a 1280px reference; real browser zoom and VoiceOver remain manual gates.",
   "viewports": [
@@ -30,6 +30,12 @@
       "keyboard": {
         "visited": [
           {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
             "tag": "BUTTON",
             "label": "Overview",
             "outlineWidth": "3px",
@@ -50,6 +56,12 @@
           {
             "tag": "BUTTON",
             "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Open this lesson",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -73,31 +85,19 @@
           },
           {
             "tag": "BODY",
-            "label": "OverviewLearning planLearner profileEducator demoDemo supportNo sensitive dataTh",
+            "label": "Skip to main contentOverviewLearning planLearner profileEducator demoDemo suppor",
             "outlineWidth": "3px",
             "outlineStyle": "none"
           },
           {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
             "tag": "BUTTON",
             "label": "Overview",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Learning plan",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Learner profile",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Educator demo",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           }
@@ -116,6 +116,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -181,12 +187,6 @@
             "label": "Week 6Forces, motion and designSample",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Week 7Measurement through makingSample",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
           }
         ],
         "interactiveCount": 12,
@@ -203,6 +203,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -268,12 +274,6 @@
             "label": "",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
           }
         ],
         "interactiveCount": 12,
@@ -290,6 +290,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -316,6 +322,12 @@
           },
           {
             "tag": "BUTTON",
+            "label": "Next action: intake pending",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
             "label": "intake pending",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
@@ -335,18 +347,6 @@
           {
             "tag": "BUTTON",
             "label": "chargeback",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -378,6 +378,12 @@
       "keyboard": {
         "visited": [
           {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
             "tag": "BUTTON",
             "label": "Overview",
             "outlineWidth": "3px",
@@ -398,6 +404,12 @@
           {
             "tag": "BUTTON",
             "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Open this lesson",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -421,31 +433,19 @@
           },
           {
             "tag": "BODY",
-            "label": "OverviewLearning planLearner profileEducator demoDemo supportNo sensitive dataTh",
+            "label": "Skip to main contentOverviewLearning planLearner profileEducator demoDemo suppor",
             "outlineWidth": "3px",
             "outlineStyle": "none"
           },
           {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
             "tag": "BUTTON",
             "label": "Overview",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Learning plan",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Learner profile",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Educator demo",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           }
@@ -464,6 +464,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -529,12 +535,6 @@
             "label": "Week 6Forces, motion and designSample",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Week 7Measurement through makingSample",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
           }
         ],
         "interactiveCount": 12,
@@ -551,6 +551,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -616,12 +622,6 @@
             "label": "",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
           }
         ],
         "interactiveCount": 12,
@@ -638,6 +638,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -664,6 +670,12 @@
           },
           {
             "tag": "BUTTON",
+            "label": "Next action: intake pending",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
             "label": "intake pending",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
@@ -683,18 +695,6 @@
           {
             "tag": "BUTTON",
             "label": "chargeback",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -726,6 +726,12 @@
       "keyboard": {
         "visited": [
           {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
             "tag": "BUTTON",
             "label": "Overview",
             "outlineWidth": "3px",
@@ -746,6 +752,12 @@
           {
             "tag": "BUTTON",
             "label": "Educator demo",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
+            "label": "Open this lesson",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -769,31 +781,19 @@
           },
           {
             "tag": "BODY",
-            "label": "OverviewLearning planLearner profileEducator demoDemo supportNo sensitive dataTh",
+            "label": "Skip to main contentOverviewLearning planLearner profileEducator demoDemo suppor",
             "outlineWidth": "3px",
             "outlineStyle": "none"
           },
           {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
             "tag": "BUTTON",
             "label": "Overview",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Learning plan",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Learner profile",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Educator demo",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           }
@@ -812,6 +812,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -877,12 +883,6 @@
             "label": "Week 6Forces, motion and designSample",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
-          },
-          {
-            "tag": "BUTTON",
-            "label": "Week 7Measurement through makingSample",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
           }
         ],
         "interactiveCount": 12,
@@ -899,6 +899,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -964,12 +970,6 @@
             "label": "",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
           }
         ],
         "interactiveCount": 12,
@@ -986,6 +986,12 @@
       },
       "keyboard": {
         "visited": [
+          {
+            "tag": "A",
+            "label": "Skip to main content",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
           {
             "tag": "BUTTON",
             "label": "Overview",
@@ -1012,6 +1018,12 @@
           },
           {
             "tag": "BUTTON",
+            "label": "Next action: intake pending",
+            "outlineWidth": "3px",
+            "outlineStyle": "solid"
+          },
+          {
+            "tag": "BUTTON",
             "label": "intake pending",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
@@ -1031,18 +1043,6 @@
           {
             "tag": "BUTTON",
             "label": "chargeback",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
-            "outlineWidth": "3px",
-            "outlineStyle": "solid"
-          },
-          {
-            "tag": "INPUT",
-            "label": "",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },

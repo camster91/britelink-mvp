@@ -47,6 +47,53 @@ export function latestForCase(rows = [], caseId) {
       )[0] ?? null
   );
 }
+export const STAFF_PRIORITY_LABELS = {
+  overdue: "Urgent",
+  revision_requested: "Revision",
+  clarification: "Needs reply",
+  triage: "Triage",
+  internal_review: "Ready for review",
+  assigned: "Assigned",
+  drafting: "Authoring",
+  on_hold: "On hold",
+  published: "Ready to deliver",
+  delivered: "Awaiting family",
+  acknowledged: "Acknowledged",
+  submitted: "Intake ready",
+  intake_pending: "Waiting on intake",
+  paid: "Paid",
+};
+
+export const STAFF_NEXT_ACTIONS = {
+  paid: "Wait for usable intake before starting the SLA.",
+  intake_pending: "Wait for the guardian to submit usable intake.",
+  submitted: "Accept usable intake to start the package SLA.",
+  clarification: "Resolve the open clarification, then re-check intake.",
+  triage: "Assign this case within capacity, or place it on hold.",
+  assigned: "Start drafting the plan for this learner.",
+  drafting: "Finish the plan and send it to independent review.",
+  internal_review: "Complete independent review, then publish if approved.",
+  published: "Deliver the published plan through the secure portal.",
+  delivered: "Wait for the guardian to acknowledge delivery.",
+  acknowledged: "Close the case, or wait if a revision is requested.",
+  revision_requested: "Accept or decline the revision with a reason.",
+  revised: "Re-deliver the revised plan.",
+  on_hold: "Return this case to an active operational state.",
+  overdue: "Triage this overdue case and choose a safe next state.",
+  closed: "This case is closed. No further operational work is required.",
+  cancelled: "This case was cancelled. Do not treat it as an active family plan.",
+  refunded: "This case was refunded. Do not invent a delivery or educator status.",
+  chargeback: "This case has a chargeback. Pause operational work.",
+};
+
+export function staffPriorityLabel(status) {
+  return STAFF_PRIORITY_LABELS[status] ?? String(status ?? "unknown").replaceAll("_", " ");
+}
+
+export function staffNextAction(status) {
+  return STAFF_NEXT_ACTIONS[status] ?? "Review this case and choose a valid next step.";
+}
+
 export function nextStaffStatuses(status) {
   return (
     {

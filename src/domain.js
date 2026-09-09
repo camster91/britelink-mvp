@@ -85,8 +85,34 @@ export function updateLessonSchedule(activity, lessonId, reason, scheduledFor) {
   };
 }
 
+export const LESSON_STATUS_LABELS = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  paused: "Paused",
+  completed: "Completed",
+  skipped: "Skipped",
+};
+
 export function getLessonStatus(activity, lessonId) {
   return activity[lessonId]?.status ?? "not_started";
+}
+
+export function statusLabel(status) {
+  return LESSON_STATUS_LABELS[status] ?? String(status ?? "").replaceAll("_", " ");
+}
+
+export function findNextLesson(plan, activity = {}) {
+  for (const week of plan?.weeks ?? []) {
+    for (const day of week.days ?? []) {
+      for (const lesson of day.lessons ?? []) {
+        const status = getLessonStatus(activity, lesson.id);
+        if (status !== "completed" && status !== "skipped") {
+          return { week, day, lesson, status };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 export function calculateProgress(plan, activity) {

@@ -30,6 +30,8 @@ GitHub execution tracking is governed by [roadmap issue #14](https://github.com/
 
 Provision development and staging Supabase projects, apply migrations, configure passwordless guardian/staff Auth, seed two synthetic households, and run deployed cross-household denial plus save/reload tests. This requires project credentials and authorization to create or configure external infrastructure.
 
+Operator handoff before that work: `docs/STAGING_HANDOFF.md` (env checklist, invited-only Auth, Sites packaging, and human-only evidence). Sequenced gate plan: `docs/GOAL_COMPLETION_PLAN.md`. Manual assistive-technology protocol: `docs/MANUAL_ACCESSIBILITY_QA.md` (not closable from automated Linux audits).
+
 ## Approval boundaries
 
 Explicit approval is required immediately before provisioning paid/external infrastructure, production deployment, real-family data collection, external communications, customer-visible pricing changes, or a private-beta invitation. Local code, tests, documentation, and synthetic preview work remain reversible and in scope.

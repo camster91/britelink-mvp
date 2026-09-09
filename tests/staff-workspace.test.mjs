@@ -6,6 +6,8 @@ import {
   nextStaffStatuses,
   prioritizedCases,
   staffIntakeRows,
+  staffNextAction,
+  staffPriorityLabel,
 } from "../src/staff-workspace.js";
 test("staff queue prioritizes urgent workflow and then SLA", () => {
   const cases = [
@@ -19,6 +21,13 @@ test("staff queue prioritizes urgent workflow and then SLA", () => {
     ["c2", "c3", "c4", "c1"],
   );
 });
+test("staff queue language names priority and the next honest action", () => {
+  assert.equal(staffPriorityLabel("overdue"), "Urgent");
+  assert.equal(staffPriorityLabel("clarification"), "Needs reply");
+  assert.match(staffNextAction("submitted"), /Accept usable intake/);
+  assert.match(staffNextAction("unknown_state"), /valid next step/);
+});
+
 test("case helpers select latest plan and reserve submitted-to-triage for usable-intake acceptance", () => {
   assert.equal(
     latestForCase(
