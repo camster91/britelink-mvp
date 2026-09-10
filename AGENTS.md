@@ -1,3 +1,7 @@
+# Ship handoff
+
+> **Read `docs/AGENT_HANDOFF.md` first** for product status, next agent track, and Cameron-gated work. Also `docs/ship-status.md` + `docs/END_TO_END_SHIP_PLAN.md`.
+
 # Prototype Instructions
 
 Run the local server yourself and open the preview in the browser available to this environment. Do not give the user server-start instructions when you can run it.
