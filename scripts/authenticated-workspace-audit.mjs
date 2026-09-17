@@ -2,6 +2,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
+import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
 const origin="http://127.0.0.1:4318";
 const server=spawn(process.execPath,["node_modules/vite/bin/vite.js","--host","127.0.0.1","--port","4318"],{stdio:"ignore"});
@@ -9,7 +10,7 @@ async function waitForServer(){for(let attempt=0;attempt<60;attempt+=1){try{if((
 
 try{
   await waitForServer();
-  const browser=await chromium.launch({headless:true,executablePath:"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"});
+  const browser=await chromium.launch(chromeLaunchOptions());
   const context=await browser.newContext({viewport:{width:1280,height:1000},reducedMotion:"reduce"});
   const page=await context.newPage();
   await page.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});
