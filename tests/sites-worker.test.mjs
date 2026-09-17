@@ -19,6 +19,7 @@ test("serves existing static assets without a fallback", async () => {
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-frame-options"), "DENY");
   assert.match(response.headers.get("content-security-policy"), /frame-ancestors 'none'/);
+  assert.doesNotMatch(response.headers.get("content-security-policy"), /supabase\.co/);
   assert.equal(response.headers.get("strict-transport-security"), "max-age=31536000; includeSubDomains");
 });
 

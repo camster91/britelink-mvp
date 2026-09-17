@@ -21,6 +21,18 @@ npm run dev
 
 The app will be available at `http://localhost:5173` (or the port shown in the terminal).
 
+## Self-host on vps.ashbi.ca (no cloud vendors)
+
+The intended runtime is this VPS, not hosted Supabase, Stripe, or OpenAI Sites. Unconfigured builds stay in interactive demo mode (device-only sample data). A local Postgres 16 container already runs on the VPS at `/docker/britelink-postgres` with nightly dumps under `/opt/backups/britelink`.
+
+```bash
+npm ci
+npm run build
+docker compose up --build -d
+```
+
+The image serves `dist/client` with nginx on `127.0.0.1:8088`. Point Coolify/Traefik at that container when you are ready to publish a hostname. Do not set `VITE_SUPABASE_*` unless a self-hosted API on this same VPS is actually wired.
+
 ## Available Commands
 
 ### Development
@@ -121,12 +133,7 @@ VITE_PRIVACY_NOTICE_VERSION=2026-09-01
 
 ### Current Status
 
-This is an **MVP prototype** with locally verified features. It is **not approved** for real family data or paid service delivery until:
-
-- Hosted infrastructure is deployed and verified
-- Privacy notice receives qualified counsel approval
-- Manual accessibility testing (VoiceOver, 200%/400% zoom) is completed
-- Private beta with 5-10 families is successfully conducted
+This is an **MVP prototype** with locally verified features. The demo runs with no third-party accounts. It is **not approved** for real family data or paid service delivery until privacy, educator, and accessibility gates in `docs/RELEASE_READINESS.md` are closed.
 
 See `docs/IMPLEMENTATION_PLAN.md` and `REAL_WORLD_REVIEW.md` for complete status.
 

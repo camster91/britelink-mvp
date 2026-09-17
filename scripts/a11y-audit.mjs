@@ -2,6 +2,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
+import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
 const origin="http://127.0.0.1:4317";
 const server=spawn(process.execPath,["node_modules/vite/bin/vite.js","--host","127.0.0.1","--port","4317"],{stdio:"ignore"});
@@ -19,12 +20,7 @@ async function keyboardEvidence(page){
 
 try{
   await waitForServer(); await mkdir(new URL("../qa/accessibility/",import.meta.url),{recursive:true});
-  const browser=await chromium.launch({
-    headless:true,
-    executablePath:process.env.PLAYWRIGHT_CHROME_PATH
-      || (process.platform==="darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : undefined)
-      || "/usr/local/bin/google-chrome"
-  });
+  const browser=await chromium.launch(chromeLaunchOptions());
   const results=[];
   for(const viewport of viewports){
     const context=await browser.newContext({viewport:{width:viewport.width,height:viewport.height},reducedMotion:"reduce"});
