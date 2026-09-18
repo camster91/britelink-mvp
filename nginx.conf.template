@@ -1,0 +1,57 @@
+# nginx config TEMPLATE, rendered at container start by the nginx image's own
+# /docker-entrypoint.d/20-envsubst-on-templates.sh, which reads /etc/nginx/templates/*.template
+# and writes the result to /etc/nginx/conf.d/ with the suffix stripped.
+#
+# It is a template for exactly one reason: the Content-Security-Policy has to name the API origin,
+# and an origin cannot be hardcoded here because the same image serves both modes. The value comes
+# from BRITELINK_API_ORIGIN, which compose derives from the SAME variable as the JS bundle's
+# VITE_SUPABASE_URL -- so the policy and the code cannot disagree about where the API lives.
+#
+# That coupling is also what makes demo mode honest. With no API configured the variable is empty
+# and the directive renders as `connect-src 'self' ` -- the tight policy the current production site
+# already ships, not a loosened one left over from a live build. (The trailing space is the empty
+# substitution; CSP ignores surrounding whitespace, so it is inert. `nginx -t` accepts it.)
+#
+# BRITELINK_API_ORIGIN must be DEFINED, even when empty -- the Dockerfile sets it to "" for exactly
+# this reason. Measured on nginx:1.25-alpine, same template, three states:
+#
+#   set to the origin   -> connect-src 'self' https://britelink-api.ashbi.ca   nginx -t PASSES
+#   defined, empty      -> connect-src 'self'                                  nginx -t PASSES
+#   UNDEFINED           -> connect-src 'self' ${BRITELINK_API_ORIGIN}          nginx -t FAILS
+#
+# The last row is the trap. envsubst's substitution list is built from env names that MATCH THE
+# FILTER, not from names the template uses -- so an unset variable is never substituted and its
+# `$name` survives into the rendered file, where nginx reads it as an unknown variable and refuses
+# to start at all. That is a total outage at container start, not a degraded header.
+#
+# NGINX_ENVSUBST_FILTER=BRITELINK_ is MANDATORY and is set in the Dockerfile. Without it envsubst
+# substitutes EVERY $name it recognises, and `$uri` below becomes the empty string -- turning
+# `try_files $uri $uri/ /index.html` into `try_files  /index.html`, which silently breaks every
+# deep link in a single-page app whose whole routing model depends on that fallback. The filter
+# restricts substitution to variables beginning with BRITELINK_, which is why no other $name in
+# this file needs escaping.
+
+server {
+    listen 80;
+    server_name localhost;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options DENY always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # connect-src is the one directive that widens, and only to a single named origin. Never '*':
+    # this app handles children's education records, and a wildcard would let any script that ever
+    # reaches the page exfiltrate an authenticated session's data to anywhere.
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${BRITELINK_API_ORIGIN}; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|otf)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}

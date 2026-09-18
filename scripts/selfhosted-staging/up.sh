@@ -14,14 +14,44 @@
 # supabase/selfhosted/docker-compose.yml) because this host has no firewall.
 #
 # Usage:  bash scripts/selfhosted-staging/up.sh
+#         bash scripts/selfhosted-staging/up.sh --bootstrap-only \
+#              --stack-dir /opt/britelink-production/supabase/selfhosted \
+#              --override /opt/britelink-production/supabase/selfhosted/docker-compose.production.yml
 # Teardown:  docker compose -f supabase/selfhosted/docker-compose.yml down -v
+#
+# The flags exist so production reuses this file's proven bootstrap rather than a copy of it that
+# drifts. Everything through the private-bucket assertion is shared; everything after it is
+# staging fixture (seed identities, synthetic households, sentinel objects, minted tokens) and
+# --bootstrap-only is what draws that line.
 
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
+
+bootstrap_only=false
 stack="$repo/supabase/selfhosted"
-compose=(docker compose -f "$stack/docker-compose.yml")
+project=""
+overrides=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --bootstrap-only) bootstrap_only=true; shift ;;
+    --stack-dir) stack="$2"; shift 2 ;;
+    --project) project="$2"; shift 2 ;;
+    --override) overrides+=("$2"); shift 2 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
+  esac
+done
+
+compose=(docker compose)
+[ -n "$project" ] && compose+=(-p "$project")
+compose+=(-f "$stack/docker-compose.yml")
+# Guarded rather than "${overrides[@]:-}": an empty array expanded under `set -u` is an unbound
+# variable error on bash 4.3 and older, and this host is not the only place this runs.
+if [ "${#overrides[@]}" -gt 0 ]; then
+  for extra in "${overrides[@]}"; do compose+=(-f "$extra"); done
+fi
 
 command -v docker >/dev/null 2>&1 || { echo "FAIL: docker is not available." >&2; exit 1; }
 
@@ -43,10 +73,10 @@ if ss -ltn 2>/dev/null | grep -q ":${port} "; then
   exit 1
 fi
 
-echo "== starting the stack (project: britelink-staging) =="
+echo "== starting the stack (project: ${STACK_NAME:-britelink-staging}) =="
 "${compose[@]}" up -d --wait
 
-db() { docker compose -f "$stack/docker-compose.yml" exec -T db psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres "$@"; }
+db() { "${compose[@]}" exec -T db psql -v ON_ERROR_STOP=1 -q -U postgres -d postgres "$@"; }
 
 # ---------------------------------------------------------------------------
 # Ordering, and why it is not just "compose up then psql".
@@ -128,6 +158,16 @@ echo "== asserting the bucket is NOT public =="
 public="$(db -tAc "select public from storage.buckets where id='case-attachments'")"
 [ "$public" = "f" ] || { echo "FAIL: case-attachments is public (public=${public})." >&2; exit 1; }
 echo "  ok   case-attachments is private"
+
+if [ "$bootstrap_only" = true ]; then
+  echo
+  echo "PASS (--bootstrap-only): the stack is up at ${api}, ${applied} migrations applied, and the"
+  echo "      case-attachments bucket exists and is private."
+  echo "      Skipped: seed identities, the synthetic seed, sentinel objects, minted tokens and the"
+  echo "      isolation verifier -- every one of those is a staging fixture and must never run"
+  echo "      against a stack that will hold real family data."
+  exit 0
+fi
 
 echo
 # ---------------------------------------------------------------------------

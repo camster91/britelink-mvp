@@ -1,0 +1,107 @@
+# Production overrides for the self-hosted stack.
+#
+# Applied as a second -f beside docker-compose.yml, never instead of it:
+#   docker compose -p britelink-production \
+#     -f supabase/selfhosted/docker-compose.yml \
+#     -f supabase/selfhosted/docker-compose.production.yml up -d
+#
+# Why an override rather than edits to the shared file: the base file carries staging's deliberate
+# choices, and docker-compose.yml:120-123 states outright that staging has no SMTP and must not
+# gain one. Environment maps MERGE across compose files, so this file changes only the keys it
+# names and leaves the rest of the base intact. That is what lets one compose definition serve two
+# environments without either one's safety properties leaking into the other.
+#
+# Everything environment-specific arrives as ${VAR} from the .env beside these files, which
+# scripts/selfhosted-staging/gen-env.mjs writes. Nothing here is a secret.
+
+# Log rotation on every service. The default json-file driver grows without bound, and this host
+# has 62 GB free against 79 running containers -- an unbounded log is a slow-motion disk-full that
+# takes unrelated services down with it.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # Resource limits are set from measurement rather than taste. This host reports 15 GiB total but
+  # only ~8 GiB available, runs 79 containers, and has already consumed 3.9 GiB of its 4 GiB swap
+  # -- so an unbounded service here does not fail alone, it takes the box's other tenants with it.
+  # These ceilings sum to roughly 2 GiB, leaving real headroom for ClamAV's signature database
+  # when P7 lands, which is the one genuinely memory-hungry addition.
+  #
+  # deploy.resources.limits is honoured by `docker compose up` in v2/v5, not only in swarm mode.
+  db:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.5"
+
+  db-roles:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  auth:
+    logging: *default-logging
+    environment:
+      # The SPA origin GoTrue sends magic-link redirects to. In production this is NOT the API
+      # origin: the base file sets API_EXTERNAL_URL from PUBLIC_URL (the API host), while the site
+      # and redirect addresses must point at the app the guardian is actually looking at.
+      GOTRUE_SITE_URL: ${SITE_URL:?set SITE_URL in .env}
+      # Without this the SPA's own emailRedirectTo is rejected as a disallowed redirect and the
+      # magic link lands nowhere. The base sets this to PUBLIC_URL, which is the API origin and
+      # therefore the wrong host for a browser redirect.
+      GOTRUE_URI_ALLOW_LIST: ${SITE_URL:?set SITE_URL in .env}/**
+      # Defence in depth. The client already refuses to create users (shouldCreateUser:false in
+      # src/supabase-repository.js), so this is the second lock on the same door: sign-up is
+      # invite-only, and the admin invite endpoint is unaffected by this flag.
+      GOTRUE_DISABLE_SIGNUP: "true"
+      # Explicit rather than inherited, because "true" is only correct while there is no SMTP: with
+      # no mailer, auto-confirm is the difference between a stack that can be tested and one that
+      # cannot. P5 flips this to "false" in .env at the same moment SMTP is configured, so the two
+      # can never disagree. Confirm it reads false before any real guardian is invited.
+      GOTRUE_MAILER_AUTOCONFIRM: ${MAILER_AUTOCONFIRM:-true}
+      # Staging runs at warn to keep its noise down; production is the stack whose auth failures
+      # matter, and warn would hide the sign-in problems worth seeing.
+      GOTRUE_LOG_LEVEL: ${GOTRUE_LOG_LEVEL:-info}
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  # P5 adds an SMTP block to auth above -- GOTRUE_SMTP_HOST, GOTRUE_SMTP_PORT, GOTRUE_SMTP_USER,
+  # GOTRUE_SMTP_PASS, GOTRUE_SMTP_ADMIN_EMAIL, GOTRUE_SMTP_SENDER_NAME, GOTRUE_MAILER_OTP_EXP and
+  # GOTRUE_RATE_LIMIT_EMAIL_SENT -- sourced from .env so the API key never lands in this file.
+
+  rest:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+
+  storage:
+    logging: *default-logging
+    environment:
+      # Staging's values are replaced so the two stacks are not distinguishable by tenant. These
+      # are written into storage.objects rows at upload time, and a bucket mixing staging and
+      # production tenant ids is a data-provenance problem, not a cosmetic one.
+      TENANT_ID: production
+      REGION: production
+      GLOBAL_S3_BUCKET: production
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+
+  gateway:
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          memory: 64m

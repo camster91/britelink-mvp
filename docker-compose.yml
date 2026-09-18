@@ -1,6 +1,25 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      # Values come from the untracked .env beside this file (gitignored; never committed).
+      # `:-` defaults keep a build working with no .env at all, which produces the demo.
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_PRIVACY_NOTICE_VERSION: ${VITE_PRIVACY_NOTICE_VERSION:-}
+    # Deliberately NO `environment:` block. The image derives its CSP origin from the very same
+    # build arg that configured the bundle (see the ENV in the Dockerfile), so passing it again at
+    # run time would not reinforce that coupling -- it would add a way to break it. An `up -d`
+    # without `--build` would move the Content-Security-Policy to a newly-edited origin while the
+    # already-built JavaScript kept calling the old one, and the app would be CSP-blocked against
+    # its own backend. One value, one place, fixed at the moment the bundle is fixed.
+    #
+    # An unconfigured build therefore renders `connect-src 'self'` with no API origin at all -- the
+    # tight policy the demo already ships, not a loosened one left over from a live build.
     restart: unless-stopped
     ports:
+      # 127.0.0.1 EXPLICITLY. This host has no firewall, so a bare "8088:80" would publish the
+      # app to the internet directly and bypass Traefik (and its TLS) entirely. It is also the
+      # port the Traefik route hardcodes -- see /opt/traefik/dynamic/britelink.yml.
       - "127.0.0.1:8088:80"
