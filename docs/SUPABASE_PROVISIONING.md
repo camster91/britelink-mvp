@@ -2,6 +2,17 @@
 
 This checklist documents the exact steps Cameron must complete to provision Supabase for BriteLink private beta. These steps must be completed before the authenticated workspace can operate with real family data.
 
+> **This checklist assumes a decision that has not been made.** It describes buying hosted
+> Supabase. `HOW-TO-RUN.md:26` states the intended runtime is **not** hosted Supabase, and
+> self-hosting GoTrue + PostgREST + Storage on the VPS is the alternative the repository's
+> stated direction points at. The two paths have different steps, costs, and operational
+> burdens, so treat everything below as one branch of an open decision rather than as the plan.
+>
+> Nothing here may be carried out before the explicit infrastructure approval required by
+> `RELEASE_READINESS.md:39` and `GOAL_COMPLETION_PLAN.md:431`. Until a project exists, the
+> application runs as an unconfigured demo (`docs/STAGING_HANDOFF.md`), which is the honest
+> state — do not set `VITE_SUPABASE_*` to make it look otherwise.
+
 ## Prerequisites
 
 - [ ] Supabase account created at https://supabase.com
