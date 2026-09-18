@@ -1,6 +1,24 @@
 services:
   web:
-    build: .
+    build:
+      context: .
+      # Values come from the untracked .env beside this file (gitignored; never committed).
+      # `:-` defaults keep a build working with no .env at all, which produces the demo.
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+        VITE_PRIVACY_NOTICE_VERSION: ${VITE_PRIVACY_NOTICE_VERSION:-}
+    environment:
+      # Deliberately the SAME variable as the VITE_SUPABASE_URL build arg above. One source feeds
+      # both the JavaScript that calls the API and the Content-Security-Policy that permits it, so
+      # the two cannot drift into a state where the bundle calls an origin the browser blocks.
+      #
+      # Because it is derived from VITE_SUPABASE_URL, an unconfigured build renders the CSP as
+      # `connect-src 'self'` with no API origin at all -- the tight policy, not a loosened one.
+      BRITELINK_API_ORIGIN: ${VITE_SUPABASE_URL:-}
     restart: unless-stopped
     ports:
+      # 127.0.0.1 EXPLICITLY. This host has no firewall, so a bare "8088:80" would publish the
+      # app to the internet directly and bypass Traefik (and its TLS) entirely. It is also the
+      # port the Traefik route hardcodes -- see /opt/traefik/dynamic/britelink.yml.
       - "127.0.0.1:8088:80"
