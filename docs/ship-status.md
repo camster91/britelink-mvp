@@ -123,10 +123,23 @@ for coverage:
   essentially empty database (370 bytes, zero `CREATE TABLE` statements, checked 2026-09-18). The
   script is correct; the migrations have never been applied to that database. A green backup run
   is not evidence that anything is being protected, and the restore drill inherits the same limit.
-- **Storage download denial.** The isolation verifier proves household A cannot read household B's
-  object. Until real object bytes exist, that check would pass just as well against a missing
-  object — a denial is only meaningful next to a positive control. See
-  `docs/HOSTED_STAGING_VERIFICATION.md`.
+
+## Signals That Look Vacuous But Are Not
+
+Recorded because they are the obvious next suspicion, and re-litigating them wastes a review:
+
+- **Storage isolation denials.** A denial is only meaningful next to a positive control, and both
+  storage denials have one. D1 requires each administrator to *list an own-household object* and
+  throws `Storage has no visible own-household sentinel` when that list is empty
+  (`src/hosted-isolation.js`); D2 requires household B to *sign its own object* — which also
+  proves the object exists — before any cross-household denial is accepted, and throws
+  `Household B storage control failed` otherwise. So neither can pass against a missing object.
+  What is genuinely unknown is not whether the control works but that neither has **run against
+  staging yet** — see the evidence boundary in `docs/HOSTED_STAGING_VERIFICATION.md`.
+- **The sentinel sweeps.** The same reasoning applies to the 25-table read sweep: "both admins
+  see an own-household sentinel" is itself the control. It is not merely asserted green — the
+  migration harness deletes one sentinel on every run and requires the verifier to fail naming
+  that table, so the sweep is known to be able to go red.
 
 ## How to Proceed
 
