@@ -17,6 +17,12 @@ COPY . .
 # by decoding the JWT, and it is called from vite.config.mjs at config time -- so passing the wrong
 # key fails the build outright rather than shipping a bundle that hands every visitor full
 # row-level-security bypass.
+#
+# BuildKit lints both of these as "secrets used in ARG or ENV" on every build. That is a false
+# positive here and is expected: the anon key is public by design and ships to every browser in the
+# bundle either way, and the service key is never passed to this file. The lint stays on rather than
+# being suppressed, because the day someone adds the SERVICE key as a build arg is exactly the day
+# that warning should be read.
 ARG VITE_SUPABASE_URL=""
 ARG VITE_SUPABASE_ANON_KEY=""
 # Left empty until counsel has signed the exact notice text: src/AuthenticatedIntake.jsx:121 locks
@@ -37,11 +43,24 @@ COPY --from=build /app/dist/client /usr/share/nginx/html
 # blanks `$uri` and breaks the SPA's deep-link fallback. See nginx.conf.template.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 ENV NGINX_ENVSUBST_FILTER=BRITELINK_
-# MUST stay defined, even empty. The entrypoint builds its substitution list from env names that
-# match the filter, so an UNDEFINED BRITELINK_API_ORIGIN is left in the file as the literal text
-# `${BRITELINK_API_ORIGIN}` -- and nginx then reads that `$BRITELINK_API_ORIGIN` as a variable
-# reference, fails with "unknown variable", and refuses to start at all. Defined-but-empty
-# substitutes cleanly to `connect-src 'self' ;`, which is valid and is the demo policy.
-ENV BRITELINK_API_ORIGIN=""
+
+# Re-declared because ARG scope is per-stage; this picks up the same --build-arg as the build stage.
+ARG VITE_SUPABASE_URL=""
+
+# The CSP origin is derived from the SAME build arg that configured the JS bundle, so the policy and
+# the code agree by construction -- not by the caller remembering to pass both. Measured: run this
+# image with no arguments and the CSP is `connect-src 'self'`; build it with an API origin and the
+# same image renders `connect-src 'self' <origin>` with no runtime environment set at all.
+#
+# This is deliberately not overridable at run time. The bundle's API origin is fixed at BUILD time --
+# Vite inlines it and there is no runtime injection -- so a runtime override could only ever set the
+# policy to an origin the already-built JavaScript does not call. That is the precise failure this
+# coupling exists to prevent: the app silently CSP-blocked against its own backend.
+#
+# MUST stay defined even when empty: the nginx entrypoint builds its substitution list from env
+# names matching the filter, so an UNDEFINED value is left in the file as the literal text
+# `${BRITELINK_API_ORIGIN}` -- which nginx then reads as a variable reference, fails with "unknown
+# variable", and refuses to start. That is a total outage at container start, not a broken header.
+ENV BRITELINK_API_ORIGIN=$VITE_SUPABASE_URL
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
