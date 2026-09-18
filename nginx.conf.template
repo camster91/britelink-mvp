@@ -8,8 +8,21 @@
 # VITE_SUPABASE_URL -- so the policy and the code cannot disagree about where the API lives.
 #
 # That coupling is also what makes demo mode honest. With no API configured the variable is empty
-# and the directive renders as `connect-src 'self'`, which is the tight policy the current
-# production site already ships, not a loosened one left over from a live build.
+# and the directive renders as `connect-src 'self' ` -- the tight policy the current production site
+# already ships, not a loosened one left over from a live build. (The trailing space is the empty
+# substitution; CSP ignores surrounding whitespace, so it is inert. `nginx -t` accepts it.)
+#
+# BRITELINK_API_ORIGIN must be DEFINED, even when empty -- the Dockerfile sets it to "" for exactly
+# this reason. Measured on nginx:1.25-alpine, same template, three states:
+#
+#   set to the origin   -> connect-src 'self' https://britelink-api.ashbi.ca   nginx -t PASSES
+#   defined, empty      -> connect-src 'self'                                  nginx -t PASSES
+#   UNDEFINED           -> connect-src 'self' ${BRITELINK_API_ORIGIN}          nginx -t FAILS
+#
+# The last row is the trap. envsubst's substitution list is built from env names that MATCH THE
+# FILTER, not from names the template uses -- so an unset variable is never substituted and its
+# `$name` survives into the rendered file, where nginx reads it as an unknown variable and refuses
+# to start at all. That is a total outage at container start, not a degraded header.
 #
 # NGINX_ENVSUBST_FILTER=BRITELINK_ is MANDATORY and is set in the Dockerfile. Without it envsubst
 # substitutes EVERY $name it recognises, and `$uri` below becomes the empty string -- turning

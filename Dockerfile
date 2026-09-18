@@ -37,5 +37,11 @@ COPY --from=build /app/dist/client /usr/share/nginx/html
 # blanks `$uri` and breaks the SPA's deep-link fallback. See nginx.conf.template.
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 ENV NGINX_ENVSUBST_FILTER=BRITELINK_
+# MUST stay defined, even empty. The entrypoint builds its substitution list from env names that
+# match the filter, so an UNDEFINED BRITELINK_API_ORIGIN is left in the file as the literal text
+# `${BRITELINK_API_ORIGIN}` -- and nginx then reads that `$BRITELINK_API_ORIGIN` as a variable
+# reference, fails with "unknown variable", and refuses to start at all. Defined-but-empty
+# substitutes cleanly to `connect-src 'self' ;`, which is valid and is the demo policy.
+ENV BRITELINK_API_ORIGIN=""
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
