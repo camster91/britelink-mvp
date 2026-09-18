@@ -8,6 +8,12 @@
 -- and it prints the exact env block those checks need, so the operator does not
 -- hand-assemble twenty UUIDs in a dashboard.
 --
+-- Coverage is driven by src/hosted-isolation.js, not by what seemed interesting. Its
+-- PRIVATE_TABLES list is 25 tables and its D1 check needs both administrators to see an
+-- OWN-household sentinel on every one of them, because an empty foreign result proves
+-- nothing when the foreign table is empty too. Add a table to that list and this seed
+-- needs a row for it on both sides; verify-synthetic-seed.sql sweeps the same 25.
+--
 -- ---------------------------------------------------------------------------
 -- HOW TO RUN
 -- ---------------------------------------------------------------------------
@@ -163,8 +169,48 @@ insert into public.service_cases
    '5eed0000-0000-4000-8000-000000000b10', 'essentials', 'assigned',
    '5eed0000-0000-4000-8000-000000000b21', now(), null);
 
+-- ------------------------------------------------- operational sentinels
+-- src/hosted-isolation.js lists 25 PRIVATE_TABLES and its D1 check requires BOTH administrators
+-- to see an *own-household* sentinel on EVERY one of them. The reason is in
+-- docs/HOSTED_STAGING_VERIFICATION.md: an empty foreign result proves nothing when the foreign
+-- table has no data either. So every table needs a row on both sides -- a fixture that covers
+-- only the surfaces that felt interesting leaves the rest permanently unprovable, and the check
+-- fails outright with "no visible own-household sentinel".
+--
+-- educator_capacities for household B is held by admin_b: the env contract in .env.example has
+-- no EDUCATOR_B_USER_ID, and the table's select policy admits an educator *or* an admin of the
+-- household, so an admin holding a capacity row satisfies the check without inventing a fifth
+-- required uuid for the operator to supply.
 insert into public.educator_capacities (household_id, educator_user_id, max_active_cases) values
-  ('5eed0000-0000-4000-8000-0000000000a1', :'educator_a'::uuid, 5);
+  ('5eed0000-0000-4000-8000-0000000000a1', :'educator_a'::uuid, 5),
+  ('5eed0000-0000-4000-8000-0000000000b1', :'admin_b'::uuid, 5);
+
+-- payment_events: provider_event_key is globally unique, so A and B cannot share one.
+insert into public.payment_events
+  (id, household_id, case_id, order_id, provider_event_key, external_checkout_id,
+   payment_status, package_code, currency, amount_cents, occurred_at) values
+  ('5eed0000-0000-4000-8000-000000000aa1', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a20', '5eed0000-0000-4000-8000-000000000a21',
+   'seed-provider-event-a-0001', 'seed-checkout-a-0001', 'paid', 'essentials', 'CAD', 0, now()),
+  ('5eed0000-0000-4000-8000-000000000ba1', '5eed0000-0000-4000-8000-0000000000b1',
+   '5eed0000-0000-4000-8000-000000000b20', '5eed0000-0000-4000-8000-000000000b21',
+   'seed-provider-event-b-0001', 'seed-checkout-b-0001', 'paid', 'essentials', 'CAD', 0, now());
+
+-- case_message_reads lives further down, next to case_messages: it has a foreign key to the
+-- message, so it cannot be written before the message exists.
+
+-- operation_rate_windows: composite primary key on all four columns. attempt_count must be > 0.
+insert into public.operation_rate_windows
+  (household_id, actor_user_id, action_key, window_started_at, attempt_count, last_attempt_at) values
+  ('5eed0000-0000-4000-8000-0000000000a1', :'guardian_a'::uuid, 'seed.synthetic', date_trunc('hour', now()), 1, now()),
+  ('5eed0000-0000-4000-8000-0000000000b1', :'admin_b'::uuid,    'seed.synthetic', date_trunc('hour', now()), 1, now());
+
+-- operational_events: id is generated always as identity, so it is not supplied. event_code
+-- must match ^[a-z0-9][a-z0-9._-]{2,79}$.
+insert into public.operational_events
+  (household_id, actor_user_id, component, severity, event_code, occurred_at) values
+  ('5eed0000-0000-4000-8000-0000000000a1', :'admin_a'::uuid, 'seed', 'info', 'seed.synthetic', now()),
+  ('5eed0000-0000-4000-8000-0000000000b1', :'admin_b'::uuid, 'seed', 'info', 'seed.synthetic', now());
 
 -- -------------------------------------------------------------------- plans
 insert into public.plans
@@ -232,8 +278,12 @@ insert into public.case_messages (id, household_id, case_id, sender_user_id, kin
   ('5eed0000-0000-4000-8000-000000000b70', '5eed0000-0000-4000-8000-0000000000b1',
    '5eed0000-0000-4000-8000-000000000b20', :'admin_b'::uuid, 'general', 'Synthetic message B');
 
+-- case_message_reads: primary key is (message_id, user_id), not (household_id, message_id), so
+-- each read hangs off its own household's message and its own household's user. One row per
+-- household, because it is one of the 25 PRIVATE_TABLES the D1 sentinel sweep covers.
 insert into public.case_message_reads (household_id, message_id, user_id, read_at) values
-  ('5eed0000-0000-4000-8000-0000000000a1', '5eed0000-0000-4000-8000-000000000a70', :'guardian_a'::uuid, now());
+  ('5eed0000-0000-4000-8000-0000000000a1', '5eed0000-0000-4000-8000-000000000a70', :'guardian_a'::uuid, now()),
+  ('5eed0000-0000-4000-8000-0000000000b1', '5eed0000-0000-4000-8000-000000000b70', :'admin_b'::uuid, now());
 
 -- -------------------------------------------------------------- attachments
 -- object_path must be 20-500 chars and its FIRST path segment must equal the
@@ -275,24 +325,27 @@ insert into public.revision_requests
   ('5eed0000-0000-4000-8000-000000000bb0', '5eed0000-0000-4000-8000-0000000000b1',
    '5eed0000-0000-4000-8000-000000000b20', :'admin_b'::uuid, 'Synthetic revision request B', 1, 'requested');
 
--- ------------------------------------------------- retention fixtures (household B)
--- One pending deletion request and one scheduled job, so the retention dry run
--- (#6) has real rows to reason about instead of empty tables.
+-- ------------------------------------------------- retention fixtures (both households)
+-- One pending deletion request and one scheduled job per household, so the retention dry run
+-- (#6) has real rows to reason about on both sides instead of empty tables. Household A needs
+-- its own because deletion_jobs and privacy_requests are two of the 25 PRIVATE_TABLES the D1
+-- check sweeps, and a table with no own-household row cannot prove anything.
 --
--- THE JOB IS DELIBERATELY NOT DUE, and that is a safety property, not an
--- oversight. admin_execute_due_deletion_jobs() has NO household scope: it takes
--- every row where status='scheduled' and not legal_hold and eligible_at<=now().
--- A due job here would therefore be destroyed by the next executor run anywhere
--- on this database -- and the thing destroyed is household B, the isolation
--- counterparty that all 24 D2 mutation checks depend on. That failure would
--- surface as two dozen unrelated-looking check failures, not as "the seed ate
--- its own fixture". eligible_at is set 90 days out so the executor can never
--- select it, while the dry run still sees a well-formed job.
+-- BOTH JOBS ARE DELIBERATELY NOT DUE, and that is a safety property, not an oversight.
+-- admin_execute_due_deletion_jobs() has NO household scope: it takes every row where
+-- status='scheduled' and not legal_hold and eligible_at<=now(). A due job here would therefore
+-- be destroyed by the next executor run anywhere on this database -- and the thing destroyed
+-- would be an isolation household that the D2 mutation checks depend on. That failure would
+-- surface as two dozen unrelated-looking check failures, not as "the seed ate its own fixture".
+-- eligible_at is set 90 days out so the executor can never select either row, while the dry run
+-- still sees well-formed jobs.
 --
 -- Nothing here executes a deletion. The executor is additionally gated on
--- retention_execution_controls.execution_enabled, which 022 leaves false, and
--- enabling it is gated on GOAL_COMPLETION_PLAN.md:51.
+-- retention_execution_controls.execution_enabled, which 022 leaves false, and enabling it is
+-- gated on GOAL_COMPLETION_PLAN.md:51.
 insert into public.privacy_requests (id, household_id, requested_by, kind, status, reason) values
+  ('5eed0000-0000-4000-8000-000000000ad0', '5eed0000-0000-4000-8000-0000000000a1',
+   :'guardian_a'::uuid, 'deletion', 'pending', 'SYNTHETIC retention fixture; not a real request'),
   ('5eed0000-0000-4000-8000-000000000bd0', '5eed0000-0000-4000-8000-0000000000b1',
    :'admin_b'::uuid, 'deletion', 'pending', 'SYNTHETIC retention fixture; not a real request');
 
@@ -301,6 +354,9 @@ insert into public.privacy_requests (id, household_id, requested_by, kind, statu
 insert into public.deletion_jobs
   (id, household_id, privacy_request_id, status, eligible_at, approved_by, approval_basis,
    identity_verified, co_guardian_reviewed, legal_hold) values
+  ('5eed0000-0000-4000-8000-000000000ae0', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000ad0', 'scheduled', now() + interval '90 days', :'admin_a'::uuid,
+   'SYNTHETIC seed fixture; approved basis is placeholder text', true, true, false),
   ('5eed0000-0000-4000-8000-000000000be0', '5eed0000-0000-4000-8000-0000000000b1',
    '5eed0000-0000-4000-8000-000000000bd0', 'scheduled', now() + interval '90 days', :'admin_b'::uuid,
    'SYNTHETIC seed fixture; approved basis is placeholder text', true, true, false);

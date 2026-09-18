@@ -51,23 +51,36 @@ end $$;
 -- 2. The seeded deletion job can never be selected by the executor.
 -- ---------------------------------------------------------------------------
 do $$
-declare due int; job public.deletion_jobs%rowtype;
+declare due int; jobs int; bad text[] := '{}'; j public.deletion_jobs%rowtype;
 begin
-  select * into job from public.deletion_jobs where id='5eed0000-0000-4000-8000-000000000be0';
-  if not found then raise exception 'ASSERT FAILED: the seeded deletion job is missing'; end if;
-  if job.status<>'scheduled' then raise exception 'ASSERT FAILED: expected status scheduled, got %', job.status; end if;
-  if job.eligible_at <= now() then
-    raise exception 'ASSERT FAILED: the seeded job is DUE (eligible_at %). admin_execute_due_deletion_jobs() has no household scope, so the next executor run anywhere would physically delete household B, the isolation counterparty. Move eligible_at into the future.', job.eligible_at;
+  -- Both households carry a fixture, so both must be safe. Checking only one would leave the
+  -- other as the single row that eats a household.
+  for j in select * from public.deletion_jobs where id in
+             ('5eed0000-0000-4000-8000-000000000ae0','5eed0000-0000-4000-8000-000000000be0')
+  loop
+    if j.status<>'scheduled' then
+      bad := bad || format('%s has status %s', j.household_id, j.status);
+    elsif j.eligible_at <= now() then
+      bad := bad || format('%s is DUE at %s', j.household_id, j.eligible_at);
+    end if;
+  end loop;
+
+  select count(*) into jobs from public.deletion_jobs
+   where id in ('5eed0000-0000-4000-8000-000000000ae0','5eed0000-0000-4000-8000-000000000be0');
+  if jobs<>2 then raise exception 'ASSERT FAILED: expected 2 seeded deletion jobs, found %', jobs; end if;
+
+  if array_length(bad,1) > 0 then
+    raise exception 'ASSERT FAILED: a seeded job is not safe: %. admin_execute_due_deletion_jobs() has no household scope, so the next executor run anywhere would physically delete an isolation household and take the D2 mutation checks with it.', array_to_string(bad,'; ');
   end if;
 
-  -- Assert the executor's own predicate, not just the timestamp: this is the exact WHERE
+  -- Assert the executor's own predicate, not just the timestamps: this is the exact WHERE
   -- clause from 022, minus the gate check. It must select zero of the seed's rows even in a
   -- database where the executor is enabled.
   select count(*) into due from public.deletion_jobs
    where status='scheduled' and not legal_hold and eligible_at<=now()
      and household_id in ('5eed0000-0000-4000-8000-0000000000a1','5eed0000-0000-4000-8000-0000000000b1');
   if due<>0 then raise exception 'ASSERT FAILED: % seeded job(s) satisfy the executor predicate', due; end if;
-  raise notice 'ok 2: the seeded deletion job is not due; no executor run can consume household B';
+  raise notice 'ok 2: both seeded deletion jobs are not due; no executor run can consume either household';
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -123,35 +136,54 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- 4. Row-level isolation over the seeded rows, as a real member rather than as superuser.
+-- 4. The D1 sentinel invariant, swept over exactly the tables the verifier sweeps.
 -- ---------------------------------------------------------------------------
+-- src/hosted-isolation.js declares PRIVATE_TABLES and its D1 check requires BOTH administrators
+-- to see an own-household sentinel on EVERY one of them, because an empty foreign result proves
+-- nothing when the foreign table has no data either. This mirrors that requirement here so a gap
+-- in the seed fails in the harness rather than on staging after the projects are provisioned.
+--
 -- Superuser and table owner bypass RLS (there is no FORCE ROW LEVEL SECURITY anywhere in the
--- migrations), so reading these tables as postgres would prove nothing at all.
+-- migrations), so reading these tables as postgres would prove nothing at all. Hence set role.
 do $$
-declare n int; leaks text[] := '{}';
+declare
+  tables text[] := array[
+    'memberships','learners','guardian_consents','learner_profiles','service_cases','plans',
+    'plan_weeks','plan_days','lessons','lesson_activities','audit_events','orders',
+    'payment_events','operation_rate_windows','operational_events','deletion_jobs',
+    'educator_capacities','case_messages','case_message_reads','case_attachments','plan_reviews',
+    'resources','deliveries','revision_requests','privacy_requests'];
+  actors uuid[] := array['5eed0000-0000-4000-8000-00000000ad01'::uuid,
+                         '5eed0000-0000-4000-8000-00000000ad04'::uuid];
+  homes  uuid[] := array['5eed0000-0000-4000-8000-0000000000a1'::uuid,
+                         '5eed0000-0000-4000-8000-0000000000b1'::uuid];
+  t text; i int; own int; leak int; problems text[] := '{}';
 begin
-  perform set_config('request.jwt.claim.sub','5eed0000-0000-4000-8000-00000000ad02',true);
-  set local role authenticated;
-
-  select count(*) into n from public.households;
-  if n<>1 then leaks:=leaks||format('households=%s',n); end if;
-  select count(*) into n from public.learners;
-  if n<>1 then leaks:=leaks||format('learners=%s',n); end if;
-  select count(*) into n from public.service_cases;
-  if n<>1 then leaks:=leaks||format('service_cases=%s',n); end if;
-  select count(*) into n from public.case_messages;
-  if n<>1 then leaks:=leaks||format('case_messages=%s',n); end if;
-  select count(*) into n from public.lesson_activities;
-  if n<>1 then leaks:=leaks||format('lesson_activities=%s',n); end if;
-  select count(*) into n from public.plans;
-  if n<>1 then leaks:=leaks||format('plans=%s',n); end if;
-
-  reset role;
-
-  if array_length(leaks,1) > 0 then
-    raise exception 'ASSERT FAILED: guardian A of household A does not see exactly one row per table: %', array_to_string(leaks,', ');
+  if array_length(tables,1) <> 25 then
+    raise exception 'ASSERT FAILED: this list must mirror PRIVATE_TABLES (25), found %', array_length(tables,1);
   end if;
-  raise notice 'ok 4: guardian A sees exactly their own household''s row in each of 6 tables';
+
+  for i in 1..array_length(actors,1) loop
+    perform set_config('request.jwt.claim.sub', actors[i]::text, true);
+    set local role authenticated;
+    foreach t in array tables loop
+      execute format('select count(*) from public.%I where household_id=$1', t) into own using homes[i];
+      execute format('select count(*) from public.%I where household_id=$1', t) into leak
+        using homes[case when i=1 then 2 else 1 end];
+      if own < 1 then
+        problems := problems || format('%s: admin %s sees no own-household sentinel', t, i);
+      end if;
+      if leak <> 0 then
+        problems := problems || format('%s: admin %s sees %s foreign row(s)', t, i, leak);
+      end if;
+    end loop;
+    reset role;
+  end loop;
+
+  if array_length(problems,1) > 0 then
+    raise exception 'ASSERT FAILED: % sentinel problem(s): %', array_length(problems,1), array_to_string(problems, '; ');
+  end if;
+  raise notice 'ok 4: both admins see an own-household sentinel on all 25 private tables and zero foreign rows';
 end $$;
 
 do $$ begin raise notice 'PASS: synthetic staging seed verified'; end $$;

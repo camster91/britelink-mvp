@@ -155,8 +155,24 @@ cases, and staff identities."* `supabase/seed/synthetic-staging.sql` is the docu
 It creates **two** households, because isolation needs a counterparty: household A is the
 subject, household B is what A must not be able to reach. Each gets a learner, guardian
 consent, profile, order, case, plan → week → day → lesson → activity, resource, plan review,
-message, attachment, delivery, revision request, and audit rows, plus one pending deletion
-request and one scheduled deletion job for the retention work in #6.
+message, message read, attachment, delivery, revision request, audit row, payment event, rate
+window, operational event, educator capacity, and a pending deletion request with a scheduled
+job for the retention work in #6.
+
+**The coverage target is all 25 tables, on both sides — not the interesting ones.**
+`src/hosted-isolation.js` declares `PRIVATE_TABLES`, and its D1 check requires *both*
+administrators to see an **own-household sentinel on every one of them**, for the reason given in
+`docs/HOSTED_STAGING_VERIFICATION.md`: an empty foreign result proves nothing when the foreign
+table has no data either. A fixture set that covers only the obvious surfaces leaves the rest
+permanently unprovable, and the check fails outright with *"no visible own-household
+sentinel"*. `verify-synthetic-seed.sql` sweeps exactly that list, so an under-covered table
+fails in the harness rather than on staging after provisioning.
+
+One consequence worth stating, since it looks like a mistake: household B's
+`educator_capacities` row is held by `admin_b`. The env contract in `.env.example` has no
+`EDUCATOR_B_USER_ID`, and that table's select policy admits an educator *or* an admin of the
+household — so an admin holding the capacity row satisfies the check without inventing a fifth
+required UUID for the operator to supply.
 
 **Order matters: create the four auth users first.** Users belong to Supabase Auth — insert
 them through the dashboard or the admin API, so they get real identities that can mint JWTs.

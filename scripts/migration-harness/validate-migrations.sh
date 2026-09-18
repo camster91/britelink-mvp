@@ -148,4 +148,25 @@ echo "== verifying the seeded data =="
 # depends on the seed having already been applied, and would fail there.
 psql_run "${seed_users[@]}" -f - <"$here/verify-synthetic-seed.sql"
 
+echo "== negative control: the verifier must fail when a sentinel is removed =="
+# A check that has only ever been seen green is not known to be a check. The sentinel sweep is
+# the load-bearing one -- it is what stands between this seed and a D1 failure on staging -- so
+# prove it can go red, and that it goes red for the right reason.
+#
+# The mutation is deliberately destructive and deliberately last: the container is removed on
+# exit, so nothing downstream can be measuring the damaged database. Remove one own-household
+# sentinel (not a whole table, and not a foreign row) and the sweep must name exactly it.
+psql_run -c "delete from public.payment_events
+              where household_id = '5eed0000-0000-4000-8000-0000000000b1'" >/dev/null
+if psql_run "${seed_users[@]}" -f - <"$here/verify-synthetic-seed.sql" >/dev/null 2>/tmp/mh-neg; then
+  echo "FAIL: the verifier passed with a sentinel removed, so its checks prove nothing." >&2
+  exit 1
+fi
+if ! grep -q 'payment_events: admin 2 sees no own-household sentinel' /tmp/mh-neg; then
+  echo "FAIL: the verifier failed, but not for the expected reason:" >&2
+  cat /tmp/mh-neg >&2
+  exit 1
+fi
+printf '  ok   one removed sentinel fails the sweep, naming the table and the household\n'
+
 echo "PASS: all $applied migrations applied and every behavioural assertion passed."
