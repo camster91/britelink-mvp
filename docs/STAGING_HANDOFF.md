@@ -42,6 +42,12 @@ Copy names from `.env.example`. Never commit real values.
 - `BRITELINK_TEST_ENVIRONMENT=staging` (exact value)
 - Two synthetic household IDs and short-lived admin JWTs (`BRITELINK_TEST_*`)
 
+Those IDs are not something to invent by hand. `supabase/seed/synthetic-staging.sql` creates the
+two households and prints the whole `BRITELINK_TEST_*` block ready to paste. It prints every
+variable the verifier reads **except** the four JWTs, which only Supabase Auth can mint — and that
+gap is asserted in the migration harness, so it cannot silently grow as the verifier changes.
+Procedure and rationale: `docs/SUPABASE_PROVISIONING.md` §2a.
+
 Service-role keys never enter Vite or browser env.
 
 ## Sites packaging (local, no credentials)
