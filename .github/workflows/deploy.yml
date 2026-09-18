@@ -1,0 +1,172 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"] # must match `name:` in ci.yml exactly
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full 40-hex commit SHA on main to deploy (break-glass / re-deploy)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# NEVER cancel-in-progress: killing a run mid `docker compose up -d --build` can
+# leave the service half-recreated. Serialize instead; the last push wins.
+concurrency:
+  group: deploy-britelink-web
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 187.77.26.99
+  VPS_USER: root
+  VPS_APP_DIR: /docker/britelink-web
+  # workflow_run.head_sha is the commit CI actually verified. On a manual dispatch
+  # fall back to the dispatched ref's tip (main only, see the job `if`).
+  DEPLOY_SHA: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  deploy:
+    name: deploy
+    # workflow_run only. Excludes PR runs, fork PRs, and any branch but main.
+    # Never use pull_request_target anywhere in this repo.
+    if: >-
+      ${{ (github.event_name == 'workflow_run'
+            && github.event.workflow_run.conclusion == 'success'
+            && github.event.workflow_run.event == 'push'
+            && github.event.workflow_run.head_branch == 'main')
+          || (github.event_name == 'workflow_dispatch'
+            && github.ref == 'refs/heads/main') }}
+    environment: production # env secret scope + deployment history
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Install SSH key and pin host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          # tr -d '\r' makes this immune to a CRLF-corrupted secret.
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/britelink_deploy"
+          chmod 600 "$HOME/.ssh/britelink_deploy"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          # Hard-fail here with a readable error instead of a confusing ssh error later.
+          ssh-keygen -y -f "$HOME/.ssh/britelink_deploy" > "$HOME/.ssh/britelink_deploy.pub"
+          ssh-keygen -lf "$HOME/.ssh/britelink_deploy.pub"
+
+      - name: Validate target SHA
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$DEPLOY_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::DEPLOY_SHA is not a full 40-hex commit SHA: '$DEPLOY_SHA'"
+            exit 1
+          fi
+          echo "Deploying commit: $DEPLOY_SHA"
+
+      # No actions/checkout here. The VPS is the build machine and pulls from
+      # GitHub with its own stored credential. This also sidesteps the
+      # workflow_run foot-gun where github.sha is the default-branch tip rather
+      # than the commit CI verified.
+      - name: Deploy over SSH
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/britelink_deploy" \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes \
+              -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 \
+              -o ServerAliveInterval=15 \
+              -o ServerAliveCountMax=20 \
+              "${VPS_USER}@${VPS_HOST}" "bash -s -- '$DEPLOY_SHA'" <<'REMOTE'
+          set -euo pipefail
+          EXPECTED_SHA="$1" # positional arg -> no local expansion, no quote escaping
+          APP_DIR="/docker/britelink-web"
+
+          cd "$APP_DIR"
+
+          echo "== pre-deploy state =="
+          echo "HEAD: $(git rev-parse HEAD 2>/dev/null || echo '<none>')"
+          echo "working tree (local edits here are destroyed by the reset below):"
+          git status --porcelain || true
+          BEFORE_CONTAINER=$(docker compose ps -q web || true)
+          if [ -n "$BEFORE_CONTAINER" ]; then
+            echo "container: $BEFORE_CONTAINER"
+            echo "image created: $(docker inspect -f '{{.Created}}' "$BEFORE_CONTAINER")"
+          else
+            echo "container: <none>"
+          fi
+          BEFORE_HTML=$(curl -sS --max-time 10 http://127.0.0.1:8088/ | sha256sum | awk '{print $1}' || echo '<unreachable>')
+          echo "served index.html sha256: $BEFORE_HTML"
+
+          echo "== fetch and reset (shallow clone, depth 1) =="
+          git fetch --depth=1 origin main
+          # FETCH_HEAD, not origin/main: with an explicit refspec the update of
+          # refs/remotes/origin/main is only opportunistic.
+          git reset --hard FETCH_HEAD
+
+          DEPLOYED_SHA=$(git rev-parse HEAD)
+          echo "deployed HEAD: $DEPLOYED_SHA"
+          if [ "$DEPLOYED_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::VPS HEAD $DEPLOYED_SHA != CI-verified commit $EXPECTED_SHA"
+            exit 1
+          fi
+          # Outside the repo tree, so `git status` stays clean.
+          printf '%s %s\n' "$(date -Is)" "$DEPLOYED_SHA" >> /root/britelink-deploy-history.log
+
+          echo "== build and start =="
+          docker compose up -d --build
+
+          echo "== post-deploy verification =="
+          CODE=000
+          for attempt in $(seq 1 30); do
+            CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8088/ || echo 000)
+            [ "$CODE" = "200" ] && break
+            echo "attempt $attempt: HTTP $CODE"
+            sleep 2
+          done
+          if [ "$CODE" != "200" ]; then
+            echo "::error::Post-deploy check failed: HTTP $CODE on 127.0.0.1:8088"
+            docker compose logs --tail=50 web || true
+            exit 1
+          fi
+          echo "HTTP 200 from 127.0.0.1:8088"
+
+          AFTER_CONTAINER=$(docker compose ps -q web || true)
+          echo "container: $AFTER_CONTAINER"
+          echo "image created: $(docker inspect -f '{{.Created}}' "$AFTER_CONTAINER")"
+          AFTER_HTML=$(curl -sS --max-time 10 http://127.0.0.1:8088/ | sha256sum | awk '{print $1}')
+          echo "served index.html sha256: $AFTER_HTML"
+          if [ "$BEFORE_HTML" = "$AFTER_HTML" ]; then
+            echo "::warning::served index.html is byte-identical to pre-deploy; confirm this commit changed client output"
+          fi
+          echo "deploy ok: $DEPLOYED_SHA"
+          REMOTE
+
+      - name: Rollback instructions on failure
+        if: ${{ failure() }}
+        run: |
+          cat <<'MSG'
+          Deploy failed. The previous container is still serving unless the failure
+          happened after `docker compose up -d --build` recreated it.
+
+          Rollback (manual, from this workstation):
+            1. Find the last-good SHA:
+                 ssh coolify 'tail -5 /root/britelink-deploy-history.log'
+            2. Either revert on main (preferred - keeps git as the source of truth):
+                 git revert <bad-sha> && git push origin main
+               CI re-runs and Deploy re-runs automatically.
+            3. Or break-glass re-deploy of the last-good SHA:
+                 gh workflow run Deploy --repo camster91/britelink-mvp \
+                   --ref main -f sha=<last-good-40-hex-sha>
+               This bypasses the CI gate by design.
+            4. Inspect: ssh coolify 'cd /docker/britelink-web && docker compose logs --tail=100 web'
+          MSG

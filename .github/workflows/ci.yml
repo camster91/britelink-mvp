@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Read-only workflow: cancelling superseded runs is always safe here.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  build-test:
+    name: build-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ORDER IS LOAD-BEARING: tests/sites-worker.test.mjs fs.access()es
+      # dist/client/index.html, dist/server/index.js and dist/.openai/hosting.json.
+      # dist/ is gitignored, so `npm test` on a clean checkout fails without this.
+      - name: Build
+        run: npm run build
+
+      - name: Unit and integration tests
+        run: npm test
+        timeout-minutes: 10
+
+      - name: Record built client hash
+        id: hashes
+        run: |
+          set -euo pipefail
+          H=$(sha256sum dist/client/index.html | awk '{print $1}')
+          echo "client_index_sha256=$H" >> "$GITHUB_OUTPUT"
+          sha256sum dist/client/index.html dist/server/index.js dist/.openai/hosting.json
+          echo "client index.html sha256: $H"
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          # v4 excludes dotfiles by default -> dist/.openai/hosting.json would be missing.
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  browser-audits:
+    name: browser-audits
+    needs: build-test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # playwright@1.62.1 has no install script, so npm ci never fetches browsers.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Chromium and OS dependencies
+        run: npx playwright install --with-deps chromium
+        timeout-minutes: 15
+
+      # Each audit spawns its own Vite dev server (127.0.0.1:4317..4321) with a
+      # mocked harness under qa/. No network, no env vars, no dist/ dependency.
+      # `!cancelled()` => one run reports all five results instead of stopping at the first.
+      - name: Audit - accessibility
+        if: ${{ !cancelled() }}
+        run: npm run test:a11y
+        timeout-minutes: 10
+
+      - name: Audit - authenticated workspace
+        if: ${{ !cancelled() }}
+        run: npm run test:authenticated
+        timeout-minutes: 10
+
+      - name: Audit - staff workspace
+        if: ${{ !cancelled() }}
+        run: npm run test:staff
+        timeout-minutes: 10
+
+      - name: Audit - staff attachment recovery
+        if: ${{ !cancelled() }}
+        run: npm run test:staff-attachments
+        timeout-minutes: 10
+
+      - name: Audit - multi-household
+        if: ${{ !cancelled() }}
+        run: npm run test:households
+        timeout-minutes: 10
+
+      # These paths are git-tracked and get overwritten here. Intentional and
+      # harmless: nothing downstream reads them and no step commits them back.
+      # Do NOT add a clean-working-tree assertion to this job.
+      - name: Upload audit reports and screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-reports
+          path: |
+            qa/accessibility/report.json
+            qa/accessibility/*.png
+            qa/operations/*.json
+            qa/operations/*.png
+          if-no-files-found: ignore
+          retention-days: 7

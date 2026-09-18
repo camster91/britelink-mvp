@@ -2,6 +2,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
 const origin="http://127.0.0.1:4317";
@@ -31,7 +32,7 @@ try{
       const audit=await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21aa"]).analyze();
       const layout=await page.evaluate(()=>({scrollWidth:document.documentElement.scrollWidth,clientWidth:document.documentElement.clientWidth}));
       const keyboard=await keyboardEvidence(page);results.push({view:view.name,viewport:viewport.name,layout,keyboard,violations:audit.violations.map((item)=>({id:item.id,impact:item.impact,help:item.help,nodes:item.nodes.map((node)=>node.target)}))});
-      await page.screenshot({path:new URL(`../qa/accessibility/${view.name}-${viewport.name}.png`,import.meta.url).pathname,fullPage:true});
+      await page.screenshot({path:fileURLToPath(new URL(`../qa/accessibility/${view.name}-${viewport.name}.png`,import.meta.url)),fullPage:true});
     }
     await context.close();
   }
