@@ -101,6 +101,11 @@ echo "== applying storage policies =="
 psql_run <"$repo/supabase/storage-policies.sql"
 
 echo "== running behavioural assertions =="
-psql_run -f - <"$here/assert-retention-execution.sql"
+# Each file brings its own fixtures and its own UUID namespace, and scopes its seed checks to
+# those fixtures, so the two are independent and the glob order does not matter.
+for assertions in "$here"/assert-*.sql; do
+  printf '  %s\n' "$(basename "$assertions")"
+  psql_run -f - <"$assertions"
+done
 
-echo "PASS: all $applied migrations applied and the retention executor behaves as specified."
+echo "PASS: all $applied migrations applied and every behavioural assertion passed."

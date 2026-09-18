@@ -25,6 +25,7 @@ const attachmentRetryUrl = new URL("../supabase/migrations/202608280019_attachme
 const portableExportUrl = new URL("../supabase/migrations/202608280020_portable_export_manifest.sql", import.meta.url);
 const recentAuthenticationUrl = new URL("../supabase/migrations/202608280021_recent_authentication.sql", import.meta.url);
 const retentionExecutionUrl = new URL("../supabase/migrations/202608280022_retention_execution.sql", import.meta.url);
+const attachmentScanAdapterUrl = new URL("../supabase/migrations/202608280023_attachment_scan_adapter.sql", import.meta.url);
 
 test("every household-scoped private table enables row level security", async () => {
   const sql = await readFile(schemaUrl, "utf8");
@@ -130,4 +131,63 @@ test("retention execution ships disabled and records deletion outside the househ
   // Only the dry run is reachable by a client role; the executor is owner/service-role only.
   assert.match(sql,/grant execute on function public\.admin_retention_candidates\(uuid,integer,integer,timestamptz\) to authenticated/);
   assert.doesNotMatch(sql,/grant execute on function public\.admin_execute_due_deletion_jobs/);
+})
+
+test("attachment scan adapter keeps scan verdicts server-only and fails closed",async()=>{
+  // Assert against code, not prose. This migration's header explains why there is no
+  // 'scan_failed' state -- and a substring check for it matched that explanation, so the
+  // comment satisfied the very assertion meant to prove the state is absent. A commented-out
+  // grant would fool the boundary checks the same way. No string literal in this migration
+  // contains "--", so stripping line comments is safe here; block comments are handled too.
+  const sql=(await readFile(attachmentScanAdapterUrl,"utf8"))
+    .replace(/\/\*[\s\S]*?\*\//g,"")
+    .replace(/--[^\n]*/g,"");
+  for(const rpc of ["admin_record_attachment_scan","admin_list_pending_scan_attachments","admin_reconcile_attachment_objects","admin_attachment_integrity_snapshot"])assert.match(sql,new RegExp(`create or replace function public\\.${rpc}`));
+  // The trust boundary: only the adapter (service credentials) may record a verdict, so a
+  // client can never mark its own upload clean. The queue crosses households, so it is not
+  // client-reachable either. Only the admin-gated snapshot is granted to authenticated.
+  // Each signature is spelled with escaped parens and brackets because the revoke must name the
+  // exact signature Postgres recorded -- "revoke all on function name" without one is a no-op
+  // when the function is overloaded, which would leave the boundary silently open.
+  for(const signature of ["admin_record_attachment_scan\\(uuid,uuid,text,text,text,text\\)","admin_list_pending_scan_attachments\\(integer\\)","admin_reconcile_attachment_objects\\(uuid,text\\[\\]\\)"])assert.match(sql,new RegExp(`revoke all on function public\\.${signature} from public`));
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_record_attachment_scan/);
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_list_pending_scan_attachments/);
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_reconcile_attachment_objects/);
+  assert.match(sql,/grant execute on function public\.admin_attachment_integrity_snapshot\(uuid,timestamptz\) to authenticated/);
+  assert.match(sql,/alter table public\.attachment_object_observations enable row level security/);
+  assert.doesNotMatch(sql,/create policy/);
+  // Fail-closed: there is deliberately no scan_failed state. A scanner outage leaves the object
+  // in pending_scan quarantine so attachment.scan_stale escalates, and there is no path by
+  // which a failed scan makes an object downloadable.
+  assert.doesNotMatch(sql,/scan_failed/);assert.match(sql,/status='pending_scan'/);
+  // Terminal verdicts are final, and a re-run of the same verdict is a retry-safe no-op.
+  assert.match(sql,/verdict is already final as %/);assert.match(sql,/already_recorded/);
+  // The digest proves the adapter scanned the bytes the browser hashed.
+  assert.match(sql,/scanned content digest does not match the uploaded attachment/);
+  // Three faults the behavioural harness found by executing this against Postgres. Each is
+  // pinned here so a revert is caught by `npm test`, which needs no Docker:
+  // 1. scan_provider and scan_result_code collide with case_attachments' own columns, so the
+  //    UPDATE must reference the distinctly-named locals, not the parameters.
+  assert.match(sql,/\bprovider text:=btrim\(scan_provider\)/);assert.match(sql,/\bresult_code text:=scan_result_code/);
+  assert.match(sql,/set status=verdict,scanned_at=recorded,scan_provider=provider,scan_result_code=result_code/);
+  assert.doesNotMatch(sql,/scan_provider=btrim\(scan_provider\)/);assert.doesNotMatch(sql,/scan_result_code=scan_result_code/);
+  // 2. An explicit null check is required: "char_length(x) not between 2 and 80" is NULL when x
+  //    is NULL, and a plpgsql IF treats NULL as false, so nulls would slip through.
+  assert.match(sql,/if provider is null or char_length\(provider\) not between 2 and 80/);
+  assert.match(sql,/if verdict is null or verdict not in \('clean','rejected'\)/);
+  // 3. operational_events.occurred_at is NOT NULL with no default, so it must be supplied.
+  assert.match(sql,/insert into public\.operational_events\(household_id,actor_user_id,component,severity,event_code,metadata,occurred_at\)/);
+  assert.match(sql,/jsonb_build_object\('operation','attachment\.scan','provider',provider,'errorCode',result_code\),recorded\)/);
+  // A rejected upload is a security event and must stay privacy-minimal: no file name, no
+  // object path, no signature payload beyond a bounded result code.
+  assert.match(sql,/'attachment_scanner','critical','attachment\.scan_rejected'/);
+  assert.doesNotMatch(sql,/jsonb_build_object\([^)]*file_name/);assert.doesNotMatch(sql,/jsonb_build_object\([^)]*object_path/);
+  // The vacuous-green guard: without a staleness signal the two orphan signals are silently
+  // empty for an unreconciled household and read as healthy.
+  assert.match(sql,/attachment\.reconciliation_stale/);
+  for(const code of ["attachment.rejected_present","attachment.metadata_orphaned","attachment.object_orphaned"])assert.match(sql,new RegExp(code.replace(".","\\.")));
+  assert.match(sql,/returns table\(signal_code text,severity text,entity_count bigint,oldest_at timestamptz,threshold_seconds integer\)/);
+  // Reconciliation replaces the observed set rather than accumulating it, or the orphan signal
+  // could never fire.
+  assert.match(sql,/delete from public\.attachment_object_observations where household_id=target_household/);
 })
