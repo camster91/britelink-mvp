@@ -113,13 +113,39 @@ Do `dev` first, verify, then repeat for `staging`.
 
 5. Verify migrations succeeded:
    - Open Supabase dashboard → Database → Tables
-   - Confirm you see the tables the migrations create — `households`, `household_members`,
-     `learners`, `learner_profiles`, `cases`, `plans`, `plan_weeks`, `plan_days`, `lessons`,
-     `lesson_activities`, `lesson_resources`, `plan_reviews`, `deliveries`, `revisions`,
-     `case_messages`, `case_attachments`, `case_message_reads`, `consent_records`,
-     `privacy_requests`, `household_exports`, `payment_events`, `audit_events`, `quota_limits`,
-     `operational_signals`, `educator_capacities`, `retention_execution_ledger`
+   - Confirm you see the 29 tables the migrations create:
+
+     ```
+     households                  memberships                 learners
+     guardian_consents           learner_profiles            service_cases
+     orders                      educator_capacities         case_messages
+     case_message_reads          case_attachments            plans
+     plan_weeks                  plan_days                   lessons
+     lesson_activities           resources                   plan_reviews
+     deliveries                  revision_requests           privacy_requests
+     deletion_jobs               payment_events              audit_events
+     operation_rate_windows      operational_events          attachment_object_observations
+     retention_execution_controls  retention_execution_ledger
+     ```
+
    - Check Database → Policies to confirm RLS policies are in place
+
+   **Earlier revisions of this checklist listed the wrong table names**, and it is worth
+   knowing which, because a stale copy is easy to trust. Verified against
+   `supabase/migrations/*.sql` on 2026-09-18:
+
+   | name the checklist used | actual table |
+   |---|---|
+   | `household_members` | **`memberships`** |
+   | `cases` | **`service_cases`** |
+   | `lesson_resources` | **`resources`** |
+   | `revisions` | **`revision_requests`** |
+   | `consent_records` | **`guardian_consents`** |
+   | `quota_limits` | *never built* — nearest is `operation_rate_windows` |
+   | `operational_signals` | *never built* — returned by functions, not stored; nearest is `operational_events` |
+   | `household_exports` | *never built* — export is a function; nothing is persisted |
+
+   The migration files are authoritative. If a name here disagrees with them, they win.
 
 ## 3. Configure Authentication
 
@@ -345,25 +371,31 @@ For the `staging` project:
   - Confirm email: Yes
 - [ ] Note the user UUID
 
-- [ ] Run this SQL to create the admin household and membership:
-  ```sql
-  -- Insert admin household
-  INSERT INTO households (id, display_name, created_at)
-  VALUES (
-    'admin-household-uuid',  -- Generate a UUID
-    'BriteLink Operations',
-    NOW()
-  );
+- [ ] Run this SQL to create the admin household and membership. The previous revision of this
+  checklist used `household_members`, which **does not exist** — the table is
+  `public.memberships` (migrations 001). Do not copy the old snippet:
 
-  -- Grant admin membership
-  INSERT INTO household_members (household_id, user_id, role)
-  VALUES (
-    'admin-household-uuid',
-    '[your-user-uuid]',
-    'admin'
-  );
+  ```sql
+  -- Create the admin household. Let the database generate the id so there is no
+  -- 'admin-household-uuid' placeholder to forget to replace.
+  with new_household as (
+    insert into public.households (display_name)
+    values ('BriteLink Operations')
+    returning id
+  )
+  -- Grant admin membership. role is the enum public.membership_role.
+  insert into public.memberships (household_id, user_id, role)
+  select id, '[your-user-uuid]'::uuid, 'admin'
+  from new_household;
   ```
 
+- [ ] Confirm the membership landed:
+  ```sql
+  select h.display_name, m.role
+  from public.memberships m
+  join public.households h on h.id = m.household_id
+  where m.user_id = '[your-user-uuid]'::uuid;
+  ```
 - [ ] Test signing in as admin
 - [ ] Verify you can see the admin workspace
 
