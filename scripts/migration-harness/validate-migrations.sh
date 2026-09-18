@@ -38,10 +38,22 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 echo "== checking the seed emits every variable the verifiers consume =="
 seed_gap_check() {
-  local consumed emitted gap unused
+  local consumed emitted example gap unused
   consumed="$(grep -rhoE 'BRITELINK_TEST_[A-Z0-9_]+' "$repo/scripts" "$repo/src" | LC_ALL=C sort -u)"
   emitted="$(grep -oE 'BRITELINK_TEST_[A-Z0-9_]+' "$repo/supabase/seed/synthetic-staging.sql" | LC_ALL=C sort -u)"
   [ -n "$consumed" ] || { echo "FAIL: found no BRITELINK_TEST_* consumers at all; this check is not looking where it thinks." >&2; exit 1; }
+
+  # .env.example is the list an operator actually copies from -- STAGING_HANDOFF.md tells them to
+  # "copy names from .env.example" -- so it has to agree with what the verifiers read. It is
+  # compared against `consumed`, not `emitted`: it legitimately includes the four JWTs, because
+  # those are hand-minted rather than seeded.
+  example="$(grep -ohE 'BRITELINK_TEST_[A-Z0-9_]+' "$repo/.env.example" | LC_ALL=C sort -u)"
+  if [ "$example" != "$consumed" ]; then
+    echo "FAIL: .env.example and the verifiers disagree about which BRITELINK_TEST_* exist" >&2
+    echo "      (< only in .env.example, > only read by a verifier):" >&2
+    comm -3 <(printf '%s\n' "$example") <(printf '%s\n' "$consumed") >&2
+    exit 1
+  fi
 
   gap="$(comm -23 <(printf '%s\n' "$consumed") <(printf '%s\n' "$emitted"))"
   unused="$(comm -13 <(printf '%s\n' "$consumed") <(printf '%s\n' "$emitted"))"
@@ -59,9 +71,10 @@ seed_gap_check() {
     printf '%s\n' "$unused" >&2
     exit 1
   fi
-  printf '  ok   %s consumed, %s emitted; the gap is exactly the four hand-minted JWTs\n' \
+  printf '  ok   %s read, %s seeded, %s in .env.example; the gap is exactly the four hand-minted JWTs\n' \
     "$(printf '%s\n' "$consumed" | wc -l | tr -d ' ')" \
-    "$(printf '%s\n' "$emitted" | wc -l | tr -d ' ')"
+    "$(printf '%s\n' "$emitted" | wc -l | tr -d ' ')" \
+    "$(printf '%s\n' "$example" | wc -l | tr -d ' ')"
 }
 seed_gap_check
 
