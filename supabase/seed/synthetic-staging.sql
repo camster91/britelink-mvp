@@ -294,6 +294,23 @@ insert into public.case_message_reads (household_id, message_id, user_id, read_a
 -- status='clean' requires scanned_at, scan_provider AND scan_result_code to be
 -- non-null together (013's table-level check); 'pending_upload' requires
 -- scanned_at to be null.
+--
+-- BOTH households carry a clean attachment, and that is load-bearing rather than
+-- decorative. The only policy granting an authenticated user SELECT on
+-- storage.objects is case_attachment_clean_download, and it requires
+-- status='clean' -- so a household whose only attachment is pending_upload is
+-- invisible to its own administrator. D1 requires EVERY administrator to list an
+-- own-household object before it will report anything, checks actor A first, and
+-- otherwise stops the whole run at:
+--
+--     Storage has no visible own-household sentinel for actor A
+--
+-- So household A keeps its pending_upload row -- it is the only coverage of that
+-- state, and it is the negative control proving the policy really does filter on
+-- status rather than merely existing -- AND gains a clean one. Each clean row
+-- needs a real object behind it or D1's list returns nothing: up.sh uploads one
+-- per clean attachment, reading the paths from this table instead of hardcoding
+-- them here, so adding a clean row is enough.
 insert into public.case_attachments
   (id, household_id, case_id, message_id, uploaded_by, object_path, file_name,
    mime_type, size_bytes, sha256, status, uploaded_at, scanned_at, scan_provider, scan_result_code) values
@@ -302,6 +319,11 @@ insert into public.case_attachments
    '5eed0000-0000-4000-8000-0000000000a1/5eed0000-0000-4000-8000-000000000a20/5eed0000-0000-4000-8000-000000000a80.pdf',
    'synthetic-a.pdf', 'application/pdf', 2048, encode(digest('synthetic A bytes','sha256'),'hex'),
    'pending_upload', now(), null, null, null),
+  ('5eed0000-0000-4000-8000-000000000a81', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a20', '5eed0000-0000-4000-8000-000000000a70', :'guardian_a'::uuid,
+   '5eed0000-0000-4000-8000-0000000000a1/5eed0000-0000-4000-8000-000000000a20/5eed0000-0000-4000-8000-000000000a81.pdf',
+   'synthetic-a-clean.pdf', 'application/pdf', 2048, encode(digest('synthetic A clean bytes','sha256'),'hex'),
+   'clean', now(), now(), 'synthetic-scanner', 'ok'),
   ('5eed0000-0000-4000-8000-000000000b80', '5eed0000-0000-4000-8000-0000000000b1',
    '5eed0000-0000-4000-8000-000000000b20', '5eed0000-0000-4000-8000-000000000b70', :'admin_b'::uuid,
    '5eed0000-0000-4000-8000-0000000000b1/5eed0000-0000-4000-8000-000000000b20/5eed0000-0000-4000-8000-000000000b80.pdf',
@@ -398,5 +420,7 @@ commit;
 \echo 'BRITELINK_TEST_HOUSEHOLD_B_OBJECT_PATH=5eed0000-0000-4000-8000-0000000000b1/5eed0000-0000-4000-8000-000000000b20/5eed0000-0000-4000-8000-000000000b80.pdf'
 \echo 'BRITELINK_TEST_ATTACHMENT_BUCKET=case-attachments'
 \echo ''
-\echo 'Still required by hand: the four JWTs. Mint one per user from Supabase'
-\echo 'Auth - a seed cannot fabricate a signed token, and it must not try.'
+\echo 'Still required outside the seed: the four JWTs. A seed cannot fabricate a'
+\echo 'signed token, and it must not try. On hosted Supabase, mint one per user in'
+\echo 'the dashboard. On the self-hosted stack the signing secret is local, so'
+\echo 'GoTrue issues them on request and up.sh mints all four itself.'
