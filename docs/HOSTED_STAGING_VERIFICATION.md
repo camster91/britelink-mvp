@@ -104,11 +104,42 @@ verifier and the schema without needing a hosted project.
 
 ## Evidence boundary
 
-D1 closes the hosted read-isolation and bucket-list portion, and D2 the cross-household mutation
-portion, **only after they pass against staging**. Neither has run there yet, and the matrix
-carries stated assumptions about its fixtures (reported in the summary): that every `foreign` id
-refers to a row that exists, and that the activity id used for the no-effect probe exists — if it
-did not, "0 rows affected" would prove nothing.
+**Run against the self-hosted staging stack on 2026-09-18** (`scripts/selfhosted-staging/up.sh`: a
+real `supabase/postgres` + GoTrue + PostgREST + storage-api behind one gateway, every port bound to
+127.0.0.1, 23 migrations applied with no shim, seeded with the synthetic two-household set):
+
+- **D1 read isolation: passed.** 25 private tables, 104 checks — both actors, own-household visible
+  and cross-household denied on each, plus the bucket list. The storage sentinel is load-bearing
+  here: D1 refuses to report at all until *every* administrator can list an own-household object, so
+  an empty own-household result fails rather than passes.
+- **D2 mutation denial: 23 of 24 denied**, with 4 controls. The 24th is described below.
+
+Read this as evidence about the **schema and its policies**, which are the same on hosted Supabase
+because it is the same image, the same 23 migrations and the same policy SQL. It is *not* evidence
+about a hosted project's network configuration, dashboard, backups or PITR, and should not be read
+as closing those.
+
+### The one inconclusive probe, and why it is not a gap
+
+`insert.case_messages` returns **inconclusive**, not denied. A guardian forging another household's
+case and sender is refused with `[P0001] household membership required`, raised by the
+`enforce_insert_rate_limit` **BEFORE INSERT** trigger. By property 1 above a non-authorization error
+cannot count as a denial, and that is the correct call: the trigger fires *before* RLS is evaluated,
+so the probe cannot see whether RLS would also refuse the write.
+
+It would. `case_messages` has RLS enabled and exactly one policy, `messages_member_select`, which is
+`FOR SELECT` — there is no INSERT policy at all, and RLS denies by default. Confirmed behaviourally
+rather than by inspection alone: the same guardian inserting into **its own** household, where the
+trigger's membership precondition is satisfied and the trigger therefore passes, is still refused
+with `42501 new row violates row-level security policy`. The write is denied at two layers; the probe
+observes only the outer one.
+
+So the surface *is* covered, but its reported verdict is inconclusive and the gate stays red until
+that is resolved. The two sound resolutions are a probe that can observe the RLS layer (for instance
+by requiring, statically, that RLS is enabled and that no permissive INSERT policy covers the
+actor's role) or a trigger that does not pre-empt it. Widening the error-code check to accept any
+`P0001` would be the wrong fix, because it would equally accept an authorization-shaped message from
+a probe whose real failure is something else entirely.
 
 The matrix proves each denial is household-specific given the actor's role. It does not prove the
 same RPC succeeds on the actor's own household; that control would require writing to staging and

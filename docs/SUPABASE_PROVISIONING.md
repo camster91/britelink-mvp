@@ -2,21 +2,29 @@
 
 This checklist documents the exact steps Cameron must complete to provision Supabase for BriteLink private beta. These steps must be completed before the authenticated workspace can operate with real family data.
 
-> **Decision recorded 2026-09-18: hosted Supabase.** The open backend question is closed —
-> the runtime is hosted Supabase, not self-hosted GoTrue/PostgREST/Storage on the VPS. This
-> supersedes the "not hosted Supabase" line at `HOW-TO-RUN.md:26`, which now carries a matching
-> supersession note rather than contradicting this checklist.
+> **Decision recorded 2026-09-18, superseding the entry that stood here earlier the same day:
+> the backend is self-hosted.** The runtime is GoTrue + PostgREST + storage-api against Postgres on
+> the existing VPS — `supabase/selfhosted/`, brought up by `scripts/selfhosted-staging/up.sh`. That
+> matches `HOW-TO-RUN.md:26`'s "not hosted Supabase" rather than overriding it. An earlier revision
+> of this file recorded the opposite decision ("hosted Supabase"); it was reversed the same day.
 >
-> **Scope: `dev` and `staging` only.** The project pair below is `britelink-dev` plus
-> `britelink-staging`. A **production** project is deliberately *not* provisioned yet, because
-> the production project is where real family data would live and that is gated on the
-> counsel-approved privacy notice and `VITE_PRIVACY_NOTICE_VERSION`. Do not create it early.
+> **Read the rest of this checklist as the hosted path's reference, not as the plan.** It is kept
+> because a hosted project remains a legitimate later option and these are the steps it would take,
+> but the staging evidence the repository now actually holds comes from the self-hosted stack — see
+> `docs/HOSTED_STAGING_VERIFICATION.md`, which records D1 passing 104 checks over 25 tables. Nothing
+> below that creates a project, a payment method or credentials applies unless that path is chosen
+> again.
 >
-> The approval boundary still applies to the human steps: creating the account, configuring a
-> payment method, and entering credentials are not automatable from this repository. The
-> direction is approved; those steps are Cameron's to execute. Until a project exists the
-> application runs as an unconfigured demo (`docs/STAGING_HANDOFF.md`), which remains the
-> honest state — do not set `VITE_SUPABASE_*` to make it look otherwise.
+> **Scope is still staging only, and production is still deliberately not provisioned.** Real family
+> data is gated on the counsel-approved privacy notice and `VITE_PRIVACY_NOTICE_VERSION`; self-hosting
+> changes where staging runs, not what has to be true before production exists. The self-hosted stack
+> holds synthetic households only (`supabase/seed/synthetic-staging.sql`), and every port is bound to
+> 127.0.0.1 precisely so it cannot quietly become production.
+>
+> The approval boundary still applies to the human steps: creating an account, configuring a payment
+> method, and entering credentials are not automatable from this repository. Until a backend is wired
+> to the deployed site the application runs as an unconfigured demo (`docs/STAGING_HANDOFF.md`), which
+> remains the honest state — do not set `VITE_SUPABASE_*` to make it look otherwise.
 >
 > **Known blocker — read §7a before believing a live project will configure the site.** The
 > deployed site currently *cannot* pick up these variables: `readSupabaseConfig()` reads
