@@ -112,6 +112,22 @@ insert into public.audit_events(household_id,actor_user_id,event_type,subject_ty
   ('00000000-0000-0000-0000-000000000b01','00000000-0000-0000-0000-000000000a03','privacy.deletion_scheduled','deletion_job','00000000-0000-0000-0000-000000000f01'),
   ('00000000-0000-0000-0000-000000000b02','00000000-0000-0000-0000-000000000a03','privacy.deletion_scheduled','deletion_job','00000000-0000-0000-0000-000000000f02');
 
+-- Confirm the fixtures landed before anything depends on them. Without this, a seed insert
+-- that silently did nothing shows up as a confusing failure in a later assertion instead of
+-- as the seed problem it is. Variables are named to avoid colliding with the table names --
+-- this file's own plpgsql has been bitten by that ambiguity twice already.
+do $$
+declare seeded_households int; seeded_jobs int; seeded_audits int;
+begin
+  select count(*) into seeded_households from public.households;
+  select count(*) into seeded_jobs from public.deletion_jobs;
+  select count(*) into seeded_audits from public.audit_events;
+  if seeded_households<>3 then raise exception 'ASSERT FAILED: expected 3 seeded households, found %', seeded_households; end if;
+  if seeded_jobs<>2 then raise exception 'ASSERT FAILED: expected 2 seeded deletion jobs, found %', seeded_jobs; end if;
+  if seeded_audits<>2 then raise exception 'ASSERT FAILED: expected 2 seeded audit events, found %', seeded_audits; end if;
+  raise notice 'ok 4: seeded 3 households, 2 scheduled deletion jobs, 2 audit events';
+end $$;
+
 -- ---------------------------------------------------------------------------
 -- 5. The dry run is admin-gated and mirrors retentionCandidates() exactly.
 -- ---------------------------------------------------------------------------

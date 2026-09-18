@@ -38,12 +38,43 @@ docker run -d --name "$container" \
   -e POSTGRES_DB=britelink_harness \
   postgres:16-alpine >/dev/null
 
-for _ in $(seq 1 60); do
-  if docker exec "$container" pg_isready -U postgres -d britelink_harness >/dev/null 2>&1; then break; fi
+# Readiness here is subtler than it looks. The official image boots a TEMPORARY server to run
+# its init scripts, stops it, then starts the real one -- and the temporary server answers on
+# the same socket. Measured from its own log (postgres:16-alpine, 2026-09-18):
+#
+#   03:19:13.578  temp server ready          <- pg_isready starts returning 0 here
+#   03:19:13.769  fast shutdown request
+#   03:19:13.854  FATAL: the database system is shutting down   <- what CI hit
+#   03:19:13.886  "PostgreSQL init process complete; ready for start up."
+#   03:19:14.052  real server ready
+#
+# A ~308ms window where pg_isready (and even "select 1" against the real database) succeed,
+# followed by a shutdown. Polling at 1s intervals misses it most of the time and hits it
+# occasionally -- which is why this passed on a slower host and failed in CI. Both loops
+# below close it independently, so neither is load-bearing on its own:
+#   1. wait for the init handoff line, which the entrypoint prints after the temp server stops;
+#   2. then require the connection to hold for three consecutive seconds, which no temporary
+#      server survives.
+for _ in $(seq 1 90); do
+  docker logs "$container" 2>&1 | grep -q "PostgreSQL init process complete" && break
   sleep 1
 done
-docker exec "$container" pg_isready -U postgres -d britelink_harness >/dev/null 2>&1 || {
-  echo "FAIL: Postgres never became ready." >&2; docker logs "$container" | tail -20 >&2; exit 1; }
+
+stable=0
+for _ in $(seq 1 90); do
+  if docker exec "$container" psql -U postgres -d britelink_harness -tAc 'select 1' >/dev/null 2>&1; then
+    stable=$((stable + 1))
+    [ "$stable" -ge 3 ] && break
+  else
+    stable=0
+  fi
+  sleep 1
+done
+if [ "$stable" -lt 3 ]; then
+  echo "FAIL: Postgres never became stably ready." >&2
+  docker logs "$container" 2>&1 | tail -30 >&2
+  exit 1
+fi
 
 psql_run() { docker exec -i "$container" psql -v ON_ERROR_STOP=1 -q -U postgres -d britelink_harness "$@"; }
 
