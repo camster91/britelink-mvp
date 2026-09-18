@@ -6,7 +6,10 @@ This document describes how to run the BriteLink MVP locally for development, te
 
 ### Prerequisites
 
-- **Node.js**: Version 18+ recommended
+- **Node.js**: Version 22.12 or newer. This is not a preference — it is the intersection of what
+  the dependencies declare: `@supabase/supabase-js@2.112.4` requires `>=22.0.0`, and
+  `@vitejs/plugin-react@5.0.4` requires `^20.19.0 || >=22.12.0`. Node 18 is not merely
+  untested, it is outside every one of their ranges, and CI runs Node 22.
 - **npm**: Installed with Node.js
 
 ### Install and Run
