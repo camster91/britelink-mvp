@@ -85,6 +85,19 @@ test("admin deletion controls validate safeguards and use audited RPC boundaries
 
 test("admin operational health uses a scoped aggregate RPC and strict timestamp",async()=>{const calls=[];const repository=new SupabaseBriteLinkRepository({rpc:async(name,args)=>{calls.push([name,args]);return{data:[{signal_code:"delivery.failed",severity:"error",entity_count:1}]}}});await assert.rejects(()=>repository.getAdminOperationalHealth("household-a","not-a-time"),/evaluation time/);const rows=await repository.getAdminOperationalHealth("household-a","2026-08-28T15:00:00Z");assert.equal(rows[0].signal_code,"delivery.failed");assert.equal(calls[0][0],"admin_operational_health_snapshot");assert.equal(calls[0][1].target_household,"household-a");assert.equal(calls[0][1].evaluated_at,"2026-08-28T15:00:00.000Z")});
 
+test("retention dry run is a read-only scoped RPC mirroring the in-memory candidate shape",async()=>{
+  const calls=[];const client={rpc:async(name,args)=>{calls.push([name,args]);return{data:[{candidate_type:"household",candidate_id:"household-a"},{candidate_type:"case",candidate_id:"case-a"},{candidate_type:"case",candidate_id:"case-b"}]}},from(){throw new Error("the dry run must not read tables directly")}};const repository=new SupabaseBriteLinkRepository(client);
+  assert.deepEqual(await repository.retentionCandidates({householdId:"household-a"}),{household:["household-a"],cases:["case-a","case-b"]});
+  assert.equal(calls[0][0],"admin_retention_candidates");assert.equal(calls[0][1].target_household,"household-a");
+  assert.equal(calls[0][1].deleted_household_days,30);assert.equal(calls[0][1].closed_case_days,365);
+  const explicit=await repository.retentionCandidates({householdId:"household-a",deletedHouseholdDays:90,closedCaseDays:730,asOf:"2026-09-01T00:00:00Z"});
+  assert.equal(calls[1][1].deleted_household_days,90);assert.equal(calls[1][1].closed_case_days,730);assert.equal(calls[1][1].as_of,"2026-09-01T00:00:00.000Z");assert.deepEqual(explicit.household,["household-a"]);
+  await assert.rejects(()=>repository.retentionCandidates({householdId:"household-a",asOf:"not-a-time"}),/evaluation time/);
+  await assert.rejects(()=>repository.retentionCandidates({householdId:"household-a",deletedHouseholdDays:0}),/Deleted-household window/);
+  await assert.rejects(()=>repository.retentionCandidates({householdId:"household-a",closedCaseDays:3651}),/Closed-case window/);
+  assert.equal(calls.length,2);
+});
+
 test("attachment upload hashes content uses private storage and remains pending scan",async()=>{
   const calls=[];const file={name:"plan.pdf",type:"application/pdf",size:4,arrayBuffer:async()=>new Uint8Array([1,2,3,4]).buffer};const client={
     rpc:async(name,args)=>{calls.push(["rpc",name,args]);if(name==="create_message_attachment_upload")return{data:[{attachment_id:"attachment-a",object_path:"household-a/case-a/message-a/attachment-a",attachment_status:"pending_upload"}]};return{data:[{attachment_id:"attachment-a",attachment_status:args.upload_succeeded?"pending_scan":"upload_failed"}]};},

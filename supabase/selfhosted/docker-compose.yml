@@ -1,0 +1,187 @@
+# Self-hosted Supabase-equivalent stack for BriteLink staging.
+#
+# Why this exists: the product's client, its isolation verifier and its 23 migrations are all
+# Supabase-shaped (auth.users, auth.uid(), storage.objects, storage.foldername, the anon /
+# authenticated / service_role roles). Self-hosting the same services keeps every one of those
+# artifacts unchanged, instead of rewriting the schema and three clients against a bespoke API.
+#
+# THREAT MODEL — read before changing a port.
+# The host this runs on has NO firewall: `iptables -L INPUT` is policy ACCEPT and ufw is not
+# installed. So "bound to 0.0.0.0" means "published to the internet", and this stack ships an
+# anon key, a service_role key and a database holding synthetic-but-real-shaped family data.
+# Every published port below is therefore pinned to 127.0.0.1 EXPLICITLY. Do not write a bare
+# "8099:8000" — in compose that is 0.0.0.0:8099, and nothing on the host will stop it.
+#
+# The Supabase CLI would have been the smaller tool, and was rejected for exactly this reason:
+# it starts its own stack with `ports: ${API_PORT}:8000`, binds 0.0.0.0, and exposes no setting
+# to change the bind address.
+#
+# Usage: scripts/selfhosted-staging/up.sh   (boots, migrates, seeds, verifies)
+# Teardown is `docker compose -f this-file down -v` and removes everything.
+
+name: britelink-staging
+
+services:
+  db:
+    # Supabase's own Postgres build. Not vanilla postgres:16 — this image is what supplies the
+    # anon / authenticated / service_role / authenticator roles and the extension set the
+    # migrations assume, so swapping it for postgres:16-alpine would silently change the target
+    # the schema is proven against.
+    image: supabase/postgres:15.8.1.060
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # -h 127.0.0.1 is load-bearing, not decoration. The postgres entrypoint starts a TEMPORARY
+      # server to run its init scripts and starts it with `listen_addresses=''` -- unix socket
+      # only. A bare `pg_isready` uses that socket, so it reports ready against the temp server,
+      # and every dependent starts while the real server is still minutes away and refusing TCP:
+      #     connection to server at "db", port 5432 failed: Connection refused
+      # Forcing TCP makes the probe fail during init and pass only once the real server is up.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+      # The image's init is heavy (roles, schemas, extensions). Without a start period those
+      # failures consume the retry budget before the real server has had a chance to come up.
+      start_period: 30s
+    networks: [staging]
+
+  # One-shot: give the three service roles a password before anything tries to log in as them.
+  #
+  # This is a service rather than a step in up.sh on purpose. As a step it would only run when
+  # someone used up.sh, so a bare `docker compose up` -- the obvious thing to try -- would put the
+  # stack straight back into the crash loop this fixes. As a service, compose itself sequences it
+  # ahead of auth/rest/storage via service_completed_successfully, and it re-runs on every boot
+  # (harmless: ALTER ROLE is idempotent). See init/roles.sql for the failure it prevents.
+  db-roles:
+    image: supabase/postgres:15.8.1.060
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - ./init:/init:ro
+    entrypoint: ["psql"]
+    command:
+      - "-h"
+      - "db"
+      - "-U"
+      # supabase_admin, not postgres -- this image's POSTGRES_USER default, and the only superuser.
+      # Supabase patches its Postgres build to make `authenticator` a RESERVED role, so that a
+      # service role cannot rewrite its own credentials and escalate; the cost is that altering it
+      # fails for anyone else:
+      #     ERROR: "authenticator" is a reserved role, only superusers can modify it
+      # `postgres` exists in this image but is deliberately NOT a superuser, so it cannot do this.
+      - "supabase_admin"
+      - "-d"
+      - "postgres"
+      - "-v"
+      - "ON_ERROR_STOP=1"
+      # A second -v is required. psql takes each variable assignment as the ARGUMENT of its own -v,
+      # so one -v followed by two assignments silently drops the second:
+      #     psql: warning: extra command-line argument "pw=..." ignored
+      # The run would then fail on the first :'pw' for want of a variable -- a warning that is easy
+      # to read past, because psql keeps going.
+      - "-v"
+      # Quoted: compose substitutes this before YAML parses it, so quoting keeps any password safe
+      # from being read as YAML syntax. roles.sql interpolates it with :'pw', which quotes it again
+      # for SQL. Neither layer relies on the password's characters being benign.
+      - "pw=${POSTGRES_PASSWORD}"
+      - "-f"
+      - "/init/roles.sql"
+    networks: [staging]
+
+  auth:
+    image: supabase/gotrue:v2.170.0
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      db-roles: { condition: service_completed_successfully }
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      API_EXTERNAL_URL: ${PUBLIC_URL:?set PUBLIC_URL in .env}
+      GOTRUE_DB_DRIVER: postgres
+      DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_DB_MIGRATIONS_PATH: /migrations
+      GOTRUE_SITE_URL: ${PUBLIC_URL}
+      GOTRUE_URI_ALLOW_LIST: ${PUBLIC_URL}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      # Staging has no SMTP and must not gain one: auto-confirm keeps invite-only magic links
+      # testable without ever being able to send real mail to a real address. Production is a
+      # hosted decision made elsewhere, not a flag flipped here.
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_LOG_LEVEL: warn
+    networks: [staging]
+
+  rest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      db-roles: { condition: service_completed_successfully }
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,storage
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+    networks: [staging]
+
+  storage:
+    image: supabase/storage-api:v1.11.13
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      db-roles: { condition: service_completed_successfully }
+      rest: { condition: service_started }
+    environment:
+      ANON_KEY: ${ANON_KEY:?set ANON_KEY in .env}
+      SERVICE_KEY: ${SERVICE_KEY:?set SERVICE_KEY in .env}
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: staging
+      REGION: staging
+      GLOBAL_S3_BUCKET: staging
+      POSTGREST_URL: http://rest:3000
+      ENABLE_IMAGE_TRANSFORMATION: "false"
+      # The bucket itself is created private by the migration step; it is never public here.
+    volumes:
+      - storage-data:/var/lib/storage
+    networks: [staging]
+
+  gateway:
+    # One origin with /auth/v1, /rest/v1 and /storage/v1, because that is the shape the client
+    # and src/hosted-isolation.js address. nginx rather than Kong purely to keep the routing
+    # readable — there is no need for Kong's plugin surface here.
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on: [auth, rest, storage]
+    volumes:
+      - ./gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      # 127.0.0.1 EXPLICITLY. See the threat model at the top of this file.
+      - "127.0.0.1:${GATEWAY_PORT:-8099}:8000"
+    networks: [staging]
+
+volumes:
+  db-data:
+  storage-data:
+
+networks:
+  # Its own network, so this stack cannot reach britelink-postgres, britelink-web, Coolify or
+  # the media stack by container name even if a config is later got wrong.
+  staging:
+    driver: bridge

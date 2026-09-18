@@ -114,7 +114,7 @@
 **Blocking dependencies Cameron must approve/configure:**
 
 1. **Supabase projects** (3–5 hours setup)
-   - [ ] Development project: Apply 21 migrations, seed synthetic households
+   - [ ] Development project: Apply all 23 migrations, seed synthetic households (`supabase/seed/synthetic-staging.sql`)
    - [ ] Staging project: Apply migrations, configure Auth templates/redirects
    - [ ] Verify: Cross-household denial (104 checks via `npm run verify:hosted-isolation`)
    - [ ] Verify: Multi-device save/reload, session refresh, JWT lifetime
@@ -591,7 +591,7 @@
 
 ### Immediate Actions (Cameron-led, 1–2 weeks)
 
-1. **Provision Supabase dev project** → Apply 21 migrations → Run `npm run verify:hosted-isolation`
+1. **Provision Supabase dev project** → Apply all 23 migrations → Run `npm run verify:hosted-isolation`
 2. **Provision Stripe test account** → Create products → Get webhook signing secret
 3. **Submit privacy notice to counsel** → Incorporate feedback → Lock approved version in database
 4. **Submit sample lesson plan to credentialed educator** → Safeguarding + curriculum review

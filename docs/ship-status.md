@@ -1,7 +1,7 @@
 # BriteLink Ship Status
 
-**Last updated:** September 9, 2026  
-**Branch:** `cursor/ship-ready-ux-67bb`  
+**Last updated:** September 18, 2026  
+**Branch:** `main` (deployed `f76a08b`); current work on `feat/retention-execution`  
 **Status:** Ready for private beta (pending Cameron-gated approvals)
 
 ## What's Ready Now
@@ -27,11 +27,12 @@ The core parent and educator experiences are complete and polished for private b
 - **Audit history**: Complete timeline of case events
 
 ### Technical Foundation ✅
-- **Tests**: 145 passing tests covering domain logic, RLS, and integration
+- **Tests**: 165 passing tests covering domain logic, RLS, and integration
 - **Accessibility**: WCAG A/AA compliance, keyboard navigation, touch targets, reduced motion
 - **Build**: Production bundle ready (`npm run build` + Sites packaging)
 - **Security**: CSP headers, input validation, safe redirects, RLS policies
-- **Schema**: 21 migrations with household isolation and composite integrity
+- **Schema**: 23 migrations with household isolation and composite integrity
+- **CI/CD**: GitHub Actions validates every PR and deploys `main` over SSH — see below
 
 ## What Needs Cameron (Blocked)
 
@@ -41,7 +42,7 @@ These require external approvals, credentials, or infrastructure that Cameron mu
 - **Supabase projects**: Development and staging projects (needs paid account)
 - **Auth configuration**: Passwordless magic link, invited-only accounts
 - **Environment secrets**: Project URLs, anon keys (never committed to repo)
-- **Database deployment**: Apply 21 migrations to live Supabase
+- **Database deployment**: Apply all 23 migrations to live Supabase
 - **Storage bucket**: Private `case-attachments` bucket with scanner integration
 
 ### ⚖️ Legal & Compliance
@@ -62,18 +63,99 @@ These require external approvals, credentials, or infrastructure that Cameron mu
 ### 🔧 Operational
 - **External monitoring**: Uptime monitor + alert delivery (health probe ready, scheduling needed)
 - **Named contacts**: Incident commander, privacy lead, technical lead (runbooks ready, names needed)
-- **Backup/restore**: Managed PITR + off-project encrypted backups (local drill done, hosted pending)
-- **Malware scanner**: Attachment scanning service (quarantine model ready, scanner integration needed)
-- **Physical deletion**: Scheduled erasure job after retention approval (scheduling RPC ready, job missing)
+- **Backup/restore**: Managed PITR + off-project encrypted backups (the local drill now restores the
+  real nightly archive rather than a rehearsal — but see the vacuous-signal note below; hosted PITR pending)
+- **Malware scanner**: Attachment scanning service (adapter implemented, with rejected-object and
+  orphan-metadata alerting — ships unwired, because there is no bucket to point it at yet)
+- **Physical deletion**: Scheduled erasure job after retention approval (the executor is now
+  implemented and exercised by the migration harness; it ships disabled, and stays disabled until
+  the approval this is gated on exists)
 
 ### 📊 Private Beta
 - **5–10 families**: Consented households for controlled rollout
 - **Support plan**: Named support owners, response SLA, incident contacts
 - **Beta criteria**: Cross-household denial proof, delivery honesty, accessibility decisions
 
+## Continuous Integration and Deployment
+
+CI (`.github/workflows/ci.yml`) runs on push to `main`, on every pull request, and on demand:
+`build-test` (build *then* test — the order is load-bearing), `migration-harness` (applies every
+migration, the storage policies, the behavioural assertions, and the synthetic staging seed to a
+throwaway Postgres), and `browser-audits` (five Playwright audits).
+
+Deploy (`.github/workflows/deploy.yml`) fires only from a **successful** CI run on `main`, or by
+manual dispatch on `main`. It SSHes to the VPS and rebuilds `/docker/britelink-web` in place.
+
+**Verified end to end on 2026-09-18**, by hashing rather than by trusting a green check. PR #29
+merged as `f76a08b`; CI ran green on that push; Deploy ran from it, and the bytes serving are the
+bytes CI built:
+
+| Evidence | Value |
+|---|---|
+| `dist/client/index.html` sha256, as recorded by CI | `440329b50835543ee1dc7dfcc4e4ecb8419825eb1b76f640c8197df195ff805a` |
+| sha256 of what `https://britelink.ashbi.ca/` actually serves | `440329b50835543ee1dc7dfcc4e4ecb8419825eb1b76f640c8197df195ff805a` |
+| `britelink-web-web-1` container created | `2026-09-18T02:08:40Z` (Deploy run started 02:08:21Z) |
+| `britelink-postgres-postgres-1` | started 09-16 — untouched, as a web deploy must leave it |
+
+Each job has also been observed *failing*, so the gate is known to discriminate rather than merely
+to pass: `migration-harness` failed at `9c82eda` and passed at `e0f886d`, the commit that fixed
+it; `browser-audits` failed at `36c3ff1` and passed at `b0a8dc0`, likewise.
+
+**Current limitation.** From 2026-09-18 03:36Z the account stopped allocating runners: runs are
+still created but sit `queued` with zero jobs, and the last successful run anywhere was 03:22:50Z.
+This is an account-level entitlement condition, not a repository setting. While it holds, no push
+is validated and **no deploy can fire at all**, because Deploy is gated on a successful CI run.
+Commits after `e0f886d` on `feat/retention-execution` have therefore never run in CI.
+
+**The unblock is a self-hosted runner, and it is free here.** GitHub bills hosted runners; for a
+**private** repository a self-hosted runner costs nothing, and this repository is private. So the
+entitlement condition above stops mattering the moment a runner exists — which makes the choice of
+*host* the only real question, and it is the one decision this is waiting on.
+
+Three facts that bound it, all checked 2026-09-18:
+
+- One self-hosted Linux runner is **already online and idle on the VPS** (`ashbi-vps-family-planner`,
+  labels `self-hosted,Linux,X64,ashbi,family-planner`), registered to `family-planner` and targeted
+  by no workflow. A second, `cam-desktop-w1` (Windows), is registered and **offline**.
+- That VPS is the one serving production: `britelink-web`, the `britelink-postgres` database,
+  Coolify, and the media stack. CI runs on `pull_request`, so unmerged code would execute there,
+  and `migration-harness` needs Docker, so it could not be sandboxed by dropping the daemon alone.
+- Consequently a `runs-on:` edit is still not the fix. Pointing *this* repository's CI at the
+  production host is a deliberate risk decision, not a configuration detail, and it is **not** to be
+  made as a side effect of unblocking CI. A dedicated runner host — or bringing the desktop runner
+  online, which is not production — is the clean answer.
+
+## Known Vacuous Signals
+
+Signals that currently read as healthy while proving nothing. Recorded so they are not mistaken
+for coverage:
+
+- **Nightly backups.** The dumps are valid, complete, error-free `pg_dump` output — of an
+  essentially empty database (370 bytes, zero `CREATE TABLE` statements, checked 2026-09-18). The
+  script is correct; the migrations have never been applied to that database. A green backup run
+  is not evidence that anything is being protected, and the restore drill inherits the same limit.
+
+## Signals That Look Vacuous But Are Not
+
+Recorded because they are the obvious next suspicion, and re-litigating them wastes a review:
+
+- **Storage isolation denials.** A denial is only meaningful next to a positive control, and both
+  storage denials have one. D1 requires each administrator to *list an own-household object* and
+  throws `Storage has no visible own-household sentinel` when that list is empty
+  (`src/hosted-isolation.js`); D2 requires household B to *sign its own object* — which also
+  proves the object exists — before any cross-household denial is accepted, and throws
+  `Household B storage control failed` otherwise. So neither can pass against a missing object.
+  What is genuinely unknown is not whether the control works but that neither has **run against
+  staging yet** — see the evidence boundary in `docs/HOSTED_STAGING_VERIFICATION.md`.
+- **The sentinel sweeps.** The same reasoning applies to the 25-table read sweep: "both admins
+  see an own-household sentinel" is itself the control. It is not merely asserted green — the
+  migration harness deletes one sentinel on every run and requires the verifier to fail naming
+  that table, so the sweep is known to be able to go red.
+
 ## How to Proceed
 
-**Ready to merge:** This PR contains all UX and foundation work that can be done without external dependencies.
+**Already merged:** the UX and foundation work is on `main` and deployed. What remains is the
+list below, which is entirely external.
 
 **After merge, Cameron handles:**
 1. Provision staging Supabase (30 min)
@@ -100,11 +182,16 @@ These would be nice but aren't blocking private beta:
 
 ## Evidence
 
-- **Codebase:** All commits on `cursor/ship-ready-ux-67bb`
-- **Tests:** `npm test` (145 passing), `npm run test:sites` (4 passing)
-- **Accessibility:** `qa/accessibility/report.json` (12 viewports, 0 critical/serious)
+- **Codebase:** `main` at `f76a08b` (deployed); current work on `feat/retention-execution`
+- **Tests:** `npm test` (165 passing), `npm run test:sites` (4 passing)
+- **Accessibility:** `qa/accessibility/report.json` — 12 axe results across 3 viewports
+  (desktop, 200% and 400% CSS-px equivalence), 0 serious or critical, 0 horizontal-overflow and
+  0 keyboard-focus failures. Note `zoomMethod` in that file: viewport equivalence only. Real
+  browser zoom and VoiceOver remain the manual gates below.
 - **Documentation:** `docs/GOAL_COMPLETION_PLAN.md`, `docs/RELEASE_READINESS.md`, `docs/STAGING_HANDOFF.md`
 - **Local restore:** `qa/operations/local-restore-drill-report.json`
+- **CI/deploy:** run `35297972681` (CI) and `35298161038` (Deploy) on `f76a08b`, reconciled to the
+  live site by artifact hash — see the table above
 
 ---
 

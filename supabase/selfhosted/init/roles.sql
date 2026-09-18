@@ -1,0 +1,48 @@
+-- Role bootstrap for the self-hosted staging stack.
+--
+-- WHY THIS FILE EXISTS -- the failing boot it fixes.
+--
+-- `supabase/postgres` creates anon, authenticated, service_role, authenticator,
+-- supabase_auth_admin and supabase_storage_admin, and configures nearly all of them correctly:
+-- search_path=auth on supabase_auth_admin, search_path=storage on supabase_storage_admin, the
+-- safeupdate preload and the statement/lock timeouts on authenticator, and the membership grants
+-- that let PostgREST SET ROLE. What it does NOT do is give supabase_auth_admin, authenticator or
+-- supabase_storage_admin a password -- because the official Supabase compose supplies one from its
+-- own ./volumes/db/roles.sql, which this stack did not have.
+--
+-- That omission is silent until something connects. pg_hba.conf ends with
+--
+--     host all all all scram-sha-256
+--
+-- and a role whose rolpassword is NULL cannot satisfy scram with ANY value, so GoTrue, PostgREST
+-- and storage-api all fail with `password authentication failed for user "..."`. That message
+-- reads like a wrong password; the actual condition is a missing one:
+--
+--     select rolname from pg_authid where rolpassword is null;
+--
+-- DO NOT TEST THESE ROLES OVER LOOPBACK. pg_hba.conf's earlier line is
+--
+--     host all all 127.0.0.1/32 trust
+--
+-- so `docker compose exec db psql -h 127.0.0.1 -U authenticator` succeeds with the real password,
+-- with a literal "postgres", and with anything else. Testing from inside the db container makes
+-- every password look correct, which is exactly how this bug survived the first boot.
+--
+-- MUST RUN AS A SUPERUSER -- i.e. `supabase_admin`, this image's POSTGRES_USER default, not
+-- `postgres`. Supabase patches its Postgres build to make `authenticator` a RESERVED role, so a
+-- service role cannot rewrite its own credentials and escalate. The cost is that anything else
+-- gets:
+--
+--     ERROR:  "authenticator" is a reserved role, only superusers can modify it
+--
+-- `postgres` exists in this image but is deliberately not a superuser, so it cannot do this. The
+-- stack's own migrations are a different matter and still run as `postgres`, matching how Supabase
+-- applies them in production.
+--
+-- Idempotent: ALTER ROLE, so re-running is harmless. The password arrives as a psql variable and
+-- is interpolated with :'pw', which quotes it properly -- so a password containing a quote cannot
+-- break out of the statement, and this file needs no escaping of its own.
+
+ALTER ROLE authenticator          WITH PASSWORD :'pw';
+ALTER ROLE supabase_auth_admin    WITH PASSWORD :'pw';
+ALTER ROLE supabase_storage_admin WITH PASSWORD :'pw';

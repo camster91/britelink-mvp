@@ -24,6 +24,8 @@ const operationalMetadataUrl = new URL("../supabase/migrations/202608280018_oper
 const attachmentRetryUrl = new URL("../supabase/migrations/202608280019_attachment_retry.sql", import.meta.url);
 const portableExportUrl = new URL("../supabase/migrations/202608280020_portable_export_manifest.sql", import.meta.url);
 const recentAuthenticationUrl = new URL("../supabase/migrations/202608280021_recent_authentication.sql", import.meta.url);
+const retentionExecutionUrl = new URL("../supabase/migrations/202608280022_retention_execution.sql", import.meta.url);
+const attachmentScanAdapterUrl = new URL("../supabase/migrations/202608280023_attachment_scan_adapter.sql", import.meta.url);
 
 test("every household-scoped private table enables row level security", async () => {
   const sql = await readFile(schemaUrl, "utf8");
@@ -106,3 +108,86 @@ test("operational metadata accepts only bounded non-content diagnostic dimension
 test("failed attachment retry reuses an owned quarantined record",async()=>{const sql=await readFile(attachmentRetryUrl,"utf8");assert.match(sql,/retry_message_attachment_upload/);assert.match(sql,/uploaded_by=auth\.uid\(\)/);assert.match(sql,/status='upload_failed'/);assert.match(sql,/attachment\.upload_retried/);assert.doesNotMatch(sql,/insert into public\.case_attachments/)});
 test("portable export manifest includes the authored hierarchy and explicit binary exclusions",async()=>{const sql=await readFile(portableExportUrl,"utf8");for(const key of ["schemaVersion","manifest","planWeeks","planDays","lessons","resources","attachmentMetadata","binaryAttachments"])assert.match(sql,new RegExp(`'${key}'`));assert.match(sql,/Binary files require separate authenticated retrieval/);assert.match(sql,/authentication_secrets/);assert.match(sql,/schema_version',2/);assert.match(sql,/guardian access required/)});
 test("sensitive guardian RPCs require a recently issued authenticated token",async()=>{const sql=await readFile(recentAuthenticationUrl,"utf8");assert.match(sql,/require_recent_authentication/);assert.match(sql,/request\.jwt\.claims/);assert.match(sql,/request\.jwt\.claim\.iat/);assert.match(sql,/recent authentication required/);assert.match(sql,/interval '10 minutes'/);for(const rpc of ["export_guardian_household","request_guardian_household_deletion"])assert.match(sql,new RegExp(`create function public\\.${rpc}`));assert.match(sql,/revoke all on function public\.export_guardian_household_authorized/)});
+test("retention execution ships disabled and records deletion outside the household cascade",async()=>{const sql=await readFile(retentionExecutionUrl,"utf8");
+  // The dry run mirrors src/service-domain.js retentionCandidates(), including its closed_at fallback.
+  assert.match(sql,/admin_retention_candidates/);assert.match(sql,/coalesce\(c\.closed_at,c\.updated_at\)/);assert.match(sql,/has_household_role\(target_household,array\['admin'\]/);
+  // The executor exists and drives the state machine 012 only ever anticipated.
+  assert.match(sql,/admin_execute_due_deletion_jobs/);for(const state of ["'running'","'failed'"])assert.match(sql,new RegExp(`status=${state}`));assert.match(sql,/started_at=now\(\)/);assert.match(sql,/failure_code=left\('failed: '\|\|coalesce\(nullif\(btrim\(sqlerrm\),''\),'unknown'\),80\)/);
+  // deletion_jobs.status='completed' is unreachable by construction: the successful path
+  // deletes the household, which cascades the job row away. Completion is therefore only
+  // ever recorded as a ledger outcome, and the test pins that so it cannot silently drift.
+  assert.doesNotMatch(sql,/status='completed'/);for(const outcome of ["'completed'","'failed'"])assert.match(sql,new RegExp(`outcome[^)]*${outcome}`));
+  // Due selection matches the partial index from 012 and is concurrency safe and idempotent.
+  assert.match(sql,/status='scheduled' and not legal_hold and eligible_at<=now\(\)/);assert.match(sql,/for update skip locked/);assert.match(sql,/constraint retention_execution_ledger_job_unique unique\(deletion_job_id\)/);assert.match(sql,/on conflict on constraint retention_execution_ledger_job_unique do nothing/);
+  // Safeguards are re-asserted at execution time, not trusted from scheduling time.
+  assert.match(sql,/job_row\.identity_verified is not true or job_row\.co_guardian_reviewed is not true/);
+  // The execution gate is off by default, has no client policy, and has no setter.
+  assert.match(sql,/execution_enabled boolean not null default false/);assert.match(sql,/insert into public\.retention_execution_controls\(id,execution_enabled\) values\(true,false\)/);assert.match(sql,/physical deletion execution is disabled/);assert.match(sql,/check\(not execution_enabled or enablement_basis is not null\)/);
+  for(const table of ["retention_execution_controls","retention_execution_ledger"])assert.match(sql,new RegExp(`alter table public\\.${table} enable row level security`));
+  assert.doesNotMatch(sql,/create policy/);
+  // The ledger is the surviving audit record: it must not cascade with the household.
+  assert.doesNotMatch(sql,/retention_execution_ledger[\s\S]*?references public\.households/);
+  assert.match(sql,/household_ref uuid not null/);assert.doesNotMatch(sql,/learner_name|preferred_name|message_body|file_name/);
+  // Only the dry run is reachable by a client role; the executor is owner/service-role only.
+  assert.match(sql,/grant execute on function public\.admin_retention_candidates\(uuid,integer,integer,timestamptz\) to authenticated/);
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_execute_due_deletion_jobs/);
+})
+
+test("attachment scan adapter keeps scan verdicts server-only and fails closed",async()=>{
+  // Assert against code, not prose. This migration's header explains why there is no
+  // 'scan_failed' state -- and a substring check for it matched that explanation, so the
+  // comment satisfied the very assertion meant to prove the state is absent. A commented-out
+  // grant would fool the boundary checks the same way. No string literal in this migration
+  // contains "--", so stripping line comments is safe here; block comments are handled too.
+  const sql=(await readFile(attachmentScanAdapterUrl,"utf8"))
+    .replace(/\/\*[\s\S]*?\*\//g,"")
+    .replace(/--[^\n]*/g,"");
+  for(const rpc of ["admin_record_attachment_scan","admin_list_pending_scan_attachments","admin_reconcile_attachment_objects","admin_attachment_integrity_snapshot"])assert.match(sql,new RegExp(`create or replace function public\\.${rpc}`));
+  // The trust boundary: only the adapter (service credentials) may record a verdict, so a
+  // client can never mark its own upload clean. The queue crosses households, so it is not
+  // client-reachable either. Only the admin-gated snapshot is granted to authenticated.
+  // Each signature is spelled with escaped parens and brackets because the revoke must name the
+  // exact signature Postgres recorded -- "revoke all on function name" without one is a no-op
+  // when the function is overloaded, which would leave the boundary silently open.
+  for(const signature of ["admin_record_attachment_scan\\(uuid,uuid,text,text,text,text\\)","admin_list_pending_scan_attachments\\(integer\\)","admin_reconcile_attachment_objects\\(uuid,text\\[\\]\\)"])assert.match(sql,new RegExp(`revoke all on function public\\.${signature} from public`));
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_record_attachment_scan/);
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_list_pending_scan_attachments/);
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_reconcile_attachment_objects/);
+  assert.match(sql,/grant execute on function public\.admin_attachment_integrity_snapshot\(uuid,timestamptz\) to authenticated/);
+  assert.match(sql,/alter table public\.attachment_object_observations enable row level security/);
+  assert.doesNotMatch(sql,/create policy/);
+  // Fail-closed: there is deliberately no scan_failed state. A scanner outage leaves the object
+  // in pending_scan quarantine so attachment.scan_stale escalates, and there is no path by
+  // which a failed scan makes an object downloadable.
+  assert.doesNotMatch(sql,/scan_failed/);assert.match(sql,/status='pending_scan'/);
+  // Terminal verdicts are final, and a re-run of the same verdict is a retry-safe no-op.
+  assert.match(sql,/verdict is already final as %/);assert.match(sql,/already_recorded/);
+  // The digest proves the adapter scanned the bytes the browser hashed.
+  assert.match(sql,/scanned content digest does not match the uploaded attachment/);
+  // Three faults the behavioural harness found by executing this against Postgres. Each is
+  // pinned here so a revert is caught by `npm test`, which needs no Docker:
+  // 1. scan_provider and scan_result_code collide with case_attachments' own columns, so the
+  //    UPDATE must reference the distinctly-named locals, not the parameters.
+  assert.match(sql,/\bprovider text:=btrim\(scan_provider\)/);assert.match(sql,/\bresult_code text:=scan_result_code/);
+  assert.match(sql,/set status=verdict,scanned_at=recorded,scan_provider=provider,scan_result_code=result_code/);
+  assert.doesNotMatch(sql,/scan_provider=btrim\(scan_provider\)/);assert.doesNotMatch(sql,/scan_result_code=scan_result_code/);
+  // 2. An explicit null check is required: "char_length(x) not between 2 and 80" is NULL when x
+  //    is NULL, and a plpgsql IF treats NULL as false, so nulls would slip through.
+  assert.match(sql,/if provider is null or char_length\(provider\) not between 2 and 80/);
+  assert.match(sql,/if verdict is null or verdict not in \('clean','rejected'\)/);
+  // 3. operational_events.occurred_at is NOT NULL with no default, so it must be supplied.
+  assert.match(sql,/insert into public\.operational_events\(household_id,actor_user_id,component,severity,event_code,metadata,occurred_at\)/);
+  assert.match(sql,/jsonb_build_object\('operation','attachment\.scan','provider',provider,'errorCode',result_code\),recorded\)/);
+  // A rejected upload is a security event and must stay privacy-minimal: no file name, no
+  // object path, no signature payload beyond a bounded result code.
+  assert.match(sql,/'attachment_scanner','critical','attachment\.scan_rejected'/);
+  assert.doesNotMatch(sql,/jsonb_build_object\([^)]*file_name/);assert.doesNotMatch(sql,/jsonb_build_object\([^)]*object_path/);
+  // The vacuous-green guard: without a staleness signal the two orphan signals are silently
+  // empty for an unreconciled household and read as healthy.
+  assert.match(sql,/attachment\.reconciliation_stale/);
+  for(const code of ["attachment.rejected_present","attachment.metadata_orphaned","attachment.object_orphaned"])assert.match(sql,new RegExp(code.replace(".","\\.")));
+  assert.match(sql,/returns table\(signal_code text,severity text,entity_count bigint,oldest_at timestamptz,threshold_seconds integer\)/);
+  // Reconciliation replaces the observed set rather than accumulating it, or the orphan signal
+  // could never fire.
+  assert.match(sql,/delete from public\.attachment_object_observations where household_id=target_household/);
+})

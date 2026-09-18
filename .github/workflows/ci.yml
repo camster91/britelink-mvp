@@ -62,6 +62,27 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # supabase/migrations/*.sql target Supabase, so tests/security-schema.test.mjs can only
+  # read them statically -- it proves structure, never that Postgres accepts the plpgsql.
+  # This job closes that blind spot: it applies the shim, every migration in order, and the
+  # storage policies to a throwaway Postgres, runs the behavioural assertions, then applies
+  # supabase/seed/synthetic-staging.sql and verifies the result -- every id in the env block
+  # it prints, the deletion fixture, the storage policies against real rows, and an
+  # own-household sentinel for both administrators on all 25 private tables. It ends by
+  # deleting one sentinel and requiring the verifier to fail, so the checks are known to be
+  # discriminating rather than merely green.
+  # It needs docker (present on ubuntu runners) and network for the postgres image pull.
+  migration-harness:
+    name: migration-harness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply every migration and verify the retention executor
+        run: bash scripts/migration-harness/validate-migrations.sh
+        timeout-minutes: 10
+
   browser-audits:
     name: browser-audits
     needs: build-test

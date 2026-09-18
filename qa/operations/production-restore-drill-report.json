@@ -1,0 +1,28 @@
+{
+  "generatedAt": "2026-09-18T03:41:31Z",
+  "scope": "production nightly archive restored into a disposable PostgreSQL 16 container",
+  "productionRestore": true,
+  "archive": {
+    "name": "britelink-20260917.sql.gz",
+    "sha256": "90dc6b420f3fd18bbdbd141b7631584ab2f4640396b2687ab5802b2afd85b210",
+    "compressedBytes": 371,
+    "uncompressedBytes": 643,
+    "pgDumpVersion": "16.15",
+    "declaredTables": 0,
+    "declaredPublicTables": 0,
+    "declaredDataBlocks": 0,
+    "isEmpty": true
+  },
+  "restore": {
+    "durationMs": 104,
+    "publicTables": 0,
+    "totalRows": 0,
+    "rowFingerprint": null,
+    "publicTablesWithRls": null
+  },
+  "repeatRestore": {"performed": false, "reason": "the archive is empty, so a second restore would prove nothing"},
+  "recoveryEvidence": false,
+  "rlsCoverageComplete": null,
+  "reason": "The archive is a well-formed pg_dump file that contains no public tables and no data, so restoring it cannot demonstrate that a production database is recoverable. It restores cleanly, and every health signal derived from it would be vacuous.",
+  "totalDurationMs": 6497
+}

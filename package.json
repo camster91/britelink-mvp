@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/prepare-sites-build.mjs",
@@ -14,9 +17,11 @@
     "test:staff-attachments": "node scripts/staff-attachment-recovery-audit.mjs",
     "test:households": "node scripts/multi-household-audit.mjs",
     "test:restore": "bash scripts/local-restore-drill.sh",
+    "test:migrations": "bash scripts/migration-harness/validate-migrations.sh",
     "health:hosted": "node scripts/hosted-health-check.mjs",
     "verify:hosted-isolation": "node scripts/hosted-isolation-check.mjs",
-    "test:sites": "node --test tests/sites-worker.test.mjs"
+    "test:sites": "node --test tests/sites-worker.test.mjs",
+    "test:restore:production": "bash scripts/production-restore-drill.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
