@@ -2,6 +2,7 @@ import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 const origin = "http://127.0.0.1:4319";
 const server = spawn(
@@ -45,7 +46,7 @@ try {
       "Successful staff write lost the workbench when its refresh failed",
     );
   await page.getByRole("button", { name: "Retry supporting panels" }).click();
-  await page.getByRole("button", { name: /Maya internal review/ }).click();
+  await page.getByRole("button", { name: /Maya.*internal review/i }).click();
   await page.getByRole("button", { name: "Mark read" }).click();
   await page.getByText("Read acknowledgement completed and audited.").waitFor();
   await page.getByRole("button", { name: "Resolve" }).click();
@@ -167,7 +168,7 @@ try {
   await page.getByText("Secure delivery completed and audited.").waitFor();
   await page.getByRole("button", { name: "Retry delivery" }).click();
   await page.getByText("Delivery retry completed and audited.").waitFor();
-  await page.getByRole("button", { name: /Noah revision requested/ }).click();
+  await page.getByRole("button", { name: /Noah.*revision requested/i }).click();
   await page
     .getByLabel("Decision reason")
     .fill("Included in the annual package.");
@@ -203,7 +204,7 @@ try {
     .getByRole("button", { name: "Send secure portal delivery" })
     .click();
   await page.getByText("Secure delivery completed and audited.").waitFor();
-  await page.getByRole("button", { name: /Avery submitted/ }).click();
+  await page.getByRole("button", { name: /Avery.*submitted/i }).click();
   await page
     .getByRole("button", { name: "Accept intake and start SLA" })
     .click();
@@ -291,10 +292,12 @@ try {
   if (serious.length)
     throw new Error(serious.map((item) => item.id).join(", "));
   await page.screenshot({
-    path: new URL(
-      "../qa/operations/04-authenticated-staff-workbench.png",
-      import.meta.url,
-    ).pathname,
+    path: fileURLToPath(
+      new URL(
+        "../qa/operations/04-authenticated-staff-workbench.png",
+        import.meta.url,
+      ),
+    ),
     fullPage: true,
   });
   await page.setViewportSize({ width: 390, height: 844 });
@@ -317,7 +320,7 @@ try {
     .getByRole("heading", { name: "Educator workbench" })
     .waitFor();
   await refreshPage
-    .getByRole("button", { name: /Maya internal review/ })
+    .getByRole("button", { name: /Maya.*internal review/i })
     .click();
   await refreshPage
     .getByLabel("Operational reason")
@@ -331,10 +334,10 @@ try {
   await refreshPage.evaluate(() => {
     globalThis.staffQaState.cases[1].status = "on_hold";
   });
-  await refreshPage.getByRole("button", { name: /Noah on hold/ }).waitFor();
+  await refreshPage.getByRole("button", { name: /Noah.*on hold/i }).waitFor();
   await refreshPage.waitForTimeout(800);
   if (
-    !(await refreshPage.getByRole("button", { name: /Noah on hold/ }).count())
+    !(await refreshPage.getByRole("button", { name: /Noah.*on hold/i }).count())
   )
     throw new Error(
       "A stale periodic response replaced newer staff queue data",
@@ -393,7 +396,7 @@ try {
     globalThis.staffQaState.learners[1].preferred_name = "Noah Updated";
   });
   await refreshPage
-    .getByRole("button", { name: /Noah Updated on hold/ })
+    .getByRole("button", { name: /Noah Updated.*on hold/i })
     .waitFor();
   await refreshPage.evaluate(() => {
     globalThis.staffQaState.cases = globalThis.staffQaState.cases.filter(
