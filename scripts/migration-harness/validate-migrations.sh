@@ -22,6 +22,49 @@ container="britelink-migration-harness-$$"
 cleanup() { docker rm -f "$container" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
+# ---------------------------------------------------------------------------
+# Static cross-check: the seed must emit every variable the verifiers read.
+#
+# This runs before docker so it fails in a second rather than after an image pull. It exists
+# because the failure it catches is silent: add a BRITELINK_TEST_* to a verifier and the seed
+# simply does not print it, so provisioning finds out on staging -- after the projects exist --
+# with an empty variable rather than at review time. The reverse is a weaker but real smell:
+# a variable the seed prints that nothing reads is either dead output or a verifier that was
+# never wired to it.
+#
+# The four JWTs are the one legitimate exception and are named explicitly rather than tolerated
+# by a wildcard: a seed cannot mint a signed token, and if a fifth JWT ever appears here the
+# check must fail and force that decision to be made on purpose.
+# ---------------------------------------------------------------------------
+echo "== checking the seed emits every variable the verifiers consume =="
+seed_gap_check() {
+  local consumed emitted gap unused
+  consumed="$(grep -rhoE 'BRITELINK_TEST_[A-Z0-9_]+' "$repo/scripts" "$repo/src" | LC_ALL=C sort -u)"
+  emitted="$(grep -oE 'BRITELINK_TEST_[A-Z0-9_]+' "$repo/supabase/seed/synthetic-staging.sql" | LC_ALL=C sort -u)"
+  [ -n "$consumed" ] || { echo "FAIL: found no BRITELINK_TEST_* consumers at all; this check is not looking where it thinks." >&2; exit 1; }
+
+  gap="$(comm -23 <(printf '%s\n' "$consumed") <(printf '%s\n' "$emitted"))"
+  unused="$(comm -13 <(printf '%s\n' "$consumed") <(printf '%s\n' "$emitted"))"
+  expected_gap="$(printf '%s\n' \
+    BRITELINK_TEST_ADMIN_A_JWT BRITELINK_TEST_ADMIN_B_JWT \
+    BRITELINK_TEST_EDUCATOR_A_JWT BRITELINK_TEST_GUARDIAN_A_JWT | LC_ALL=C sort)"
+
+  if [ "$gap" != "$expected_gap" ]; then
+    echo "FAIL: the verifiers read variables the seed never emits (beyond the four JWTs):" >&2
+    printf '%s\n' "$gap" | comm -23 - <(printf '%s\n' "$expected_gap") >&2
+    exit 1
+  fi
+  if [ -n "$unused" ]; then
+    echo "FAIL: the seed emits variables nothing reads:" >&2
+    printf '%s\n' "$unused" >&2
+    exit 1
+  fi
+  printf '  ok   %s consumed, %s emitted; the gap is exactly the four hand-minted JWTs\n' \
+    "$(printf '%s\n' "$consumed" | wc -l | tr -d ' ')" \
+    "$(printf '%s\n' "$emitted" | wc -l | tr -d ' ')"
+}
+seed_gap_check
+
 command -v docker >/dev/null 2>&1 || { echo "FAIL: docker is not available." >&2; exit 1; }
 if ! docker image inspect postgres:16-alpine >/dev/null 2>&1; then
   echo "== postgres:16-alpine is not present locally, pulling it =="
