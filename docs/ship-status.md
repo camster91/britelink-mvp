@@ -160,7 +160,10 @@ These would be nice but aren't blocking private beta:
 
 - **Codebase:** `main` at `f76a08b` (deployed); current work on `feat/retention-execution`
 - **Tests:** `npm test` (165 passing), `npm run test:sites` (4 passing)
-- **Accessibility:** `qa/accessibility/report.json` (12 viewports, 0 critical/serious)
+- **Accessibility:** `qa/accessibility/report.json` — 12 axe results across 3 viewports
+  (desktop, 200% and 400% CSS-px equivalence), 0 serious or critical, 0 horizontal-overflow and
+  0 keyboard-focus failures. Note `zoomMethod` in that file: viewport equivalence only. Real
+  browser zoom and VoiceOver remain the manual gates below.
 - **Documentation:** `docs/GOAL_COMPLETION_PLAN.md`, `docs/RELEASE_READINESS.md`, `docs/STAGING_HANDOFF.md`
 - **Local restore:** `qa/operations/local-restore-drill-report.json`
 - **CI/deploy:** run `35297972681` (CI) and `35298161038` (Deploy) on `f76a08b`, reconciled to the
