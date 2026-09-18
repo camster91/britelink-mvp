@@ -19,7 +19,15 @@
 # Usage: scripts/selfhosted-staging/up.sh   (boots, migrates, seeds, verifies)
 # Teardown is `docker compose -f this-file down -v` and removes everything.
 
-name: britelink-staging
+# The project name IS the isolation boundary. Compose namespaces the network and both volumes
+# under it, so a second environment is a second project -- `britelink-production_db-data` beside
+# `britelink-staging_db-data` -- rather than a second copy of this file to drift out of sync.
+#
+# The default keeps every existing staging command byte-identical: with no STACK_NAME set this
+# still resolves to `britelink-staging`. .env also sets COMPOSE_PROJECT_NAME alongside it, which
+# is deliberately redundant -- on this host, a command that resolved to the wrong project could
+# run `down` against the live staging stack, and that is worth two locks.
+name: ${STACK_NAME:-britelink-staging}
 
 services:
   db:
@@ -183,5 +191,11 @@ volumes:
 networks:
   # Its own network, so this stack cannot reach britelink-postgres, britelink-web, Coolify or
   # the media stack by container name even if a config is later got wrong.
+  #
+  # The key stays `staging` even though the project name is now dynamic, so a production stack
+  # gets a network literally called `britelink-production_staging`. That reads oddly and is
+  # intentional: renaming the key changes the network NAME, which would make compose treat it as
+  # a brand-new network and recreate every container attached to it -- disturbing the running
+  # staging stack, whose isolation evidence is the point of the name. Cosmetic; leave it.
   staging:
     driver: bridge
