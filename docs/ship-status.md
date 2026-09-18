@@ -107,12 +107,23 @@ This is an account-level entitlement condition, not a repository setting. While 
 is validated and **no deploy can fire at all**, because Deploy is gated on a successful CI run.
 Commits after `e0f886d` on `feat/retention-execution` have therefore never run in CI.
 
-The obvious workaround — a self-hosted runner, which is not billed the same way — is **not safe on
-this host and should not be reached for**. The VPS that would run it is the one serving production:
-it runs `britelink-web`, the `britelink-postgres` database, Coolify, and the media stack. CI runs
-on `pull_request`, so any contributor's unmerged code would execute there, and `migration-harness`
-needs Docker, so it could not be sandboxed by dropping the daemon alone. This needs a dedicated
-runner host, not a `runs-on:` edit.
+**The unblock is a self-hosted runner, and it is free here.** GitHub bills hosted runners; for a
+**private** repository a self-hosted runner costs nothing, and this repository is private. So the
+entitlement condition above stops mattering the moment a runner exists — which makes the choice of
+*host* the only real question, and it is the one decision this is waiting on.
+
+Three facts that bound it, all checked 2026-09-18:
+
+- One self-hosted Linux runner is **already online and idle on the VPS** (`ashbi-vps-family-planner`,
+  labels `self-hosted,Linux,X64,ashbi,family-planner`), registered to `family-planner` and targeted
+  by no workflow. A second, `cam-desktop-w1` (Windows), is registered and **offline**.
+- That VPS is the one serving production: `britelink-web`, the `britelink-postgres` database,
+  Coolify, and the media stack. CI runs on `pull_request`, so unmerged code would execute there,
+  and `migration-harness` needs Docker, so it could not be sandboxed by dropping the daemon alone.
+- Consequently a `runs-on:` edit is still not the fix. Pointing *this* repository's CI at the
+  production host is a deliberate risk decision, not a configuration detail, and it is **not** to be
+  made as a side effect of unblocking CI. A dedicated runner host — or bringing the desktop runner
+  online, which is not production — is the clean answer.
 
 ## Known Vacuous Signals
 
