@@ -116,12 +116,17 @@ insert into public.audit_events(household_id,actor_user_id,event_type,subject_ty
 -- that silently did nothing shows up as a confusing failure in a later assertion instead of
 -- as the seed problem it is. Variables are named to avoid colliding with the table names --
 -- this file's own plpgsql has been bitten by that ambiguity twice already.
+-- Counts are scoped to this file's own fixture IDs rather than taken globally, so a second
+-- assertion file adding its own households or audit events cannot break this one.
 do $$
 declare seeded_households int; seeded_jobs int; seeded_audits int;
 begin
-  select count(*) into seeded_households from public.households;
-  select count(*) into seeded_jobs from public.deletion_jobs;
-  select count(*) into seeded_audits from public.audit_events;
+  select count(*) into seeded_households from public.households
+   where id in ('00000000-0000-0000-0000-000000000b01','00000000-0000-0000-0000-000000000b02','00000000-0000-0000-0000-000000000b03');
+  select count(*) into seeded_jobs from public.deletion_jobs
+   where id in ('00000000-0000-0000-0000-000000000f01','00000000-0000-0000-0000-000000000f02');
+  select count(*) into seeded_audits from public.audit_events
+   where subject_id in ('00000000-0000-0000-0000-000000000f01','00000000-0000-0000-0000-000000000f02');
   if seeded_households<>3 then raise exception 'ASSERT FAILED: expected 3 seeded households, found %', seeded_households; end if;
   if seeded_jobs<>2 then raise exception 'ASSERT FAILED: expected 2 seeded deletion jobs, found %', seeded_jobs; end if;
   if seeded_audits<>2 then raise exception 'ASSERT FAILED: expected 2 seeded audit events, found %', seeded_audits; end if;
