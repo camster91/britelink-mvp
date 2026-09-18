@@ -2,16 +2,27 @@
 
 This checklist documents the exact steps Cameron must complete to provision Supabase for BriteLink private beta. These steps must be completed before the authenticated workspace can operate with real family data.
 
-> **This checklist assumes a decision that has not been made.** It describes buying hosted
-> Supabase. `HOW-TO-RUN.md:26` states the intended runtime is **not** hosted Supabase, and
-> self-hosting GoTrue + PostgREST + Storage on the VPS is the alternative the repository's
-> stated direction points at. The two paths have different steps, costs, and operational
-> burdens, so treat everything below as one branch of an open decision rather than as the plan.
+> **Decision recorded 2026-09-18: hosted Supabase.** The open backend question is closed —
+> the runtime is hosted Supabase, not self-hosted GoTrue/PostgREST/Storage on the VPS. This
+> supersedes the "not hosted Supabase" line at `HOW-TO-RUN.md:26`, which now carries a matching
+> supersession note rather than contradicting this checklist.
 >
-> Nothing here may be carried out before the explicit infrastructure approval required by
-> `RELEASE_READINESS.md:39` and `GOAL_COMPLETION_PLAN.md:431`. Until a project exists, the
-> application runs as an unconfigured demo (`docs/STAGING_HANDOFF.md`), which is the honest
-> state — do not set `VITE_SUPABASE_*` to make it look otherwise.
+> **Scope: `dev` and `staging` only.** The project pair below is `britelink-dev` plus
+> `britelink-staging`. A **production** project is deliberately *not* provisioned yet, because
+> the production project is where real family data would live and that is gated on the
+> counsel-approved privacy notice and `VITE_PRIVACY_NOTICE_VERSION`. Do not create it early.
+>
+> The approval boundary still applies to the human steps: creating the account, configuring a
+> payment method, and entering credentials are not automatable from this repository. The
+> direction is approved; those steps are Cameron's to execute. Until a project exists the
+> application runs as an unconfigured demo (`docs/STAGING_HANDOFF.md`), which remains the
+> honest state — do not set `VITE_SUPABASE_*` to make it look otherwise.
+>
+> **Known blocker — read §7a before believing a live project will configure the site.** The
+> deployed site currently *cannot* pick up these variables: `readSupabaseConfig()` reads
+> `import.meta.env`, which Vite inlines at **build** time, and neither the Dockerfile nor
+> `docker-compose.yml` passes any build argument. A provisioned project alone therefore leaves
+> the deployed bundle an unconfigured demo. Local development via `.env.local` is unaffected.
 
 ## Prerequisites
 
@@ -22,33 +33,52 @@ This checklist documents the exact steps Cameron must complete to provision Supa
 
 ## 1. Create Supabase Projects
 
-You need at least two projects: **staging** (for testing) and **production** (for real families).
+Create two projects now: **`britelink-dev`** (local development) and **`britelink-staging`**
+(the hosted isolation checks and the full user journey). Do **not** create a production
+project yet — see the scope note above.
 
-### Staging Project
+### Region: choose `Canada (Central)` / `ca-central-1` — not `us-east-1`
+
+BriteLink stores children's education data and is operated in Canada. Supabase offers a
+Canadian region, so there is no reason to put this data in the United States:
+
+| choice | what it does |
+|---|---|
+| **`ca-central-1` (Canada (Central))** | **Use this.** Keeps project data in Canada. |
+| a general "Americas" region | **Do not use.** These auto-place by capacity and can land in `us-east-1`, outside Canada. |
+| `us-east-1` etc. | Only justified if Canadian residency has been ruled out in writing. |
+
+Pick the **specific** region code, not the continent grouping — the general regions are
+explicitly capacity-routed and cannot be relied on to stay in Canada. This matters for the
+privacy posture, so record the region you chose alongside the project refs.
+
+### `britelink-dev`
 
 - [ ] Create new project in Supabase dashboard
-- [ ] Name: `britelink-staging`
-- [ ] Region: Choose closest to your location (e.g., `us-east-1`)
+- [ ] Name: `britelink-dev`
+- [ ] Region: `Canada (Central)` / `ca-central-1`
 - [ ] Database password: Generate strong password, store in password manager
 - [ ] Wait for project to finish initializing (~2 minutes)
 - [ ] Note the Project URL: `https://[project-ref].supabase.co`
 - [ ] Note the `anon` public key from Settings → API
 
-### Production Project
+### `britelink-staging`
 
 - [ ] Create new project in Supabase dashboard
-- [ ] Name: `britelink-production`
-- [ ] Region: Same as staging for consistency
+- [ ] Name: `britelink-staging`
+- [ ] Region: **the same** `ca-central-1` (consistency is what makes staging predictive)
 - [ ] Database password: Generate separate strong password, store in password manager
 - [ ] Wait for project to finish initializing
 - [ ] Note the Project URL: `https://[project-ref].supabase.co`
 - [ ] Note the `anon` public key from Settings → API
 
 **CRITICAL:** Never use the `service_role` key in the browser or commit it to git.
+`src/supabase-config.js` enforces this in code and will refuse to boot on a `service_role`
+or `sb_secret_` key — but do not rely on that as the only guard.
 
 ## 2. Run Database Migrations
 
-For each project (staging first, then production):
+Do `dev` first, verify, then repeat for `staging`.
 
 1. Install Supabase CLI if not already installed:
    ```bash
@@ -61,14 +91,34 @@ For each project (staging first, then production):
    # You'll be prompted for your database password
    ```
 
-3. Run all 21 migrations in order:
+3. Run all **23** migrations in order:
    ```bash
    supabase db push
    ```
 
-4. Verify migrations succeeded:
+   There are 23 files in `supabase/migrations/` (the last is
+   `202608280023_attachment_scan_adapter.sql`). Earlier revisions of this checklist said 21 —
+   that was written before `022_retention_execution` and `023_attachment_scan_adapter` landed.
+   The migration files are authoritative; count them rather than trusting this line.
+
+   Pre-flight: `npm run test:migrations` applies every migration plus `supabase/storage-policies.sql`
+   and both `assert-*.sql` files to a throwaway PostgreSQL 16 container. All 23 apply cleanly and
+   every behavioural assertion passes. That is a *plain* Postgres rehearsal, not Supabase — useful
+   as a smoke test, but it does not substitute for `supabase db push` against the real project.
+
+4. Apply the storage policies, which `supabase db push` does **not** include:
+   ```bash
+   # paste supabase/storage-policies.sql into the dashboard SQL editor
+   ```
+
+5. Verify migrations succeeded:
    - Open Supabase dashboard → Database → Tables
-   - Confirm you see tables: `households`, `household_members`, `learners`, `learner_profiles`, `cases`, `plans`, `plan_weeks`, `plan_days`, `lessons`, `lesson_activities`, `lesson_resources`, `plan_reviews`, `deliveries`, `revisions`, `case_messages`, `case_attachments`, `case_message_reads`, `consent_records`, `privacy_requests`, `household_exports`, `payment_events`, `audit_events`, `quota_limits`, `operational_signals`, `educator_capacities`
+   - Confirm you see the tables the migrations create — `households`, `household_members`,
+     `learners`, `learner_profiles`, `cases`, `plans`, `plan_weeks`, `plan_days`, `lessons`,
+     `lesson_activities`, `lesson_resources`, `plan_reviews`, `deliveries`, `revisions`,
+     `case_messages`, `case_attachments`, `case_message_reads`, `consent_records`,
+     `privacy_requests`, `household_exports`, `payment_events`, `audit_events`, `quota_limits`,
+     `operational_signals`, `educator_capacities`, `retention_execution_ledger`
    - Check Database → Policies to confirm RLS policies are in place
 
 ## 3. Configure Authentication
@@ -140,36 +190,72 @@ BriteLink doesn't require Realtime for MVP, but if you want live updates:
 
 ## 6. Set Up Database Backups
 
-For production project only:
+For the `staging` project (and for production later, when it exists):
 
 - [ ] Go to Settings → Backups
 - [ ] Verify daily backups are enabled (default on Pro tier)
 - [ ] Enable Point-in-Time Recovery (PITR) if on Pro/Team tier
 - [ ] Document recovery procedures in `/docs/RECOVERY_OPERATIONS.md`
 
+**Do not read a green backup as proof of anything.** The current nightly job has produced nine
+consecutive valid archives that were all *empty* — well-formed dumps of a database with no
+tables, because the migrations were never applied to the live instance. A backup is only
+evidence once something is in it, which is why §2's verification step matters more than this
+one. The archive drill that catches this is `npm run test:restore:production`; it exits 3 on an
+empty archive rather than reporting success.
+
 ## 7. Configure Environment Variables
+
+These are **build-time** values, not runtime ones — see §7a. Vite inlines `VITE_*` into the
+client bundle when `npm run build` runs, so setting them after a build does nothing.
 
 ### For Local Development
 
 Create `.env.local` (never commit this file):
 
 ```bash
-VITE_SUPABASE_URL=https://[staging-project-ref].supabase.co
-VITE_SUPABASE_ANON_KEY=[staging-anon-key]
-VITE_PRIVACY_NOTICE_VERSION=2026-09-09
+VITE_SUPABASE_URL=https://[dev-project-ref].supabase.co
+VITE_SUPABASE_ANON_KEY=[dev-anon-key]
+# Leave empty until counsel approves the exact notice language.
+VITE_PRIVACY_NOTICE_VERSION=
 ```
 
-### For Production Deployment
+### For the deployed site
 
-Set these environment variables in your hosting platform (Vercel, Netlify, Cloudflare Pages, etc.):
+The site is **not** on Vercel, Netlify, or Cloudflare Pages. It is an nginx container built by
+`Dockerfile` and served on the VPS behind Traefik at `britelink.ashbi.ca`, deployed by
+`.github/workflows/deploy.yml`. The deploy runs `docker compose up -d --build` from a
+depth-1 clone of this repository on the VPS, so the build environment is the VPS, not GitHub
+Actions.
 
-```bash
-VITE_SUPABASE_URL=https://[production-project-ref].supabase.co
-VITE_SUPABASE_ANON_KEY=[production-anon-key]
-VITE_PRIVACY_NOTICE_VERSION=2026-09-09
-```
+**IMPORTANT:** leave `VITE_PRIVACY_NOTICE_VERSION` empty until counsel approves the exact
+privacy notice language. Do not carry the old `2026-09-09` placeholder forward — an unapproved
+version string is worse than none, because it asserts an approval that has not happened.
 
-**IMPORTANT:** Only set `VITE_PRIVACY_NOTICE_VERSION` after counsel approves the exact privacy notice language.
+## 7a. Blocker: the deploy path has no build-time env plumbing
+
+**As it stands, provisioning a project does not configure the deployed site.** Verified
+2026-09-18 against `Dockerfile`, `docker-compose.yml`, and `src/supabase-config.js`:
+
+- `readSupabaseConfig(environment = import.meta.env)` reads `VITE_SUPABASE_URL` and
+  `VITE_SUPABASE_ANON_KEY` from `import.meta.env` — **inlined by Vite at build time**.
+- `Dockerfile` runs `RUN npm run build` with **no `ARG`/`ENV` for any `VITE_*` variable**.
+- `docker-compose.yml` passes **no `build.args`**, and the service is only
+  `build: .`, `restart: unless-stopped`, `ports: 127.0.0.1:8088:80`.
+
+So even with `britelink-staging` fully provisioned, a rebuilt container would still ship the
+unconfigured demo, and `readSupabaseConfig()` would keep returning `configured: false`.
+
+Closing it needs, minimally: `ARG VITE_SUPABASE_URL` / `ARG VITE_SUPABASE_ANON_KEY` (and the
+privacy version) declared before `RUN npm run build` in the Dockerfile, plus matching
+`build.args` in the compose file sourced from an env file that lives **on the VPS and is never
+committed**. Note the `anon` key is designed to be public — it ends up in the shipped bundle
+either way — so this is not a secret-leakage problem; but the service-role key must never be
+passed here, and `supabase-config.js` will refuse to boot if one ever is.
+
+This is deliberately **not** wired up yet: doing so would put a real backend behind the public
+site, which is a deployment change gated on the same approval as provisioning. Local
+development needs none of it.
 
 ## 8. Test Staging Environment
 
@@ -187,7 +273,11 @@ Before touching production:
    npm run verify:hosted-isolation
    ```
 
-2. [ ] Verify all 104 isolation checks pass
+2. [ ] Verify **all 128** isolation checks pass — 104 read-isolation checks (D1) plus 24
+   mutation-denial probes behind 4 controls (D2, the cross-household write matrix). Both read
+   `docs/HOSTED_STAGING_VERIFICATION.md` for what each one proves. The D2 matrix sends real
+   cross-household writes that must all be denied, so point it at `staging` and never at a
+   project holding real family data.
 
 3. [ ] Test the complete user journey:
    - Sign in with magic link
@@ -201,10 +291,12 @@ Before touching production:
 
 ## 9. Security Hardening
 
-For production project only:
+For the `staging` project:
 
 - [ ] Go to Settings → API → API Settings
-- [ ] Review and restrict CORS origins to your production domain
+- [ ] Review and restrict CORS origins to the origins that actually serve the app
+      (`http://localhost:5173` for dev, and the staging hostname — not a production domain
+      that does not exist yet)
 - [ ] Set rate limits on Authentication endpoints (if available on your tier)
 - [ ] Enable email rate limiting to prevent abuse
 
@@ -214,7 +306,7 @@ For production project only:
 
 ## 10. Monitoring Setup
 
-For production project:
+For the `staging` project (extend to production when it exists):
 
 - [ ] Enable database logs (Settings → Logs)
 - [ ] Set up external monitoring (Sentry, LogRocket, or similar)
@@ -227,14 +319,16 @@ For production project:
 
 ## 11. Operational Health Checks
 
-- [ ] Verify the health check endpoint works:
+- [ ] Verify the health check endpoint works against `staging`:
    ```bash
-   export BRITELINK_SUPABASE_URL=https://[production-project-ref].supabase.co
-   export BRITELINK_SUPABASE_ANON_KEY=[production-anon-key]
+   export BRITELINK_SUPABASE_URL=https://[staging-project-ref].supabase.co
+   export BRITELINK_SUPABASE_ANON_KEY=[staging-anon-key]
    export BRITELINK_MONITOR_JWT=[admin-jwt-for-health-check]
    export BRITELINK_MONITOR_HOUSEHOLD_ID=[test-household-uuid]
    npm run health:hosted
    ```
+   These are `BRITELINK_*`, not `VITE_*` — they are read at **runtime** by a Node script, so
+   unlike §7 they do not need to be present at build time.
 
 - [ ] Verify the health check returns HTTP 200 with expected signals
 - [ ] Set up external monitoring to call this endpoint every 5 minutes
@@ -242,7 +336,7 @@ For production project:
 
 ## 12. Create Initial Admin User
 
-For production project:
+For the `staging` project:
 
 - [ ] Go to Authentication → Users
 - [ ] Add user manually:
@@ -288,8 +382,8 @@ For production project:
 
 Before allowing real families to use the system:
 
-- [ ] All 21 migrations applied successfully
-- [ ] RLS policies verified with hosted isolation check (104 checks passed)
+- [ ] All 23 migrations applied successfully
+- [ ] RLS policies verified with hosted isolation check (128 checks passed: 104 D1 + 24 D2)
 - [ ] Email templates customized and tested
 - [ ] Backup strategy documented and tested
 - [ ] Monitoring and alerts configured
@@ -318,15 +412,23 @@ Before allowing real families to use the system:
 **Solution:** Verify the `case-attachments` bucket exists and has the correct RLS policies from `supabase/storage-policies.sql`.
 
 ### Issue: Cross-household data leak in testing
-**Solution:** STOP. Do not proceed to production. Review RLS policies and re-run the isolation check until all 104 checks pass.
+**Solution:** STOP. Do not proceed past staging. Review RLS policies and re-run the isolation check until all 128 checks (104 D1 + 24 D2) pass.
 
 ## Post-Provisioning
 
-After Supabase is provisioned:
+After `dev` and `staging` are provisioned:
 
-- [ ] Update this checklist with actual project IDs (in secure docs, not in git)
+- [ ] Record the project refs and **the region you chose** in a secure doc, not in git
+- [ ] Confirm both projects are `ca-central-1` — a region mismatch between them is easy to
+      create and makes staging non-predictive
+- [ ] Note in the secure doc that no production project exists yet, and why
+
+The items below belong to the **private-beta** phase and are gated on approvals that have not
+happened. Do not work the list downward from here:
+
 - [ ] Share access with Cameron and any other administrators
-- [ ] Schedule the first private beta family onboarding
+- [ ] Create the production project *(gated: privacy notice approved by counsel)*
+- [ ] Schedule the first private beta family onboarding *(gated: 5–10 consented households)*
 - [ ] Monitor the system daily during the first week
 - [ ] Review Supabase billing after the first month
 
@@ -341,17 +443,27 @@ If you encounter issues during provisioning:
 
 ## Next Steps After Provisioning
 
-Once Supabase is provisioned and tested:
+Once `dev` and `staging` exist and the isolation checks pass:
 
 1. Run the full test suite: `npm test`
-2. Deploy to staging
-3. Run manual accessibility testing (VoiceOver, 200%/400% zoom)
-4. Recruit 5-10 private beta families
-5. Train educators on the staff workbench
+2. Run the migration harness: `npm run test:migrations`
+3. Run the production archive drill: `npm run test:restore:production`
+4. Point local development at `britelink-dev` via `.env.local` and confirm the app leaves the
+   unconfigured-demo state
+5. Close §7a — add the Dockerfile build args and compose `build.args` — **only if** the hosted
+   staging site is meant to be a live backend. This is a deployment change and needs the same
+   approval as provisioning.
+
+The following remain gated and are not "next steps" in the ordinary sense:
+
+6. Deploy a hosted environment backed by real data *(gated)*
+7. Run manual accessibility testing (VoiceOver, 200%/400% zoom)
+8. Recruit 5-10 private beta families *(gated: consented households)*
+9. Train educators on the staff workbench
 6. Begin private beta with daily monitoring
 
 ---
 
-**Last Updated:** 2026-09-09  
+**Last Updated:** 2026-09-18  
 **Owner:** Cameron  
-**Status:** Awaiting provisioning
+**Status:** Decision made — hosted Supabase, `dev` + `staging`, region `ca-central-1`. Awaiting project creation (Cameron's account and payment method). Production project deferred behind the privacy gates. §7a is an open in-repo gap.

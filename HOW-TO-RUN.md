@@ -23,7 +23,15 @@ The app will be available at `http://localhost:5173` (or the port shown in the t
 
 ## Self-host on vps.ashbi.ca (no cloud vendors)
 
-The intended runtime is this VPS, not hosted Supabase, Stripe, or OpenAI Sites. Unconfigured builds stay in interactive demo mode (device-only sample data). A local Postgres 16 container already runs on the VPS at `/docker/britelink-postgres` with nightly dumps under `/opt/backups/britelink`.
+> **Superseded in part, 2026-09-18.** The backend question was decided in favour of **hosted
+> Supabase** (`dev` + `staging`, region `ca-central-1`) — see
+> `docs/SUPABASE_PROVISIONING.md`. The paragraph below still describes the *web tier*
+> accurately: the SPA is built and served from this VPS, and Stripe and OpenAI Sites remain
+> out. Read "not hosted Supabase" as historical. Note also that the hosted projects do not yet
+> change what this container serves — the deploy path has no build-time env plumbing, which
+> `docs/SUPABASE_PROVISIONING.md` §7a records as an open gap.
+
+The intended web runtime is this VPS, not Stripe or OpenAI Sites. Unconfigured builds stay in interactive demo mode (device-only sample data). A local Postgres 16 container already runs on the VPS at `/docker/britelink-postgres` with nightly dumps under `/opt/backups/britelink`.
 
 ```bash
 npm ci
@@ -31,7 +39,7 @@ npm run build
 docker compose up --build -d
 ```
 
-The image serves `dist/client` with nginx on `127.0.0.1:8088`. Point Coolify/Traefik at that container when you are ready to publish a hostname. Do not set `VITE_SUPABASE_*` unless a self-hosted API on this same VPS is actually wired.
+The image serves `dist/client` with nginx on `127.0.0.1:8088`. Point Coolify/Traefik at that container when you are ready to publish a hostname. Do not set `VITE_SUPABASE_*` unless a backend actually exists to point them at — until then the unconfigured demo is the honest state.
 
 ## Available Commands
 
