@@ -1,12 +1,33 @@
+# Docker matches a pattern that contains NO SLASH only at the context root. This file's whole
+# spelling is shaped by that rule, because the obvious version of it leaks production secrets.
+#
+# A bare `.env` excludes ./.env and does NOT exclude supabase/selfhosted/.env -- and that second
+# file is the Supabase stack's own .env, holding JWT_SECRET, the anon and service-role keys and the
+# database password. The Dockerfile runs `COPY . .`, so a build whose context contains it bakes all
+# of that into an image layer. Measured, not assumed: with root-only patterns the nested file was
+# present in the built image.
+#
+# The live web deploy escaped this only because its .env happens to sit at its context root. The
+# production stack's clone at /opt/britelink-production is an equally valid context for this same
+# Dockerfile and does contain the nested .env, so the exposure was one `--build` away.
+#
+# Every path pattern below is `**/`-prefixed so it matches at any depth.
 node_modules
+**/node_modules
 dist
-.git
-.env
-.env.*
-!.env.example
+**/dist
+**/.git
+
+# Secrets. This repo generates real .env files in two separate places -- the web root, and
+# supabase/selfhosted/ -- so a root-only rule covers one and leaks the other. The negated line
+# re-includes the committed template, which carries placeholder values and is intentionally public.
+**/.env
+**/.env.*
+!**/.env.example
+
 qa
 ios
 docs
 coverage
-*.md
-!HOW-TO-RUN.md
+**/*.md
+!**/HOW-TO-RUN.md
