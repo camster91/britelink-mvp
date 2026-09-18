@@ -1,0 +1,14 @@
+# Everything in this repo is consumed by Linux tooling even though it is usually edited on
+# Windows: psql reads the SQL, bash runs the migration harness and the deploy scripts, and Vite
+# builds the SPA. Checking those files out with CRLF is not cosmetic here:
+#
+#   * a carriage return reaching a psql \echo lands in the emitted env block as a trailing \r
+#     inside a pasted user id, which fails far from where it was introduced;
+#   * a CRLF shell script dies on its first line with "\r: command not found".
+#
+# Without this file, core.autocrlf=true (the Windows default, and the setting on this machine)
+# rewrites every checkout to CRLF, and git warns on every commit that it is about to.
+#
+# text=auto still lets git sniff content, so the PNGs and WebP under public/ are detected as
+# binary and left byte-for-byte alone.
+* text=auto eol=lf
