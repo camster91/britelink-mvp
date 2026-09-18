@@ -14,6 +14,7 @@
     "test:staff-attachments": "node scripts/staff-attachment-recovery-audit.mjs",
     "test:households": "node scripts/multi-household-audit.mjs",
     "test:restore": "bash scripts/local-restore-drill.sh",
+    "test:migrations": "bash scripts/migration-harness/validate-migrations.sh",
     "health:hosted": "node scripts/hosted-health-check.mjs",
     "verify:hosted-isolation": "node scripts/hosted-isolation-check.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs"

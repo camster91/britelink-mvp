@@ -24,6 +24,7 @@ const operationalMetadataUrl = new URL("../supabase/migrations/202608280018_oper
 const attachmentRetryUrl = new URL("../supabase/migrations/202608280019_attachment_retry.sql", import.meta.url);
 const portableExportUrl = new URL("../supabase/migrations/202608280020_portable_export_manifest.sql", import.meta.url);
 const recentAuthenticationUrl = new URL("../supabase/migrations/202608280021_recent_authentication.sql", import.meta.url);
+const retentionExecutionUrl = new URL("../supabase/migrations/202608280022_retention_execution.sql", import.meta.url);
 
 test("every household-scoped private table enables row level security", async () => {
   const sql = await readFile(schemaUrl, "utf8");
@@ -106,3 +107,27 @@ test("operational metadata accepts only bounded non-content diagnostic dimension
 test("failed attachment retry reuses an owned quarantined record",async()=>{const sql=await readFile(attachmentRetryUrl,"utf8");assert.match(sql,/retry_message_attachment_upload/);assert.match(sql,/uploaded_by=auth\.uid\(\)/);assert.match(sql,/status='upload_failed'/);assert.match(sql,/attachment\.upload_retried/);assert.doesNotMatch(sql,/insert into public\.case_attachments/)});
 test("portable export manifest includes the authored hierarchy and explicit binary exclusions",async()=>{const sql=await readFile(portableExportUrl,"utf8");for(const key of ["schemaVersion","manifest","planWeeks","planDays","lessons","resources","attachmentMetadata","binaryAttachments"])assert.match(sql,new RegExp(`'${key}'`));assert.match(sql,/Binary files require separate authenticated retrieval/);assert.match(sql,/authentication_secrets/);assert.match(sql,/schema_version',2/);assert.match(sql,/guardian access required/)});
 test("sensitive guardian RPCs require a recently issued authenticated token",async()=>{const sql=await readFile(recentAuthenticationUrl,"utf8");assert.match(sql,/require_recent_authentication/);assert.match(sql,/request\.jwt\.claims/);assert.match(sql,/request\.jwt\.claim\.iat/);assert.match(sql,/recent authentication required/);assert.match(sql,/interval '10 minutes'/);for(const rpc of ["export_guardian_household","request_guardian_household_deletion"])assert.match(sql,new RegExp(`create function public\\.${rpc}`));assert.match(sql,/revoke all on function public\.export_guardian_household_authorized/)});
+test("retention execution ships disabled and records deletion outside the household cascade",async()=>{const sql=await readFile(retentionExecutionUrl,"utf8");
+  // The dry run mirrors src/service-domain.js retentionCandidates(), including its closed_at fallback.
+  assert.match(sql,/admin_retention_candidates/);assert.match(sql,/coalesce\(c\.closed_at,c\.updated_at\)/);assert.match(sql,/has_household_role\(target_household,array\['admin'\]/);
+  // The executor exists and drives the state machine 012 only ever anticipated.
+  assert.match(sql,/admin_execute_due_deletion_jobs/);for(const state of ["'running'","'failed'"])assert.match(sql,new RegExp(`status=${state}`));assert.match(sql,/started_at=now\(\)/);assert.match(sql,/failure_code=left\('failed: '\|\|coalesce\(nullif\(btrim\(sqlerrm\),''\),'unknown'\),80\)/);
+  // deletion_jobs.status='completed' is unreachable by construction: the successful path
+  // deletes the household, which cascades the job row away. Completion is therefore only
+  // ever recorded as a ledger outcome, and the test pins that so it cannot silently drift.
+  assert.doesNotMatch(sql,/status='completed'/);for(const outcome of ["'completed'","'failed'"])assert.match(sql,new RegExp(`outcome[^)]*${outcome}`));
+  // Due selection matches the partial index from 012 and is concurrency safe and idempotent.
+  assert.match(sql,/status='scheduled' and not legal_hold and eligible_at<=now\(\)/);assert.match(sql,/for update skip locked/);assert.match(sql,/constraint retention_execution_ledger_job_unique unique\(deletion_job_id\)/);assert.match(sql,/on conflict on constraint retention_execution_ledger_job_unique do nothing/);
+  // Safeguards are re-asserted at execution time, not trusted from scheduling time.
+  assert.match(sql,/job_row\.identity_verified is not true or job_row\.co_guardian_reviewed is not true/);
+  // The execution gate is off by default, has no client policy, and has no setter.
+  assert.match(sql,/execution_enabled boolean not null default false/);assert.match(sql,/insert into public\.retention_execution_controls\(id,execution_enabled\) values\(true,false\)/);assert.match(sql,/physical deletion execution is disabled/);assert.match(sql,/check\(not execution_enabled or enablement_basis is not null\)/);
+  for(const table of ["retention_execution_controls","retention_execution_ledger"])assert.match(sql,new RegExp(`alter table public\\.${table} enable row level security`));
+  assert.doesNotMatch(sql,/create policy/);
+  // The ledger is the surviving audit record: it must not cascade with the household.
+  assert.doesNotMatch(sql,/retention_execution_ledger[\s\S]*?references public\.households/);
+  assert.match(sql,/household_ref uuid not null/);assert.doesNotMatch(sql,/learner_name|preferred_name|message_body|file_name/);
+  // Only the dry run is reachable by a client role; the executor is owner/service-role only.
+  assert.match(sql,/grant execute on function public\.admin_retention_candidates\(uuid,integer,integer,timestamptz\) to authenticated/);
+  assert.doesNotMatch(sql,/grant execute on function public\.admin_execute_due_deletion_jobs/);
+})
