@@ -147,6 +147,63 @@ Do `dev` first, verify, then repeat for `staging`.
 
    The migration files are authoritative. If a name here disagrees with them, they win.
 
+## 2a. Seed staging with synthetic data
+
+This is issue #1's AC3: *"Staging contains only documented synthetic households, learners,
+cases, and staff identities."* `supabase/seed/synthetic-staging.sql` is the documented set.
+
+It creates **two** households, because isolation needs a counterparty: household A is the
+subject, household B is what A must not be able to reach. Each gets a learner, guardian
+consent, profile, order, case, plan → week → day → lesson → activity, resource, plan review,
+message, attachment, delivery, revision request, and audit rows, plus one pending deletion
+request and one scheduled deletion job for the retention work in #6.
+
+**Order matters: create the four auth users first.** Users belong to Supabase Auth — insert
+them through the dashboard or the admin API, so they get real identities that can mint JWTs.
+Inserting into `auth.users` directly produces rows that cannot sign in. Then pass the four
+resulting UUIDs in:
+
+```bash
+psql "$STAGING_DATABASE_URL" \
+  -v seed_confirm=yes \
+  -v admin_a=<uuid> -v guardian_a=<uuid> \
+  -v educator_a=<uuid> -v admin_b=<uuid> \
+  -f supabase/seed/synthetic-staging.sql
+```
+
+Properties worth knowing before you run it:
+
+- **It refuses to run without `seed_confirm=yes` and all four UUIDs.** The refusals *raise*;
+  they do not `\quit`, because `\quit` exits 0 and a guard that exits 0 is not a guard.
+- **It refuses to re-run** once the seed households exist, so a second invocation cannot
+  silently double the object graph.
+- **It prints a paste-ready block of the `BRITELINK_TEST_*` variables** the isolation checks in
+  `docs/HOSTED_STAGING_VERIFICATION.md` consume — 16 ids, no dashboard archaeology.
+- **It cannot mint the four JWTs.** One per user, from Supabase Auth. That half stays manual.
+
+Two things it deliberately does **not** do, both of which you must finish by hand:
+
+- **The storage object bytes.** The seed writes `case_attachments` metadata and the
+  `object_path` the storage policies key on, but no file reaches the bucket.
+  `docs/ATTACHMENT_OPERATIONS.md` is explicit that an object is never marked clean by hand, so
+  upload through the normal path and let the scanner record the verdict. Until the bytes exist,
+  a download check that expects *denial* passes vacuously — it would pass just as well against
+  a missing object.
+- **The `case-attachments` bucket itself**, private, 10 MB limit, MIME allow-list
+  `application/pdf,image/jpeg,image/png,text/plain`. See §4.
+
+**The scheduled deletion job is deliberately not due** (`eligible_at` is 90 days out).
+`admin_execute_due_deletion_jobs()` has no household scope — it takes *every* due job — so a
+due fixture here would let the next executor run anywhere destroy household B, taking all 24
+D2 mutation checks with it and surfacing as two dozen unrelated failures. Do not "fix" the
+timestamp.
+
+`scripts/migration-harness/validate-migrations.sh` applies this seed to a throwaway Postgres
+on every run, tests that both refusals refuse, and then verifies the seeded data with
+`verify-synthetic-seed.sql` — including that the storage policies admit the seeded pending
+upload and hide the counterparty's clean object. Proving it there is cheaper than proving it
+on staging.
+
 ## 3. Configure Authentication
 
 For each project:
@@ -492,10 +549,10 @@ The following remain gated and are not "next steps" in the ordinary sense:
 7. Run manual accessibility testing (VoiceOver, 200%/400% zoom)
 8. Recruit 5-10 private beta families *(gated: consented households)*
 9. Train educators on the staff workbench
-6. Begin private beta with daily monitoring
+10. Begin private beta with daily monitoring
 
 ---
 
 **Last Updated:** 2026-09-18  
 **Owner:** Cameron  
-**Status:** Decision made — hosted Supabase, `dev` + `staging`, region `ca-central-1`. Awaiting project creation (Cameron's account and payment method). Production project deferred behind the privacy gates. §7a is an open in-repo gap.
+**Status:** Decision made — hosted Supabase, `dev` + `staging`, region `ca-central-1`. Awaiting project creation (Cameron's account and payment method). Production project deferred behind the privacy gates. §7a is an open in-repo gap. The synthetic staging seed (§2a) is written and proven against a throwaway Postgres on every harness run; it has not yet been applied to a hosted project, because none exists.

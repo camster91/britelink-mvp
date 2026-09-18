@@ -108,4 +108,44 @@ for assertions in "$here"/assert-*.sql; do
   psql_run -f - <"$assertions"
 done
 
+# ---------------------------------------------------------------------------
+# The synthetic staging seed runs AFTER the assertions, on purpose.
+#
+# The assertion files are unit tests over fixtures they create and scope to. The seed is a
+# staging data set, and two of its rows are deliberately visible to *global* functions:
+# admin_list_pending_scan_attachments() and admin_execute_due_deletion_jobs(). Both are
+# written to take every matching row regardless of household. Apply the seed first and the
+# assertions would be measuring the seed's rows alongside their own.
+#
+# Ordering is the cheap fix; the seed's deletion job is also set 90 days out so the executor
+# can never select it even in a database where both exist at once. The verify step below is
+# what makes this more than an assertion that the SQL parsed.
+echo "== checking the seed's refusal guards =="
+# A guard that has never been observed refusing is not known to be a guard. These two runs must
+# fail; the successful run below is the third. Note the seed deliberately raises rather than
+# \quit-ing, because psql's \quit exits 0 and a guard that exits 0 cannot be detected here.
+seed_refuses() {
+  local label="$1"; shift
+  if psql_run "$@" -f - <"$repo/supabase/seed/synthetic-staging.sql" >/dev/null 2>/tmp/mh-guard; then
+    echo "  FAIL: the seed ran without $label" >&2
+    exit 1
+  fi
+  printf '  ok   refused without %s\n' "$label"
+}
+seed_refuses "seed_confirm"
+seed_refuses "user uuids" -v seed_confirm=yes
+
+echo "== applying the synthetic staging seed =="
+seed_users=(-v create_auth_users=yes
+            -v admin_a=5eed0000-0000-4000-8000-00000000ad01
+            -v guardian_a=5eed0000-0000-4000-8000-00000000ad02
+            -v educator_a=5eed0000-0000-4000-8000-00000000ad03
+            -v admin_b=5eed0000-0000-4000-8000-00000000ad04)
+psql_run -v seed_confirm=yes "${seed_users[@]}" -f - <"$repo/supabase/seed/synthetic-staging.sql"
+
+echo "== verifying the seeded data =="
+# Named verify-, not assert-, because the assert-*.sql glob above must not pick it up: it
+# depends on the seed having already been applied, and would fail there.
+psql_run "${seed_users[@]}" -f - <"$here/verify-synthetic-seed.sql"
+
 echo "PASS: all $applied migrations applied and every behavioural assertion passed."
