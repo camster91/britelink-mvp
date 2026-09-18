@@ -36,12 +36,12 @@
 **What Cameron must do:**
 1. Create Supabase account (if not already)
 2. Provision **development project**
-   - Apply 21 migrations from `supabase/migrations/`
+   - Apply all 23 migrations from `supabase/migrations/`
    - Seed synthetic households for testing
    - Configure invited-only Auth (no public signup)
    - Verify cross-household denial with `npm run verify:hosted-isolation`
 3. Provision **staging project**
-   - Apply same 21 migrations
+   - Apply the same 23 migrations
    - Configure Auth email templates and redirect allowlist
    - Set up managed backups + PITR
    - Verify multi-device save/reload, session refresh, JWT lifetime

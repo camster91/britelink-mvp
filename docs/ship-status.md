@@ -42,7 +42,7 @@ These require external approvals, credentials, or infrastructure that Cameron mu
 - **Supabase projects**: Development and staging projects (needs paid account)
 - **Auth configuration**: Passwordless magic link, invited-only accounts
 - **Environment secrets**: Project URLs, anon keys (never committed to repo)
-- **Database deployment**: Apply 21 migrations to live Supabase
+- **Database deployment**: Apply all 23 migrations to live Supabase
 - **Storage bucket**: Private `case-attachments` bucket with scanner integration
 
 ### ⚖️ Legal & Compliance
