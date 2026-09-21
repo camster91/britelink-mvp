@@ -495,7 +495,7 @@ For the `staging` project:
 
 Before allowing real families to use the system:
 
-- [ ] All 23 migrations applied successfully
+- [ ] All 40 migrations applied successfully
 - [ ] RLS policies verified with hosted isolation check (128 checks passed: 104 D1 + 24 D2)
 - [ ] Email templates customized and tested
 - [ ] Backup strategy documented and tested

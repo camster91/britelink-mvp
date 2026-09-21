@@ -115,7 +115,7 @@ real `supabase/postgres` + GoTrue + PostgREST + storage-api behind one gateway, 
 - **D2 mutation denial: 23 of 24 denied**, with 4 controls. The 24th is described below.
 
 Read this as evidence about the **schema and its policies**, which are the same on hosted Supabase
-because it is the same image, the same 23 migrations and the same policy SQL. It is *not* evidence
+because it is the same image, the same migration chain and the same policy SQL. It is *not* evidence
 about a hosted project's network configuration, dashboard, backups or PITR, and should not be read
 as closing those.
 

@@ -167,7 +167,7 @@ Fill the blanks in `docs/INCIDENT_RESPONSE.md` and `docs/MONITORING_OPERATIONS.m
 
 On both projects, in order:
 
-1. Apply all twenty-one migrations in `supabase/migrations/`.
+1. Apply all 40 migrations in `supabase/migrations/`.
 2. Apply `supabase/storage-policies.sql`.
 3. Create the private `case-attachments` bucket with the documented MIME and 10 MB limits.
 4. Confirm portable authenticated privileges from `202608280014_authenticated_privileges.sql` (no extra broad grants).

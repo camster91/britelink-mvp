@@ -8,6 +8,9 @@ services:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
         VITE_PRIVACY_NOTICE_VERSION: ${VITE_PRIVACY_NOTICE_VERSION:-}
+        # The commit being built, so /version.json reports the live revision. The deploy script
+        # exports this before `docker compose up -d --build`; absent locally, which is fine.
+        BRITELINK_BUILD_COMMIT: ${BRITELINK_BUILD_COMMIT:-}
     # Deliberately NO `environment:` block. The image derives its CSP origin from the very same
     # build arg that configured the bundle (see the ENV in the Dockerfile), so passing it again at
     # run time would not reinforce that coupling -- it would add a way to break it. An `up -d`

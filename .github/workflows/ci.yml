@@ -39,6 +39,14 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Provenance guard, kept before the tests so a provenance failure is reported as
+      # provenance rather than as a confusing import error. Fails when a tracked test imports
+      # a file git does not track -- the defect that shipped a broken main three times here.
+      # A clean checkout is the only checkout where this check is meaningful, so CI is where
+      # it belongs. See scripts/check-tracked-test-imports.mjs for the rationale.
+      - name: Tests do not depend on untracked files
+        run: node scripts/check-tracked-test-imports.mjs
+
       - name: Unit and integration tests
         run: npm test
         timeout-minutes: 10

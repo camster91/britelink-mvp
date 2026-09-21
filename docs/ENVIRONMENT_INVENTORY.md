@@ -42,7 +42,7 @@ stays unconfigured until someone decides otherwise:**
 
 ### E6 — the synthetic rehearsal is not environment separation
 
-`npm run test:migrations` applies all 23 migrations plus `supabase/storage-policies.sql` to a
+`npm run test:migrations` applies all 40 migrations plus `supabase/storage-policies.sql` to a
 throwaway container. It is a real PostgreSQL 16 apply and a genuine smoke test, but it is
 **one** database. It cannot demonstrate that dev and staging are separated from each other,
 which is what issue #1 actually asks for. Do not let a green harness run stand in for E2/E3.

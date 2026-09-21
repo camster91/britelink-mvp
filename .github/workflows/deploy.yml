@@ -123,6 +123,11 @@ jobs:
           printf '%s %s\n' "$(date -Is)" "$DEPLOYED_SHA" >> /root/britelink-deploy-history.log
 
           echo "== build and start =="
+          # Exported so compose passes it as a build arg and the image writes /version.json.
+          # Exported rather than inlined: compose reads ${BRITELINK_BUILD_COMMIT} from the
+          # environment of the command that invokes it, and a per-command prefix would not
+          # survive the `up --build` subprocess boundary as reliably as an export does.
+          export BRITELINK_BUILD_COMMIT="$DEPLOYED_SHA"
           docker compose up -d --build
 
           echo "== post-deploy verification =="
@@ -139,6 +144,17 @@ jobs:
             exit 1
           fi
           echo "HTTP 200 from 127.0.0.1:8088"
+
+          # The served revision must match what we just deployed. This is the check that turns
+          # "the deploy exited 0" into "the live app reports this exact commit" -- and it fails
+          # loudly if the build stamp silently regresses to "unknown".
+          SERVED_VERSION=$(curl -sS --max-time 5 http://127.0.0.1:8088/version.json | head -c 2000 || true)
+          echo "served /version.json: $SERVED_VERSION"
+          case "$SERVED_VERSION" in
+            *"$DEPLOYED_SHA"*) echo "served revision matches deployed commit: $DEPLOYED_SHA" ;;
+            *) echo "::error::served /version.json does not name $DEPLOYED_SHA -- build stamp missing or stale";
+               docker compose logs --tail=50 web || true; exit 1 ;;
+          esac
 
           AFTER_CONTAINER=$(docker compose ps -q web || true)
           echo "container: $AFTER_CONTAINER"

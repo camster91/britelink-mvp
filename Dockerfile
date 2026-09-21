@@ -30,9 +30,13 @@ ARG VITE_SUPABASE_ANON_KEY=""
 # record a notice nobody approved. Wired now so that clearing it later is one .env change and no
 # code change.
 ARG VITE_PRIVACY_NOTICE_VERSION=""
+# The commit being built. Absent on a local build, which yields version.json commit="unknown".
+# This is what makes the deployed revision readable at /version.json instead of requiring an SSH.
+ARG BRITELINK_BUILD_COMMIT=""
 ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_PRIVACY_NOTICE_VERSION=$VITE_PRIVACY_NOTICE_VERSION
+ENV BRITELINK_BUILD_COMMIT=$BRITELINK_BUILD_COMMIT
 
 RUN npm run build
 

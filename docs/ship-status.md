@@ -31,7 +31,7 @@ The core parent and educator experiences are complete and polished for private b
 - **Accessibility**: WCAG A/AA compliance, keyboard navigation, touch targets, reduced motion
 - **Build**: Production bundle ready (`npm run build` + Sites packaging)
 - **Security**: CSP headers, input validation, safe redirects, RLS policies
-- **Schema**: 23 migrations with household isolation and composite integrity
+- **Schema**: 40 migrations with household isolation and composite integrity
 - **CI/CD**: GitHub Actions validates every PR and deploys `main` over SSH — see below
 
 ## What Needs Cameron (Blocked)
@@ -42,7 +42,7 @@ These require external approvals, credentials, or infrastructure that Cameron mu
 - **Supabase projects**: Development and staging projects (needs paid account)
 - **Auth configuration**: Passwordless magic link, invited-only accounts
 - **Environment secrets**: Project URLs, anon keys (never committed to repo)
-- **Database deployment**: Apply all 23 migrations to live Supabase
+- **Database deployment**: Apply all 40 migrations to live Supabase
 - **Storage bucket**: Private `case-attachments` bucket with scanner integration
 
 ### ⚖️ Legal & Compliance
