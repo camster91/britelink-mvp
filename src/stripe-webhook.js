@@ -42,10 +42,24 @@ export async function verifyStripeWebhook(payload, signature, secret, tolerance 
     return { verified: false, event: null, error: "Malformed signature header" };
   }
 
-  // Check timestamp tolerance
+  // Check timestamp tolerance.
+  //
+  // Two directions, both required. The original only rejected old timestamps
+  // (`currentTime - timestamp > tolerance`), which silently ACCEPTED any
+  // future-dated timestamp: for a timestamp ahead of now the difference is
+  // negative, and a negative number is never greater than the tolerance. An
+  // attacker who can choose `t` could therefore mint a signature that never
+  // expires, defeating the replay window this check exists to enforce.
+  const signedAt = Number.parseInt(timestamp, 10);
+  if (!Number.isFinite(signedAt)) {
+    return { verified: false, event: null, error: "Malformed signature timestamp" };
+  }
   const currentTime = Math.floor(Date.now() / 1000);
-  if (currentTime - parseInt(timestamp, 10) > tolerance) {
+  if (currentTime - signedAt > tolerance) {
     return { verified: false, event: null, error: "Webhook timestamp is too old" };
+  }
+  if (signedAt - currentTime > tolerance) {
+    return { verified: false, event: null, error: "Webhook timestamp is in the future" };
   }
 
   // Verify the signature
@@ -68,7 +82,12 @@ export async function verifyStripeWebhook(payload, signature, secret, tolerance 
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    if (computedSignature !== expectedSignature) {
+    // Constant-time comparison. A plain `!==` short-circuits on the first
+    // differing byte, so the time it takes to reject leaks how many leading
+    // bytes of a guessed signature were correct -- enough to recover a valid
+    // signature byte by byte. Stripe's own libraries use a constant-time
+    // compare for this reason.
+    if (!timingSafeEqualHex(computedSignature, expectedSignature)) {
       return { verified: false, event: null, error: "Signature verification failed" };
     }
 
@@ -78,6 +97,28 @@ export async function verifyStripeWebhook(payload, signature, secret, tolerance 
   } catch (error) {
     return { verified: false, event: null, error: error.message };
   }
+}
+
+/**
+ * Compare two hex strings without leaking length or content through timing.
+ *
+ * Always walks the full length of the longer input and accumulates differences
+ * with bitwise OR, so the comparison cost does not depend on where the first
+ * mismatch occurs. Length inequality is folded into the result rather than
+ * returned early.
+ *
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+function timingSafeEqualHex(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const length = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let index = 0; index < length; index += 1) {
+    diff |= (a.charCodeAt(index) || 0) ^ (b.charCodeAt(index) || 0);
+  }
+  return diff === 0;
 }
 
 /**
