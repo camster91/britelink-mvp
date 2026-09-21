@@ -201,7 +201,7 @@ Each household needs a policy-visible sentinel in every one of the 25 private ta
 **Owner:** engineering.  
 **Depends on:** C complete. Real-family language from B1 is not required if only synthetic data is used.
 
-### D1. Hosted read isolation (104 checks)
+### D1. Hosted read isolation (116 checks)
 
 Set trusted-shell variables from `.env.example` (`BRITELINK_TEST_ENVIRONMENT=staging` and the two admin JWTs). Run:
 
@@ -209,7 +209,7 @@ Set trusted-shell variables from `.env.example` (`BRITELINK_TEST_ENVIRONMENT=sta
 npm run verify:hosted-isolation
 ```
 
-**Pass:** 104 checks green. Store only the privacy-minimal summary JSON. Any leaked row, missing sentinel, or HTTP error fails the gate.
+**Pass:** 116 checks green. Store only the privacy-minimal summary JSON. Any leaked row, missing sentinel, or HTTP error fails the gate.
 
 ### D2. Hosted mutation-denial matrix
 
@@ -407,7 +407,7 @@ Every remaining official goal maps to exactly one primary workstream.
 | Signed payment webhook / checkout | E1 | Provider staging reconciliation |
 | Credentialed educator approval | B2, G | Signed quality review |
 | 5–10 household private beta | H | Beta report |
-| Hosted isolation (104 checks) | D1 | Privacy-minimal verifier JSON |
+| Hosted isolation (116 checks) | D1 | Privacy-minimal verifier JSON |
 | Hosted mutation isolation | D2 | Mutation-denial report |
 | Incident tabletop | F4 | Tabletop notes |
 

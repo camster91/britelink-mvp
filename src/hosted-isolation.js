@@ -24,6 +24,32 @@ const PRIVATE_TABLES = [
   "deliveries",
   "revision_requests",
   "privacy_requests",
+  // Added 2026-09-21. These three carry household-scoped data and had RLS enabled
+  // in the database, but were not in this sweep -- so the isolation gate did not
+  // actually prove cross-household denial on them. A live count of RLS-enabled
+  // tables in public returned 31 against this list's 25, and these were three of
+  // the six missing. The other three (households, package_entitlements,
+  // retention_execution_controls, retention_execution_ledger) are deliberately
+  // excluded below.
+  "attachment_object_observations",
+  "attachment_object_deletions",
+  "retention_execution_ledger",
+];
+
+// Tables with RLS enabled that are intentionally NOT swept here, with the reason.
+// Kept explicit so the next reader can tell a decision from an oversight, and so a
+// future table is not silently added to PRIVATE_TABLES without thought.
+//
+//   households                 -- the sentinel is its own id; membership is the scoped
+//                                 proof, and it is swept. A household row visible to
+//                                 its own members is correct, not a leak.
+//   memberships                -- swept (above).
+//   package_entitlements       -- no household_id column; scoped by package code.
+//   retention_execution_controls -- a singleton boolean gate, no tenant data.
+const INTENTIONALLY_UNSWEPT = [
+  "households",
+  "package_entitlements",
+  "retention_execution_controls",
 ];
 
 const UUID =

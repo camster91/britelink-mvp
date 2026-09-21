@@ -31,8 +31,11 @@ The app will be available at `http://localhost:5173` (or the port shown in the t
 > `docs/SUPABASE_PROVISIONING.md`. The paragraph below still describes the *web tier*
 > accurately: the SPA is built and served from this VPS, and Stripe and OpenAI Sites remain
 > out. Read "not hosted Supabase" as historical. Note also that the hosted projects do not yet
-> change what this container serves — the deploy path has no build-time env plumbing, which
-> `docs/SUPABASE_PROVISIONING.md` §7a records as an open gap.
+> change what this container serves — that is now a **decision** rather than a missing
+> mechanism: the deployment builds the Supabase project URL, anon key, privacy notice version,
+> and commit stamp from build args (`Dockerfile`, `docker-compose.yml`), and the CSP origin is
+> derived from the same value. With no `.env` on the host the build still produces the honest
+> demo. See `docs/SUPABASE_PROVISIONING.md` §7a.
 
 The intended web runtime is this VPS, not Stripe or OpenAI Sites. Unconfigured builds stay in interactive demo mode (device-only sample data). A local Postgres 16 container already runs on the VPS at `/docker/britelink-postgres` with nightly dumps under `/opt/backups/britelink`.
 

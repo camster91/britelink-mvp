@@ -42,16 +42,40 @@ test("hosted isolation checks every private table in both directions and the buc
     },
   });
   assert.equal(report.status, "passed");
-  assert.equal(report.tableCount, 25);
-  assert.equal(report.checkCount, 104);
+  // Derived from the list, not hardcoded. The sweep previously asserted a literal 25,
+  // which let three RLS-enabled household tables sit outside the isolation proof while
+  // this test stayed green. A count that cannot drift from its source is the fix.
+  assert.equal(report.tableCount, PRIVATE_TABLES.length);
+  assert.equal(PRIVATE_TABLES.length, 28);
+  // checkCount = four table checks per table, plus four bucket checks (two actors x
+  // own-prefix visible / foreign-prefix denied). The bucket contribution is additive and
+  // was previously folded into a hardcoded 104, which hid the arithmetic.
+  const TABLE_CHECKS_PER_TABLE = 4;
+  const BUCKET_CHECKS = 4;
   assert.equal(
-    requests.filter((item) => item.url.includes("/rest/v1/")).length,
-    PRIVATE_TABLES.length * 4,
+    report.checkCount,
+    PRIVATE_TABLES.length * TABLE_CHECKS_PER_TABLE + BUCKET_CHECKS,
   );
+  // The /rest/v1/ count is NOT purely the table sweep: the D2 mutation matrix adds
+  // membership role-control reads, RPC probes, forged-attribution inserts, and one update.
+  // Asserting the sweep size here would have been wrong at any table count. What must hold
+  // is that the sweep contributes exactly four calls per table, so assert that directly.
+  // The sweep is the read-only pass: per table it issues four GETs carrying
+  // select=household_id and limit=1 (two actors x own/foreign). Match that exact
+  // signature so the mutation-matrix probes against the same tables are excluded.
+  const sweepCalls = requests.filter(
+    (item) =>
+      item.url.includes("select=household_id") &&
+      item.url.includes("limit=1") &&
+      PRIVATE_TABLES.some((table) => item.url.includes(`/rest/v1/${table}?`)),
+  );
+  assert.equal(sweepCalls.length, PRIVATE_TABLES.length * 4);
+  // Bucket checks are additive: two list calls per actor (own prefix, foreign prefix),
+  // on top of the per-table sweep.
   assert.equal(
     requests.filter((item) => item.url.includes("/storage/v1/object/list/"))
       .length,
-    4,
+    2 * 2,
   );
   assert.ok(
     requests.every(

@@ -339,30 +339,36 @@ Actions.
 privacy notice language. Do not carry the old `2026-09-09` placeholder forward — an unapproved
 version string is worse than none, because it asserts an approval that has not happened.
 
-## 7a. Blocker: the deploy path has no build-time env plumbing
+## 7a. RESOLVED (2026-09-21): the deploy path now has build-time env plumbing
 
-**As it stands, provisioning a project does not configure the deployed site.** Verified
-2026-09-18 against `Dockerfile`, `docker-compose.yml`, and `src/supabase-config.js`:
+**Was a blocker; is not any more.** This section previously read "the deploy path has no
+build-time env plumbing", verified 2026-09-18. That is now false — the plumbing exists:
 
-- `readSupabaseConfig(environment = import.meta.env)` reads `VITE_SUPABASE_URL` and
-  `VITE_SUPABASE_ANON_KEY` from `import.meta.env` — **inlined by Vite at build time**.
-- `Dockerfile` runs `RUN npm run build` with **no `ARG`/`ENV` for any `VITE_*` variable**.
-- `docker-compose.yml` passes **no `build.args`**, and the service is only
-  `build: .`, `restart: unless-stopped`, `ports: 127.0.0.1:8088:80`.
+- `Dockerfile` declares `ARG VITE_SUPABASE_URL`, `ARG VITE_SUPABASE_ANON_KEY`,
+  `ARG VITE_PRIVACY_NOTICE_VERSION` and `ARG BRITELINK_BUILD_COMMIT` before `RUN npm run build`,
+  and promotes each to `ENV` so Vite inlines them.
+- `docker-compose.yml` passes matching `build.args`, sourced from the untracked `.env` beside it
+  with `:-` defaults, so a build with no `.env` still produces the demo.
+- The nginx `Content-Security-Policy` derives its `connect-src` origin from the **same**
+  `VITE_SUPABASE_URL` build arg, so the policy and the bundle cannot disagree about where the
+  API lives.
 
-So even with `britelink-staging` fully provisioned, a rebuilt container would still ship the
-unconfigured demo, and `readSupabaseConfig()` would keep returning `configured: false`.
+**What is still true**, and worth keeping in view:
 
-Closing it needs, minimally: `ARG VITE_SUPABASE_URL` / `ARG VITE_SUPABASE_ANON_KEY` (and the
-privacy version) declared before `RUN npm run build` in the Dockerfile, plus matching
-`build.args` in the compose file sourced from an env file that lives **on the VPS and is never
-committed**. Note the `anon` key is designed to be public — it ends up in the shipped bundle
-either way — so this is not a secret-leakage problem; but the service-role key must never be
-passed here, and `supabase-config.js` will refuse to boot if one ever is.
+- The defaults are empty on purpose. A build with no arguments produces the unconfigured demo,
+  exactly as before — adding the plumbing changed no existing deploy.
+- The service-role key must never be passed as a build arg. `src/supabase-config.js` decodes the
+  JWT and refuses to boot on a `service_role` key or an `sb_secret_` value; the anon key is
+  public by design and ships in the bundle either way.
+- Setting `VITE_PRIVACY_NOTICE_VERSION` is the switch that unlocks guardian intake. Leave it
+  empty until counsel approves the exact notice text: a version string that outruns approval is
+  worse than none, because it asserts an approval that has not happened.
 
-This is deliberately **not** wired up yet: doing so would put a real backend behind the public
-site, which is a deployment change gated on the same approval as provisioning. Local
-development needs none of it.
+The remaining gate is the **decision** to point the deployed site at a real backend, which is the
+same approval as provisioning. The mechanism is ready; the authorisation is not.
+
+Verified 2026-09-21 against `Dockerfile`, `docker-compose.yml`, `nginx.conf.template`, and
+`src/supabase-config.js`.
 
 ## 8. Test Staging Environment
 

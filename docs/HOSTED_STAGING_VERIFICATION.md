@@ -46,7 +46,13 @@ npm run verify:hosted-isolation
 
 A pass requires two independent parts.
 
-**Read isolation (D1), 104 checks:**
+**Read isolation (D1), 104 checks at the time of this run:**
+
+> **Updated 2026-09-21.** The sweep now covers **28** tables and **116** checks. Three
+> household-scoped tables with RLS enabled (`attachment_object_observations`,
+> `attachment_object_deletions`, `retention_execution_ledger`) were outside this list, so the
+> 104-check run below did not prove cross-household denial on them. Rerun D1 to obtain
+> 116-check evidence before closing the gate.
 
 - both administrators can see an own-household sentinel on each of 25 private tables;
 - neither administrator can see the other household on any of those tables;
@@ -108,7 +114,7 @@ verifier and the schema without needing a hosted project.
 real `supabase/postgres` + GoTrue + PostgREST + storage-api behind one gateway, every port bound to
 127.0.0.1, 23 migrations applied with no shim, seeded with the synthetic two-household set):
 
-- **D1 read isolation: passed.** 25 private tables, 104 checks — both actors, own-household visible
+- **D1 read isolation: passed.** 25 private tables at the time of the run, 104 checks — both actors, own-household visible
   and cross-household denied on each, plus the bucket list. The storage sentinel is load-bearing
   here: D1 refuses to report at all until *every* administrator can list an own-household object, so
   an empty own-household result fails rather than passes.
