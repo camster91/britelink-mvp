@@ -146,6 +146,14 @@ Explicit approval immediately before: provisioning paid or external infrastructu
 
 Local code, tests, documentation, and synthetic preview work stay in scope without approval.
 
+## Progress log
+
+- **2026-09-21 — Phase 0 closed** at `8ca91a6`. T0.1 and T0.5 closed by evidence (nothing to remove; false alarm retracted). T0.3 done: `/version.json` reports the deployed commit and the deploy fails if it does not match. T0.6 done: the provenance guard is in CI and proven by negative control. T0.4 restated honestly — full-chain migration execution already runs in CI; the residual gap is narrower than first written. T1.2 prep done: eight documents corrected from 21–23 migrations to 40.
+- **2026-09-21 — external packets prepared** at `3a4e8dc`. Counsel packet, educator packet, and staging provisioning runbook drafted, each with its own open drafting notes so unsettled facts are not sent as decided. None sent.
+- **Open and unchanged:** production runs `c805455` while the repository is at `3a4e8dc`. Deploying is a production action awaiting Cameron.
+
+**Done when:** the repo is self-describing — a clean clone reproduces the running product, and no live behaviour is unattributable to a committed file.
+
 ## If only one thing starts today
 
 **Send the counsel packet (T1.3).** It has the longest and least predictable lead time, it needs no infrastructure, and nothing involving real families can happen without it. Engineering can close Phase 0 in the same window.
