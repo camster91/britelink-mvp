@@ -36,6 +36,11 @@
 | Consent checkbox label was 19px tall with a 13px box — the legal consent control | High (accessibility on mobile) | Fixed: 44px desktop / 58px mobile |
 | `npm audit --omit=dev` was not clean as documented — `vite` + `@vitejs/plugin-react` were build-only tooling in `dependencies` | Medium (wrong classification + a false claim in docs) | Fixed: moved to devDependencies; audit now 0 |
 | No favicon (404 on every load), no meta description/OG tags, `robots.txt` served the SPA shell so crawlers would index a sign-in wall | Medium (polish + discoverability) | Fixed: favicon, metadata, honest `Disallow: /` with noindex |
+| Six RLS-enabled tables were outside the isolation sweep, three of them household-scoped — the cross-household proof did not cover them | High (security coverage) | Fixed: 28 tables / 116 checks; three deliberately unswept are now named with reasons |
+| No HSTS on any response. Traefik sets it for its other routes but not the britelink routers | Medium (security) | Fixed at nginx; all 6 headers now verified live |
+| `stripe-webhook.js` had no tests and two real defects: a future-dated timestamp bypassed the replay window, and `!==` leaked signature bytes through timing | High (security) | Fixed + 11 new tests |
+| No README at all | Medium (onboarding) | Added |
+| `SUPABASE_PROVISIONING.md` had a section titled "Blocker: the deploy path has no build-time env plumbing" — false since the plumbing landed | Medium (stale docs) | Corrected to RESOLVED with what remains true |
 
 ## Verified clean
 
@@ -65,6 +70,10 @@
 - Flexible week, day-aware next action, weekly progress narrative (`BUILD-PRIORITIES.md` P0/P1)
 - Calendar sync, printing, reports (P2)
 - Mutation-denial matrix build-out
+
+## Test count
+
+185 -> 191 as of `90a8479` (11 webhook, 6 security-header tests added).
 
 ## Next action
 
