@@ -41,6 +41,15 @@ server {
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    # HSTS. TLS terminates at Traefik, which sets stsSeconds for its other routes but NOT for
+    # the two britelink routers (britelink.yml declares only tls.certResolver). Setting it here
+    # is the defensive fix that lives in this repository: the header reaches the browser on
+    # every response this container serves, so it does not depend on the edge config staying
+    # right. Traefik passes our headers through; it does not strip them.
+    #
+    # includeSubDomains is omitted deliberately. It would also bind anything else under
+    # ashbi.ca reached from this host, and this repo does not own that decision.
+    add_header Strict-Transport-Security "max-age=31536000" always;
     # connect-src is the one directive that widens, and only to a single named origin. Never '*':
     # this app handles children's education records, and a wildcard would let any script that ever
     # reaches the page exfiltrate an authenticated session's data to anywhere.
