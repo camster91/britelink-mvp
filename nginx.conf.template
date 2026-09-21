@@ -44,7 +44,13 @@ server {
     # connect-src is the one directive that widens, and only to a single named origin. Never '*':
     # this app handles children's education records, and a wildcard would let any script that ever
     # reaches the page exfiltrate an authenticated session's data to anywhere.
-    add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${BRITELINK_API_ORIGIN}; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+    #
+    # style-src has NO 'unsafe-inline'. That exception used to be required by two inline-styled
+    # bootstrap error screens in src/main.jsx; those now use the .boot-fallback classes, so the
+    # exception was dropped. Fonts are self-hosted under /fonts (previously an @import from
+    # fonts.googleapis.com, which this policy blocked -- the browser silently fell back to system
+    # fonts and logged a CSP violation on every load).
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${BRITELINK_API_ORIGIN}; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
 
     location / {
         try_files $uri $uri/ /index.html;

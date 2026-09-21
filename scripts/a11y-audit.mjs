@@ -6,7 +6,15 @@ import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
 const origin="http://127.0.0.1:4317";
-const server=spawn(process.execPath,["node_modules/vite/bin/vite.js","--host","127.0.0.1","--port","4317"],{stdio:"ignore"});
+// The demo views only exist when Supabase is UNconfigured (src/main.jsx renders the
+// authenticated app otherwise). Vite loads .env.local automatically, and developers
+// with a configured workspace were silently getting the sign-in screen here -- the
+// audit then failed looking for a "Learning plan" button that the demo owns.
+//
+// Pinning both Supabase variables to the empty string forces the demo build even when
+// .env.local exists, so this audit measures what it claims to measure. `--mode test`
+// additionally skips .env.local's mode-specific overrides.
+const server=spawn(process.execPath,["node_modules/vite/bin/vite.js","--host","127.0.0.1","--port","4317","--mode","test"],{stdio:"ignore",env:{...process.env,VITE_SUPABASE_URL:"",VITE_SUPABASE_ANON_KEY:"",VITE_PRIVACY_NOTICE_VERSION:""}});
 
 async function waitForServer(){for(let attempt=0;attempt<60;attempt+=1){try{const response=await fetch(origin);if(response.ok)return}catch{}await new Promise((resolve)=>setTimeout(resolve,100))}throw new Error("Accessibility preview server did not start")}
 

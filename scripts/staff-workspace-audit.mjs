@@ -406,6 +406,22 @@ try {
   await refreshPage
     .getByRole("heading", { name: /Noah Updated · annual/ })
     .waitFor();
+  // The heading switching to the fallback case and the draft-reset effect land in the same
+  // React commit, so asserting the input immediately after waitFor() is a race: the heading
+  // can be visible while the controlled input still holds its previous value for a frame.
+  // Poll the label's own input until it settles rather than sampling once.
+  await refreshPage
+    .waitForFunction(
+      () => {
+        const label = [...document.querySelectorAll("label")].find((node) =>
+          node.textContent?.startsWith("Operational reason"),
+        );
+        return label?.querySelector("input")?.value === "";
+      },
+      null,
+      { timeout: 5000 },
+    )
+    .catch(() => {});
   if ((await refreshPage.getByLabel("Operational reason").inputValue()) !== "")
     throw new Error(
       "Removed selected case leaked draft state into fallback case",

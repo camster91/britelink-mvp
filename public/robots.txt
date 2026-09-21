@@ -1,0 +1,8 @@
+# BriteLink is a private, invited-accounts-only beta. Crawlers must not index it:
+# every public URL resolves to a sign-in wall, so indexing would surface an empty
+# login page in search results.
+#
+# When the product opens publicly, replace this with an allow-all policy and
+# remove the noindex meta tag from index.html.
+User-agent: *
+Disallow: /

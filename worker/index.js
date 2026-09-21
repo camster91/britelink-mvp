@@ -1,5 +1,7 @@
 const SECURITY_HEADERS = {
-  "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+  // style-src and font-src have no 'unsafe-inline' and no external origin: the bootstrap
+  // error screens use .boot-fallback classes, and Inter is self-hosted under /fonts.
+  "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
   "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Content-Type-Options": "nosniff",

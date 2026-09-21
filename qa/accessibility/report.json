@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-06T20:16:11.077Z",
+  "generatedAt": "2026-09-21T17:49:38.526Z",
   "standard": "axe WCAG 2 A/AA/2.1 AA",
   "zoomMethod": "Responsive CSS viewport equivalence at 200% (640 CSS px) and 400% (320 CSS px) for a 1280px reference; real browser zoom and VoiceOver remain manual gates.",
   "viewports": [
@@ -67,19 +67,19 @@
           },
           {
             "tag": "BUTTON",
-            "label": "01Use the learning planMove between eight weeks and distinct weekdays, then open",
+            "label": "01Learning planNavigate weekly lessons with detailed instructions, materials, an",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
           {
             "tag": "BUTTON",
-            "label": "02Review sample intakeSee structured planning context and guardian-consent handl",
+            "label": "02Learner profileReview the intake form that helps educators create personalized",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
           {
             "tag": "BUTTON",
-            "label": "03Educator workflowExercise role-checked case transitions, internal review, publ",
+            "label": "03Educator workspaceSee how educators manage cases, create plans, and communicat",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -415,19 +415,19 @@
           },
           {
             "tag": "BUTTON",
-            "label": "01Use the learning planMove between eight weeks and distinct weekdays, then open",
+            "label": "01Learning planNavigate weekly lessons with detailed instructions, materials, an",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
           {
             "tag": "BUTTON",
-            "label": "02Review sample intakeSee structured planning context and guardian-consent handl",
+            "label": "02Learner profileReview the intake form that helps educators create personalized",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
           {
             "tag": "BUTTON",
-            "label": "03Educator workflowExercise role-checked case transitions, internal review, publ",
+            "label": "03Educator workspaceSee how educators manage cases, create plans, and communicat",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
@@ -763,19 +763,19 @@
           },
           {
             "tag": "BUTTON",
-            "label": "01Use the learning planMove between eight weeks and distinct weekdays, then open",
+            "label": "01Learning planNavigate weekly lessons with detailed instructions, materials, an",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
           {
             "tag": "BUTTON",
-            "label": "02Review sample intakeSee structured planning context and guardian-consent handl",
+            "label": "02Learner profileReview the intake form that helps educators create personalized",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },
           {
             "tag": "BUTTON",
-            "label": "03Educator workflowExercise role-checked case transitions, internal review, publ",
+            "label": "03Educator workspaceSee how educators manage cases, create plans, and communicat",
             "outlineWidth": "3px",
             "outlineStyle": "solid"
           },

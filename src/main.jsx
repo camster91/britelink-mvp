@@ -5,6 +5,50 @@ import { readSupabaseConfig } from "./supabase-config.js";
 import "./styles.css";
 
 const config=readSupabaseConfig();
+
+// Bootstrap failure screens.
+//
+// These cannot be React components: they run when rendering is impossible, so they
+// are written as markup. They use classes from styles.css rather than inline styles
+// for two reasons -- one visual, one security.
+//
+// Visual: inline styles here drifted from the app's own tokens. A recovery screen
+// that looks like a different product reads as "this site is broken", which is the
+// exact moment the user is already worried.
+//
+// Security: inline style attributes force `style-src 'unsafe-inline'` into the CSP,
+// and that exception applies to the whole origin, not just this screen. Since the
+// app already ships a stylesheet, removing the inline attributes lets the policy
+// drop the exception entirely. A stylesheet that fails to load is the one thing this
+// screen cannot survive, but it is same-origin and already required by the app.
+function fallbackScreen({ title, body, hint }) {
+  const root = document.getElementById("root");
+  if (!root) return;
+  root.textContent = "";
+  const shell = document.createElement("div");
+  shell.className = "boot-fallback";
+  const heading = document.createElement("h1");
+  heading.textContent = title;
+  const paragraph = document.createElement("p");
+  paragraph.textContent = body;
+  shell.append(heading, paragraph);
+  if (hint) {
+    const extra = document.createElement("p");
+    extra.className = "boot-fallback-hint";
+    const strong = document.createElement("strong");
+    strong.textContent = "Try: ";
+    extra.append(strong, document.createTextNode(hint));
+    shell.append(extra);
+  }
+  const reload = document.createElement("button");
+  reload.type = "button";
+  reload.className = "primary";
+  reload.textContent = "Reload page";
+  reload.addEventListener("click", () => location.reload());
+  shell.append(reload);
+  root.append(shell);
+}
+
 async function boot(){
   let application=<App />;
   if(config.configured){
@@ -13,15 +57,20 @@ async function boot(){
       const client=createBriteLinkSupabaseClient(config); application=<AuthenticatedApp client={client} repository={new SupabaseBriteLinkRepository(client)} privacyNoticeVersion={config.privacyNoticeVersion} />;
     }catch(error){
       console.error("Authenticated mode failed to load:", error);
-      const root = document.getElementById("root");
-      root.innerHTML = `<div style="max-width:600px;margin:80px auto;padding:40px;background:#fff;border:1px solid #dfe5ee;border-radius:20px;text-align:center;"><h1 style="color:#1e293b;font-size:28px;margin:0 0 16px;">Secure mode unavailable</h1><p style="color:#64748b;line-height:1.65;margin:0 0 20px;">The authenticated workspace could not load. This may be a configuration issue.</p><p style="color:#64748b;line-height:1.65;margin:0 0 24px;"><strong>Try:</strong> Clearing your browser cache, or running the interactive demo instead by removing the Supabase configuration.</p><button onclick="location.reload()" style="padding:12px 20px;border:1px solid #3b7dd8;border-radius:10px;background:#3b7dd8;color:#fff;font-weight:700;cursor:pointer;">Reload page</button></div>`;
+      fallbackScreen({
+        title: "Secure mode unavailable",
+        body: "The authenticated workspace could not load. This may be a configuration issue.",
+        hint: "Clearing your browser cache, or running the interactive demo instead by removing the Supabase configuration.",
+      });
       return;
     }
   }
   createRoot(document.getElementById("root")).render(<React.StrictMode>{application}</React.StrictMode>);
-}
+};
 boot().catch((error)=>{
   console.error("BriteLink bootstrap failed:", error);
-  const root = document.getElementById("root");
-  root.innerHTML = `<div style="max-width:600px;margin:80px auto;padding:40px;background:#fff;border:1px solid #dfe5ee;border-radius:20px;text-align:center;"><h1 style="color:#1e293b;font-size:28px;margin:0 0 16px;">BriteLink could not start</h1><p style="color:#64748b;line-height:1.65;margin:0 0 24px;">A critical error prevented the application from loading. Please refresh the page or contact support if the problem continues.</p><button onclick="location.reload()" style="padding:12px 20px;border:1px solid #3b7dd8;border-radius:10px;background:#3b7dd8;color:#fff;font-weight:700;cursor:pointer;">Reload page</button></div>`;
+  fallbackScreen({
+    title: "BriteLink could not start",
+    body: "A critical error prevented the application from loading. Please refresh the page or contact support if the problem continues.",
+  });
 });
