@@ -95,23 +95,33 @@ export function staffNextAction(status) {
 }
 
 export function nextStaffStatuses(status) {
+  // This map must agree with CASE_TRANSITIONS in service-domain.js, which is the
+  // authority enforced by transitionCase(). QA found the two drifting: `submitted`
+  // offered only `clarification`, so the educator journey the UI itself describes
+  // ("Accept usable intake to start the package SLA") was unreachable and the case
+  // looped submitted -> clarification -> submitted forever. tests/staff-transitions
+  // .test.mjs now pins the two maps together.
   return (
     {
-      paid: ["intake_pending"],
-      intake_pending: ["submitted"],
-      submitted: ["clarification"],
-      triage: ["clarification", "assigned", "on_hold"],
-      clarification: ["submitted", "on_hold"],
-      assigned: ["drafting", "on_hold"],
-      drafting: ["internal_review", "on_hold"],
+      paid: ["intake_pending", "cancelled", "refunded", "chargeback"],
+      intake_pending: ["submitted", "cancelled", "refunded", "chargeback"],
+      submitted: ["triage", "clarification", "cancelled", "refunded", "chargeback"],
+      triage: ["clarification", "assigned", "on_hold", "overdue"],
+      clarification: ["submitted", "on_hold", "cancelled"],
+      assigned: ["drafting", "on_hold", "overdue"],
+      drafting: ["internal_review", "on_hold", "overdue"],
       internal_review: ["drafting", "published", "on_hold"],
       published: ["delivered"],
-      delivered: ["overdue"],
-      acknowledged: ["closed"],
-      revision_requested: ["revised", "acknowledged", "on_hold"],
+      delivered: ["acknowledged", "overdue"],
+      acknowledged: ["revision_requested", "closed"],
+      revision_requested: ["revised", "on_hold"],
       revised: ["delivered", "closed"],
-      on_hold: ["triage", "assigned", "drafting", "internal_review"],
+      on_hold: ["triage", "assigned", "drafting", "internal_review", "cancelled", "refunded"],
       overdue: ["triage", "assigned", "drafting", "delivered", "on_hold"],
+      closed: [],
+      cancelled: [],
+      refunded: [],
+      chargeback: [],
     }[status] ?? []
   );
 }

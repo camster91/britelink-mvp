@@ -43,8 +43,15 @@ test("case helpers select latest plan and reserve submitted-to-triage for usable
   assert.deepEqual(nextStaffStatuses("drafting"), [
     "internal_review",
     "on_hold",
+    "overdue",
   ]);
-  assert.deepEqual(nextStaffStatuses("submitted"), ["clarification"]);
+  assert.deepEqual(nextStaffStatuses("submitted"), [
+    "triage",
+    "clarification",
+    "cancelled",
+    "refunded",
+    "chargeback",
+  ]);
   assert.deepEqual(nextStaffStatuses("closed"), []);
 });
 test("staff intake summary preserves every canonical planning field with explicit empty values", () => {

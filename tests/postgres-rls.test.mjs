@@ -44,7 +44,12 @@ async function database(){
 
 async function asUser(db,userId,operation,{issuedAt=Math.floor(Date.now()/1000)}={}){await db.exec(`set role authenticated; set request.jwt.claim.sub='${userId}'; set request.jwt.claim.iat='${issuedAt}';`);try{return await operation()}finally{await db.exec("reset role; reset request.jwt.claim.sub; reset request.jwt.claim.iat;")}}
 
-test("all migrations execute in PostgreSQL and RLS isolates household reads",async()=>{
+// The fixture loads migrations 001-021 only. It does not load 022-040: those depend on a fuller
+// Supabase surface (roles anon/service_role, and the staff-write policy split in 007) and several
+// later tests still assert pre-hardening behaviour, so loading them here fails for reasons unrelated
+// to this test. Migration 040 has its own targeted regression test
+// (tests/lesson-activity-readback.test.mjs) with the migrations it actually needs.
+test("the core migrations execute in PostgreSQL and RLS isolates household reads",async()=>{
   const db=await database();try{
     const rows=await asUser(db,ids.guardianA,()=>db.query(`select preferred_name from public.learners order by preferred_name`));assert.deepEqual(rows.rows.map((row)=>row.preferred_name),["Riley"]);
     const cases=await asUser(db,ids.guardianB,()=>db.query(`select id from public.service_cases`));assert.equal(cases.rows.length,0);

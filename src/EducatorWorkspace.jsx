@@ -54,6 +54,8 @@ export function EducatorWorkspace({
     error: null,
   });
   const [selectedId, setSelectedId] = useState(cases[0]?.id ?? "");
+  const [casePackage, setCasePackage] = useState("essentials");
+  const [newCaseLearnerId, setNewCaseLearnerId] = useState("");
   const [operation, setOperation] = useState({ status: "idle", message: "" });
   const [transition, setTransition] = useState({ status: "", reason: "" });
   const [checks, setChecks] = useState({
@@ -144,6 +146,12 @@ export function EducatorWorkspace({
     if (selected?.id && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected?.id, selectedId]);
   const currentLearners = data.learners?.length ? data.learners : learners;
+
+  useEffect(() => {
+    if (!newCaseLearnerId && currentLearners.length) {
+      setNewCaseLearnerId(currentLearners[0].id);
+    }
+  }, [newCaseLearnerId, currentLearners]);
   const learner = currentLearners.find(
     (item) => item.id === selected?.learner_id,
   );
@@ -297,16 +305,68 @@ export function EducatorWorkspace({
         <div className="staff-header-actions">
           <span className="case-status">{membership.role}</span>
           {membership.role === "admin" ? (
-            <button
-              className="ghost"
-              onClick={() =>
-                act("Overdue evaluation", () =>
-                  repository.markStaffOverdue(household.household_id),
-                )
-              }
-            >
-              Evaluate overdue cases
-            </button>
+            <>
+              <button
+                className="ghost"
+                onClick={() =>
+                  act("Open a case", async () => {
+                    const learner = currentLearners.find(
+                      (entry) => entry.id === newCaseLearnerId,
+                    );
+                    if (!learner) {
+                      throw new Error(
+                        "Choose a learner before opening a case.",
+                      );
+                    }
+                    await repository.createStaffCase({
+                      householdId: household.household_id,
+                      learnerId: learner.id,
+                      packageCode: casePackage,
+                    });
+                    await load();
+                  })
+                }
+              >
+                Open a case
+              </button>
+              <label className="case-learner">
+                <span className="visually-hidden">Learner for the new case</span>
+                <select
+                  value={newCaseLearnerId}
+                  onChange={(event) => setNewCaseLearnerId(event.target.value)}
+                >
+                  {currentLearners.length ? null : (
+                    <option value="">No learners yet</option>
+                  )}
+                  {currentLearners.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.preferred_name || "Learner"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="case-package">
+                <span className="visually-hidden">Package for the new case</span>
+                <select
+                  value={casePackage}
+                  onChange={(event) => setCasePackage(event.target.value)}
+                >
+                  <option value="essentials">Essentials</option>
+                  <option value="complete">Complete</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </label>
+              <button
+                className="ghost"
+                onClick={() =>
+                  act("Overdue evaluation", () =>
+                    repository.markStaffOverdue(household.household_id),
+                  )
+                }
+              >
+                Evaluate overdue cases
+              </button>
+            </>
           ) : null}
         </div>
       </header>

@@ -18,16 +18,36 @@ function SignIn({ repository }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
   const [message, setMessage] = useState("");
+  // Beta signup fields. Optional: an invited family signs in without them.
+  const [joining, setJoining] = useState(false);
+  const [learnerName, setLearnerName] = useState("");
+  const [learnerGrade, setLearnerGrade] = useState("");
   const submit = async (event) => {
     event.preventDefault();
     setStatus("loading");
     setMessage("");
     try {
+      if (joining) {
+        if (!learnerName.trim() || !learnerGrade.trim()) {
+          setStatus("error");
+          setMessage("Add your child's name and grade to join the beta.");
+          return;
+        }
+        await repository.provisionSignup({
+          email,
+          learnerName,
+          learnerGrade,
+        });
+        await repository.joinBeta(email, globalThis.location?.origin);
+        setStatus("sent");
+        setMessage(
+          "Welcome to the beta. Check your email for a secure sign-in link.",
+        );
+        return;
+      }
       await repository.signInWithEmail(email, globalThis.location?.origin);
       setStatus("sent");
-      setMessage(
-        "Check your email for a secure sign-in link. Only invited accounts can sign in.",
-      );
+      setMessage("Check your email for a secure sign-in link.");
     } catch (error) {
       setStatus("error");
       setMessage(error.message);
@@ -38,10 +58,10 @@ function SignIn({ repository }) {
       <section className="auth-card">
         <img src="/assets/britelink-logo.png" alt="BriteLink" />
         <span className="eyebrow">Secure family and educator workspace</span>
-        <h1>Sign in to BriteLink</h1>
+        <h1 id="auth-heading">Sign in or join the beta</h1>
         <p>
-          Use the email address invited to your household or staff account.
-          BriteLink does not create an account from this form.
+          Enter your email and we'll send you a secure sign-in link. New families
+          can join the free beta from this same form.
         </p>
         <form onSubmit={submit}>
           <label>
@@ -54,10 +74,48 @@ function SignIn({ repository }) {
               onChange={(event) => setEmail(event.target.value)}
             />
           </label>
+          {joining ? (
+            <>
+              <label>
+                Your child's first name
+                <input
+                  type="text"
+                  autoComplete="off"
+                  required
+                  maxLength={120}
+                  value={learnerName}
+                  onChange={(event) => setLearnerName(event.target.value)}
+                />
+              </label>
+              <label>
+                Grade or level
+                <input
+                  type="text"
+                  autoComplete="off"
+                  required
+                  maxLength={60}
+                  placeholder="e.g. Grade 3"
+                  value={learnerGrade}
+                  onChange={(event) => setLearnerGrade(event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
           <button className="primary" disabled={status === "loading"}>
             {status === "loading"
               ? "Sending secure link…"
-              : "Email me a sign-in link"}
+              : joining
+                ? "Join the free beta"
+                : "Email me a sign-in link"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setJoining((current) => !current)}
+          >
+            {joining
+              ? "I already have an account"
+              : "New here? Join the free beta"}
           </button>
           <span
             role="status"
@@ -68,8 +126,8 @@ function SignIn({ repository }) {
           </span>
         </form>
         <p className="auth-recovery">
-          If you were not invited, this form cannot create an account. Contact
-          BriteLink support from the email that received your invitation.
+          Already invited? Use the same form — it signs you in and never creates
+          a duplicate account.
         </p>
         <small>
           Do not send child, health, school, diagnosis, or IEP information by
@@ -1057,11 +1115,10 @@ export function Workspace({
       </header>
       <main id="live-main">
         <div className="live-notice" role="note">
-          <strong>Secure backend mode</strong>
+          <strong>Private to your family</strong>
           <span>
-            Every read and write below is scoped to your authenticated household
-            and protected by Supabase row-level security. Inactive sessions sign
-            out after 15 minutes.
+            Only you and the educator working with your child can see what's here.
+            If you step away, we sign you out after 15 minutes to keep it safe.
           </span>
         </div>
         {state.memberships.length > 1 ? (
@@ -1128,9 +1185,8 @@ export function Workspace({
           />
         )}
         <p className="live-limit">
-          This locally verified workspace still requires deployed Supabase,
-          legal/privacy approval, operational monitoring, and private-beta
-          validation before real family use.
+          You're in the free beta. Things may change as we improve them, and we'd
+          love to hear what works for your family.
         </p>
       </main>
     </div>
