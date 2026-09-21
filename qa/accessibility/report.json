@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-21T17:49:38.526Z",
+  "generatedAt": "2026-09-21T17:54:06.620Z",
   "standard": "axe WCAG 2 A/AA/2.1 AA",
   "zoomMethod": "Responsive CSS viewport equivalence at 200% (640 CSS px) and 400% (320 CSS px) for a 1280px reference; real browser zoom and VoiceOver remain manual gates.",
   "viewports": [
