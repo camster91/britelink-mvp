@@ -5,7 +5,7 @@
 
 ## Completed and verified
 
-- **Production is live at `1d12cdc`** — deployed directly on the VPS after the GitHub runner failed to assign. `/version.json` reports the commit and the deploy log records it.
+- **Production is live at `5a6b865`** — deployed directly on the VPS after the GitHub runner failed to assign. Live `version.json`, the VPS HEAD, and `origin/main` all report the same commit. The deploy log records it.
 - **Repository reproduces the running product.** Clean checkout of `origin/main` = 174 pass / 0 fail / exit 0, 4/4 sites tests, build stamps `/version.json`.
 - **Provenance guard in CI** (`scripts/check-tracked-test-imports.mjs`), proven by negative control — catches the defect that shipped a broken `main` three times.
 - **Readable deployed revision** — `/version.json` + deploy-time match check that fails the deploy on mismatch.
@@ -40,6 +40,7 @@
 | No HSTS on any response. Traefik sets it for its other routes but not the britelink routers | Medium (security) | Fixed at nginx; all 6 headers now verified live |
 | `stripe-webhook.js` had no tests and two real defects: a future-dated timestamp bypassed the replay window, and `!==` leaked signature bytes through timing | High (security) | Fixed + 11 new tests |
 | No README at all | Medium (onboarding) | Added |
+| Four migration invariants had no coverage (definer search_path, RLS on every table, write-grant allowlist, ordering) | Medium (silent-regression risk) | 4 tests added; negative control proven |
 | `SUPABASE_PROVISIONING.md` had a section titled "Blocker: the deploy path has no build-time env plumbing" — false since the plumbing landed | Medium (stale docs) | Corrected to RESOLVED with what remains true |
 
 ## Verified clean
@@ -73,8 +74,34 @@
 
 ## Test count
 
-185 -> 191 as of `90a8479` (11 webhook, 6 security-header tests added).
+174 -> 195 across this mission (11 webhook, 6 security-header, 4 migration-invariant tests added).
+
+## Final completion pass (2026-09-21)
+
+Run against a fresh worktree of `origin/main`, not the working copy:
+
+- Clean `npm ci` -> build -> **195 pass / 0 fail** -> provenance guard green -> 4/4 sites
+- All five browser audits pass: accessibility 12/12, authenticated parent, staff workbench, multi-household, staff attachment recovery
+- `npm audit --omit=dev`: **0 vulnerabilities**
+- Responsive 375 / 430 / 768 / 1024 / 1440px: no horizontal overflow, no undersized targets
+- Live console: no errors, no failed requests
+- Live revision == VPS HEAD == `origin/main`
+
+## Remaining, honestly
+
+**Blocked on an external party or environment** (not on engineering):
+hosted Supabase provisioning, counsel approval, credentialed educator sign-off,
+manual VoiceOver + true zoom, and external monitoring/backups.
+
+**Not implemented, deferred by scope** (not defects):
+Stripe live endpoint, malware scanner, physical-deletion job, mutation-denial
+matrix script.
+
+**Future enhancements, not required for completion:** the `BUILD-PRIORITIES.md`
+P0/P1/P2 product work.
 
 ## Next action
 
-Continue the audit passes: backend/API sanity, security review, documentation reconciliation, then a final independent completion pass. Deploy any further fixes directly on the VPS while the GitHub runner remains unassigned.
+Send the privacy counsel packet. It has the longest and least predictable lead
+time, needs no infrastructure, and nothing involving real families can happen
+without it. Engineering work here is at a verified stopping point.
