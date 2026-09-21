@@ -19,27 +19,27 @@
 -- 1. Every id in the emitted env block resolves, in the correct household.
 -- ---------------------------------------------------------------------------
 do $$
-declare missing text[] := '{}';
+declare missing text[] := ARRAY[]::text[];
 begin
-  if not exists (select 1 from public.households where id='5eed0000-0000-4000-8000-0000000000a1') then missing:=missing||'HOUSEHOLD_A_ID'; end if;
-  if not exists (select 1 from public.households where id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_ID'; end if;
-  if not exists (select 1 from public.learners where id='5eed0000-0000-4000-8000-000000000b10' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_LEARNER_ID'; end if;
-  if not exists (select 1 from public.service_cases where id='5eed0000-0000-4000-8000-000000000b20' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_CASE_ID'; end if;
-  if not exists (select 1 from public.plans where id='5eed0000-0000-4000-8000-000000000b30' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_PLAN_ID'; end if;
-  if not exists (select 1 from public.lessons where id='5eed0000-0000-4000-8000-000000000b50' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_LESSON_ID'; end if;
-  if not exists (select 1 from public.lesson_activities where id='5eed0000-0000-4000-8000-000000000b51' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_ACTIVITY_ID'; end if;
-  if not exists (select 1 from public.case_messages where id='5eed0000-0000-4000-8000-000000000b70' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_MESSAGE_ID'; end if;
-  if not exists (select 1 from public.deliveries where id='5eed0000-0000-4000-8000-000000000ba0' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_DELIVERY_ID'; end if;
-  if not exists (select 1 from public.revision_requests where id='5eed0000-0000-4000-8000-000000000bb0' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_REVISION_ID'; end if;
-  if not exists (select 1 from public.case_attachments where id='5eed0000-0000-4000-8000-000000000b80' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_ATTACHMENT_ID'; end if;
-  if not exists (select 1 from public.guardian_consents where id='5eed0000-0000-4000-8000-000000000b61' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=missing||'HOUSEHOLD_B_CONSENT_ID'; end if;
-  if not exists (select 1 from public.case_attachments where object_path='5eed0000-0000-4000-8000-0000000000b1/5eed0000-0000-4000-8000-000000000b20/5eed0000-0000-4000-8000-000000000b80.pdf') then missing:=missing||'HOUSEHOLD_B_OBJECT_PATH'; end if;
+  if not exists (select 1 from public.households where id='5eed0000-0000-4000-8000-0000000000a1') then missing:=array_append(missing,'HOUSEHOLD_A_ID'); end if;
+  if not exists (select 1 from public.households where id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_ID'); end if;
+  if not exists (select 1 from public.learners where id='5eed0000-0000-4000-8000-000000000b10' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_LEARNER_ID'); end if;
+  if not exists (select 1 from public.service_cases where id='5eed0000-0000-4000-8000-000000000b20' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_CASE_ID'); end if;
+  if not exists (select 1 from public.plans where id='5eed0000-0000-4000-8000-000000000b30' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_PLAN_ID'); end if;
+  if not exists (select 1 from public.lessons where id='5eed0000-0000-4000-8000-000000000b50' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_LESSON_ID'); end if;
+  if not exists (select 1 from public.lesson_activities where id='5eed0000-0000-4000-8000-000000000b51' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_ACTIVITY_ID'); end if;
+  if not exists (select 1 from public.case_messages where id='5eed0000-0000-4000-8000-000000000b70' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_MESSAGE_ID'); end if;
+  if not exists (select 1 from public.deliveries where id='5eed0000-0000-4000-8000-000000000ba0' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_DELIVERY_ID'); end if;
+  if not exists (select 1 from public.revision_requests where id='5eed0000-0000-4000-8000-000000000bb0' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_REVISION_ID'); end if;
+  if not exists (select 1 from public.case_attachments where id='5eed0000-0000-4000-8000-000000000b80' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_ATTACHMENT_ID'); end if;
+  if not exists (select 1 from public.guardian_consents where id='5eed0000-0000-4000-8000-000000000b61' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_CONSENT_ID'); end if;
+  if not exists (select 1 from public.case_attachments where object_path='5eed0000-0000-4000-8000-0000000000b1/5eed0000-0000-4000-8000-000000000b20/5eed0000-0000-4000-8000-000000000b80.pdf') then missing:=array_append(missing,'HOUSEHOLD_B_OBJECT_PATH'); end if;
 
   -- The four staff identities are passed in, so these also catch a caller who handed the seed
   -- a uuid that never landed in auth.users.
-  if not exists (select 1 from public.memberships where user_id='5eed0000-0000-4000-8000-00000000ad01' and household_id='5eed0000-0000-4000-8000-0000000000a1' and role='admin') then missing:=missing||'ADMIN_A_USER_ID'; end if;
-  if not exists (select 1 from public.memberships where user_id='5eed0000-0000-4000-8000-00000000ad02' and household_id='5eed0000-0000-4000-8000-0000000000a1' and role='guardian') then missing:=missing||'GUARDIAN_A_USER_ID'; end if;
-  if not exists (select 1 from public.memberships where user_id='5eed0000-0000-4000-8000-00000000ad03' and household_id='5eed0000-0000-4000-8000-0000000000a1' and role='educator') then missing:=missing||'EDUCATOR_A_USER_ID'; end if;
+  if not exists (select 1 from public.memberships where user_id='5eed0000-0000-4000-8000-00000000ad01' and household_id='5eed0000-0000-4000-8000-0000000000a1' and role='admin') then missing:=array_append(missing,'ADMIN_A_USER_ID'); end if;
+  if not exists (select 1 from public.memberships where user_id='5eed0000-0000-4000-8000-00000000ad02' and household_id='5eed0000-0000-4000-8000-0000000000a1' and role='guardian') then missing:=array_append(missing,'GUARDIAN_A_USER_ID'); end if;
+  if not exists (select 1 from public.memberships where user_id='5eed0000-0000-4000-8000-00000000ad03' and household_id='5eed0000-0000-4000-8000-0000000000a1' and role='educator') then missing:=array_append(missing,'EDUCATOR_A_USER_ID'); end if;
 
   if array_length(missing,1) > 0 then
     raise exception 'ASSERT FAILED: env block names % id(s) that do not resolve: %', array_length(missing,1), array_to_string(missing,', ');
@@ -51,7 +51,7 @@ end $$;
 -- 2. The seeded deletion job can never be selected by the executor.
 -- ---------------------------------------------------------------------------
 do $$
-declare due int; jobs int; bad text[] := '{}'; j public.deletion_jobs%rowtype;
+declare due int; jobs int; bad text[] := ARRAY[]::text[]; j public.deletion_jobs%rowtype;
 begin
   -- Both households carry a fixture, so both must be safe. Checking only one would leave the
   -- other as the single row that eats a household.
@@ -59,9 +59,9 @@ begin
              ('5eed0000-0000-4000-8000-000000000ae0','5eed0000-0000-4000-8000-000000000be0')
   loop
     if j.status<>'scheduled' then
-      bad := bad || format('%s has status %s', j.household_id, j.status);
+      bad:=array_append(bad,format('%s has status %s', j.household_id, j.status));
     elsif j.eligible_at <= now() then
-      bad := bad || format('%s is DUE at %s', j.household_id, j.eligible_at);
+      bad:=array_append(bad,format('%s is DUE at %s', j.household_id, j.eligible_at));
     end if;
   end loop;
 
@@ -157,7 +157,7 @@ declare
                          '5eed0000-0000-4000-8000-00000000ad04'::uuid];
   homes  uuid[] := array['5eed0000-0000-4000-8000-0000000000a1'::uuid,
                          '5eed0000-0000-4000-8000-0000000000b1'::uuid];
-  t text; i int; own int; leak int; problems text[] := '{}';
+  t text; i int; own int; leak int; problems text[] := ARRAY[]::text[];
 begin
   if array_length(tables,1) <> 25 then
     raise exception 'ASSERT FAILED: this list must mirror PRIVATE_TABLES (25), found %', array_length(tables,1);
@@ -171,10 +171,10 @@ begin
       execute format('select count(*) from public.%I where household_id=$1', t) into leak
         using homes[case when i=1 then 2 else 1 end];
       if own < 1 then
-        problems := problems || format('%s: admin %s sees no own-household sentinel', t, i);
+        problems:=array_append(problems,format('%s: admin %s sees no own-household sentinel', t, i));
       end if;
       if leak <> 0 then
-        problems := problems || format('%s: admin %s sees %s foreign row(s)', t, i, leak);
+        problems:=array_append(problems,format('%s: admin %s sees %s foreign row(s)', t, i, leak));
       end if;
     end loop;
     reset role;
