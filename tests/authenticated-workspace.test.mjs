@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, findNextPublishedLesson, latestPublishedPlan, messageIsUnread, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, localDateString, messageIsUnread, nextLessonForToday, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -23,13 +23,6 @@ test("activity and message helpers remain learner and user specific",()=>{
   assert.equal(messageIsUnread(message,"guardian-a"),true);
   assert.equal(messageIsUnread(message,"guardian-b"),false);
   assert.equal(messageIsUnread({...message,sender_user_id:"guardian-a"},"guardian-a"),false);
-});
-
-test("next published lesson skips completed and skipped work",()=>{
-  const weeks=[{week_number:1,plan_days:[{day_number:1,lessons:[{id:"done",title:"Done"},{id:"next",title:"Next"}]}]}];
-  assert.equal(findNextPublishedLesson(weeks,{}).lesson.id,"done");
-  assert.equal(findNextPublishedLesson(weeks,{done:{status:"completed"}}).lesson.id,"next");
-  assert.equal(findNextPublishedLesson(weeks,{done:{status:"skipped"},next:{status:"completed"}}),null);
 });
 
 test("case selection never falls through to another learner",()=>{
@@ -56,4 +49,24 @@ test("a day reports its new date only when every unfinished lesson shares it",()
   assert.equal(dayMovedTo(day,{a:{scheduled_for:"2026-09-28"},b:{scheduled_for:"2026-09-29"}}),null);
   assert.equal(dayMovedTo(day,{a:{scheduled_for:"2026-09-28"}}),null);
   assert.equal(dayMovedTo(day,{a:{status:"completed"},b:{status:"skipped"},c:{status:"completed"}}),null);
+});
+
+test("today's next lesson skips work moved to a later date and never reports moved work as done",()=>{
+  const weeks=[{week_number:1,plan_days:[{day_number:1,lessons:[{id:"a"},{id:"b"}]},{day_number:2,lessons:[{id:"c"}]}]}];
+  const pick=(activities,today)=>{const r=nextLessonForToday(weeks,activities,today);return r.kind==="done"?"done":`${r.kind}:${r.lesson.id}${r.resumesOn?`@${r.resumesOn}`:""}`};
+  assert.equal(pick({},"2026-09-10"),"due:a");
+  // a is moved ahead: b is next today.
+  assert.equal(pick({a:{scheduled_for:"2026-09-15"}},"2026-09-10"),"due:b");
+  // Moved to today, or to a day already past, is due now and keeps plan order.
+  assert.equal(pick({a:{scheduled_for:"2026-09-10"}},"2026-09-10"),"due:a");
+  assert.equal(pick({a:{scheduled_for:"2026-09-01"}},"2026-09-10"),"due:a");
+  // Everything left is moved ahead: report the earliest resume date, not "done".
+  assert.equal(pick({a:{scheduled_for:"2026-09-20"},b:{scheduled_for:"2026-09-15"},c:{status:"completed"}},"2026-09-10"),"later:b@2026-09-15");
+  assert.equal(pick({a:{status:"completed"},b:{status:"skipped"},c:{status:"completed"}},"2026-09-10"),"done");
+  assert.throws(()=>nextLessonForToday(weeks,{},"10/09/2026"),/YYYY-MM-DD/);
+});
+
+test("local date string uses the family's own calendar day",()=>{
+  assert.equal(localDateString(new Date(2026,0,5,23,59)),"2026-01-05");
+  assert.equal(localDateString(new Date(2026,11,31,0,0)),"2026-12-31");
 });

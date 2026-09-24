@@ -49,16 +49,21 @@ try{
   const dayMove=page.locator("details.live-day-move");
   await dayMove.getByText("Need to move this day?").click();
   await dayMove.getByLabel("Why move this day?").selectOption("travel");
-  await dayMove.getByLabel("Move to").fill("2026-09-15");
+  await dayMove.getByLabel("Move to").fill("2099-09-15");
   await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
   await dayMove.getByRole("button",{name:"Move unfinished lessons"}).click();
-  await dayMove.getByText("0 of 1 lessons moved to 2026-09-15.",{exact:false}).waitFor();
+  await dayMove.getByText("0 of 1 lessons moved to 2099-09-15.",{exact:false}).waitFor();
   await dayMove.getByRole("button",{name:"Try again"}).click();
-  await dayMove.getByText("Moved 1 unfinished lesson to 2026-09-15. Progress and notes were kept.").waitFor();
-  await page.getByRole("group",{name:"Lessons"}).getByText("moved to 2026-09-15",{exact:false}).waitFor();
+  await dayMove.getByText("Moved 1 unfinished lesson to 2099-09-15. Progress and notes were kept.").waitFor();
+  await page.getByRole("group",{name:"Lessons"}).getByText("moved to 2099-09-15",{exact:false}).waitFor();
+  // Everything left is moved ahead, so the next-up card says when the plan resumes -- not "All lessons complete!".
+  const nextUp=page.locator("section.next-up");
+  await nextUp.getByText("Nothing is due today").waitFor();
+  await nextUp.getByText("Your plan picks up on 2099-09-15",{exact:false}).waitFor();
+  if(await page.getByText("All lessons complete!").count())throw new Error("moved work was reported as complete");
   const moved=await page.evaluate(()=>globalThis.qaState.activities);
   if(moved.find(item=>item.lesson_id==="lesson-a")?.status!=="completed"||moved.find(item=>item.lesson_id==="lesson-a")?.scheduled_for!=="2026-09-14")throw new Error("Moving the day touched a completed lesson");
-  if(moved.find(item=>item.lesson_id==="lesson-b")?.scheduled_for!=="2026-09-15"||moved.find(item=>item.lesson_id==="lesson-b")?.schedule_reason!=="travel")throw new Error("Moving the day did not move the unfinished lesson");
+  if(moved.find(item=>item.lesson_id==="lesson-b")?.scheduled_for!=="2099-09-15"||moved.find(item=>item.lesson_id==="lesson-b")?.schedule_reason!=="travel")throw new Error("Moving the day did not move the unfinished lesson");
   await page.getByLabel("New secure message").fill("Could you suggest one more phonics example?");
   await page.getByLabel(/Attachments/).setInputFiles({name:"reading-plan.pdf",mimeType:"application/pdf",buffer:Buffer.from("synthetic QA attachment")});
   await page.getByRole("button",{name:"Send message"}).click();

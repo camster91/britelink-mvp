@@ -28,20 +28,6 @@ export function caseForLearner(cases, learnerId) {
   return (cases ?? []).find((item) => item.learner_id === learnerId) ?? null;
 }
 
-export function findNextPublishedLesson(weeks = [], activitiesByLessonId = {}) {
-  for (const [weekIndex, week] of weeks.entries()) {
-    for (const [dayIndex, day] of (week.plan_days ?? []).entries()) {
-      for (const lesson of day.lessons ?? []) {
-        const status = activitiesByLessonId[lesson.id]?.status ?? "not_started";
-        if (status !== "completed" && status !== "skipped") {
-          return { week, day, lesson, status, weekIndex, dayIndex };
-        }
-      }
-    }
-  }
-  return null;
-}
-
 // Lessons still to do on a plan day. Completed and skipped lessons are part of the record, not the
 // plan still to do, so a whole-day move leaves them where they happened.
 export function unfinishedLessons(day, activitiesByLessonId = {}) {
@@ -70,4 +56,36 @@ export function dayMovedTo(day, activitiesByLessonId = {}) {
   if (!open.length) return null;
   const dates = new Set(open.map((lesson) => activitiesByLessonId[lesson.id]?.scheduled_for ?? null));
   return dates.size === 1 ? [...dates][0] : null;
+}
+
+// The next honest action for today. A lesson moved to a later date is not "next" until that date,
+// so it is skipped; lessons moved to today or earlier stay in plan order with everything else.
+// When every unfinished lesson has been moved ahead, say when work resumes -- never report the
+// plan as finished while moved work remains.
+//   { kind: "due", week, day, lesson, status, weekIndex, dayIndex }
+//   { kind: "later", resumesOn, week, day, lesson, status, weekIndex, dayIndex }  earliest moved lesson
+//   { kind: "done" }
+export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today ?? "")) throw new TypeError("today must be a YYYY-MM-DD date");
+  let later = null;
+  for (const [weekIndex, week] of weeks.entries()) {
+    for (const [dayIndex, day] of (week.plan_days ?? []).entries()) {
+      for (const lesson of day.lessons ?? []) {
+        const activity = activitiesByLessonId[lesson.id];
+        const status = activity?.status ?? "not_started";
+        if (status === "completed" || status === "skipped") continue;
+        const entry = { week, day, lesson, status, weekIndex, dayIndex };
+        const movedTo = activity?.scheduled_for ?? null;
+        if (!movedTo || movedTo <= today) return { kind: "due", ...entry };
+        if (!later || movedTo < later.resumesOn) later = { kind: "later", resumesOn: movedTo, ...entry };
+      }
+    }
+  }
+  return later ?? { kind: "done" };
+}
+
+// Today's date in the family's own time zone, as the YYYY-MM-DD that scheduled_for stores.
+export function localDateString(now = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }

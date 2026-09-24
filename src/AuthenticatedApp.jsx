@@ -3,9 +3,10 @@ import {
   activityMap,
   caseForLearner,
   dayMovedTo,
-  findNextPublishedLesson,
   latestPublishedPlan,
+  localDateString,
   messageIsUnread,
+  nextLessonForToday,
   orderedPlanWeeks,
   planDayMove,
   unfinishedLessons,
@@ -699,7 +700,8 @@ function ParentWorkspace({
     }
   };
 
-  const nextLesson = findNextPublishedLesson(weeks, activities);
+  const next = nextLessonForToday(weeks, activities, localDateString());
+  const nextLesson = next.kind === "done" ? null : next;
   const jumpToNextLesson = () => {
     if (!nextLesson) return;
     setWeekIndex(nextLesson.weekIndex);
@@ -774,9 +776,16 @@ function ParentWorkspace({
               {nextLesson ? (
                 <section className="next-up compact" aria-labelledby="parent-next-heading">
                   <div>
-                    <span className="eyebrow">Do this next</span>
+                    <span className="eyebrow">
+                      {nextLesson.kind === "later"
+                        ? "Nothing is due today"
+                        : "Do this next"}
+                    </span>
                     <h3 id="parent-next-heading">{nextLesson.lesson.title}</h3>
                     <p>
+                      {nextLesson.kind === "later"
+                        ? `Your plan picks up on ${nextLesson.resumesOn} · `
+                        : ""}
                       Week {nextLesson.week.week_number} · Day {nextLesson.day.day_number} ·{" "}
                       {(nextLesson.status ?? "not_started").replaceAll("_", " ")}
                     </p>
