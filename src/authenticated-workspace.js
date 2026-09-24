@@ -66,8 +66,10 @@ export function dayMovedTo(day, activitiesByLessonId = {}) {
 //   { kind: "due", week, day, lesson, status, weekIndex, dayIndex }
 //   { kind: "later", resumesOn, week, day, lesson, status, weekIndex, dayIndex }  earliest moved lesson
 //   { kind: "done" }
-export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today, dayDates = {}) {
+export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today, dayDates = {}, filters = {}) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today ?? "")) throw new TypeError("today must be a YYYY-MM-DD date");
+  const filtering = hasFitFilters(filters);
+  const due = [];
   let later = null;
   for (const [weekIndex, week] of weeks.entries()) {
     for (const [dayIndex, day] of (week.plan_days ?? []).entries()) {
@@ -78,12 +80,52 @@ export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today,
         const entry = { week, day, lesson, status, weekIndex, dayIndex };
         // A moved lesson's own date wins; otherwise the plan day's calendar date, if it has one.
         const movedTo = activity?.scheduled_for ?? dayDates[day.id] ?? null;
-        if (!movedTo || movedTo <= today) return { kind: "due", ...entry };
+        if (!movedTo || movedTo <= today) {
+          if (!filtering) return { kind: "due", ...entry };
+          due.push(entry);
+          continue;
+        }
         if (!later || movedTo < later.resumesOn) later = { kind: "later", resumesOn: movedTo, ...entry };
       }
     }
   }
+  if (due.length) {
+    // With "what fits today" filters: the first lesson that fits; else the first the educator has
+    // not tagged (shown as untagged, never assumed to fit); else nothing fits, so offer the shortest.
+    const fitting = due.find((entry) => lessonFit(entry.lesson, filters) === "fits");
+    if (fitting) return { kind: "due", fit: "fits", ...fitting };
+    const unknown = due.find((entry) => lessonFit(entry.lesson, filters) === "unknown");
+    if (unknown) return { kind: "due", fit: "unknown", ...unknown };
+    const shortest = [...due].sort((a, b) => (a.lesson.estimated_minutes ?? Infinity) - (b.lesson.estimated_minutes ?? Infinity))[0];
+    return { kind: "due", fit: "none", ...shortest };
+  }
   return later ?? { kind: "done" };
+}
+
+// "What fits today" (044). Filters: maxMinutes (number or null), alone (child works independently),
+// offline (no screen). A lesson "fits" when every active filter is satisfied by an educator tag;
+// "no" when a tag rules it out; "unknown" when a needed tag is missing -- untagged is never a yes.
+export function hasFitFilters(filters = {}) {
+  return Boolean(filters.maxMinutes || filters.alone || filters.offline);
+}
+
+export function lessonFit(lesson, filters = {}) {
+  const checks = [];
+  if (filters.maxMinutes) checks.push(lesson?.estimated_minutes == null ? null : lesson.estimated_minutes <= filters.maxMinutes);
+  if (filters.alone) checks.push(lesson?.help_level == null ? null : lesson.help_level === "independent");
+  if (filters.offline) checks.push(lesson?.needs_screen == null ? null : lesson.needs_screen === false);
+  if (checks.includes(false)) return "no";
+  if (checks.includes(null)) return "unknown";
+  return "fits";
+}
+
+// Short, plain description of a lesson's tags for the family, or "" when untagged.
+export function lessonFitSummary(lesson) {
+  const parts = [];
+  if (lesson?.estimated_minutes != null) parts.push(`About ${lesson.estimated_minutes} min`);
+  if (lesson?.help_level) parts.push({ independent: "child can do it alone", some_help: "some adult help", together: "done together" }[lesson.help_level]);
+  if (lesson?.needs_screen != null) parts.push(lesson.needs_screen ? "needs a screen" : "no screen needed");
+  return parts.join(" · ");
 }
 
 // Today's date in the family's own time zone, as the YYYY-MM-DD that scheduled_for stores.

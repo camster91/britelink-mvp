@@ -111,6 +111,15 @@ export function StaffAuthoring({
           accommodations: lines(l.accommodations),
           adultHelpMinutes:
             l.adultHelpMinutes === "" ? null : Number(l.adultHelpMinutes),
+          estimatedMinutes:
+            l.estimatedMinutes === "" || l.estimatedMinutes == null
+              ? null
+              : Number(l.estimatedMinutes),
+          helpLevel: l.helpLevel || null,
+          needsScreen:
+            l.needsScreen === "" || l.needsScreen == null
+              ? null
+              : l.needsScreen === "true",
         })),
       })),
     })),
@@ -370,6 +379,50 @@ export function StaffAuthoring({
                           }
                         />
                       </label>
+                      <fieldset className="lesson-fit">
+                        <legend>
+                          What fits today <span>(helps families pick)</span>
+                        </legend>
+                        <label>
+                          Whole lesson, minutes
+                          <input
+                            type="number"
+                            min="5"
+                            max="240"
+                            value={l.estimatedMinutes ?? ""}
+                            onChange={(e) =>
+                              updateLesson(wi, di, li, "estimatedMinutes", e.target.value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          Help needed
+                          <select
+                            value={l.helpLevel ?? ""}
+                            onChange={(e) =>
+                              updateLesson(wi, di, li, "helpLevel", e.target.value)
+                            }
+                          >
+                            <option value="">Not set</option>
+                            <option value="independent">Child can do it alone</option>
+                            <option value="some_help">Some adult help</option>
+                            <option value="together">Done together</option>
+                          </select>
+                        </label>
+                        <label>
+                          Needs a screen
+                          <select
+                            value={l.needsScreen ?? ""}
+                            onChange={(e) =>
+                              updateLesson(wi, di, li, "needsScreen", e.target.value)
+                            }
+                          >
+                            <option value="">Not set</option>
+                            <option value="false">No, works offline</option>
+                            <option value="true">Yes</option>
+                          </select>
+                        </label>
+                      </fieldset>
                       {d.lessons.length > 1 ? (
                         <button
                           type="button"

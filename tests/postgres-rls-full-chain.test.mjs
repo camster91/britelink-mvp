@@ -428,3 +428,39 @@ test("a guardian sets their own plan calendar; staff cannot; the export carries 
     assert.ok(Array.isArray(exported.lessons), "the wrapped export keeps the original payload");
   } finally { await db.close(); }
 });
+
+test("educators can tag lessons with what fits today; bad tags are refused; the export carries them", async () => {
+  const { db } = await database();
+  try {
+    const caseA = "5eed0000-0000-4000-8000-000000000a20";
+    // 028's package entitlement caps plan weeks per case; a one-week plan stays inside it.
+    await db.query(`update public.service_cases set status='drafting' where id=$1`, [caseA]);
+    const lesson = (extra) => ({ position: 1, subject: "Math", title: "Count", objective: "Count to 20", instructions: ["Count"], ...extra });
+    const author = (lessons) => as(db, "authenticated", users.educatorA, () => db.query(
+      `select * from public.staff_create_plan_version($1, $2, $3::jsonb)`,
+      [houseA, caseA, JSON.stringify({ weeks: [{ number: 1, theme: "Numbers", days: [{ number: 1, lessons }] }] })]));
+    const created = (await author([
+      lesson({ estimatedMinutes: 20, helpLevel: "independent", needsScreen: false }),
+      lesson({ position: 2 }),
+    ])).rows[0];
+    const stored = (await db.query(`
+      select l.position, l.estimated_minutes, l.help_level, l.needs_screen from public.lessons l
+        join public.plan_days d on d.id=l.day_id join public.plan_weeks w on w.id=d.week_id
+       where w.plan_id=$1 order by l.position`, [created.plan_id])).rows;
+    assert.deepEqual(stored, [
+      { position: 1, estimated_minutes: 20, help_level: "independent", needs_screen: false },
+      { position: 2, estimated_minutes: null, help_level: null, needs_screen: null },
+    ], "tags are stored; an untagged lesson stays untagged");
+    for (const [bad, message] of [
+      [{ estimatedMinutes: 3 }, /estimated minutes are invalid/],
+      [{ estimatedMinutes: "twenty" }, /estimated minutes are invalid/],
+      [{ helpLevel: "mostly" }, /help level is invalid/],
+      [{ needsScreen: "yes" }, /needs screen must be true or false/],
+    ]) await assert.rejects(() => author([lesson(bad)]), message);
+
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    const tagged = exported.lessons.find((row) => row.estimated_minutes === 20);
+    assert.deepEqual([tagged?.help_level, tagged?.needs_screen], ["independent", false]);
+    assert.ok(exported.manifest.included.includes("planSchedules"), "044's wrapper keeps 043's addition");
+  } finally { await db.close(); }
+});

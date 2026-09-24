@@ -4,6 +4,7 @@ import {
   caseForLearner,
   dayMovedTo,
   latestPublishedPlan,
+  lessonFitSummary,
   localDateString,
   messageIsUnread,
   nextLessonForToday,
@@ -471,6 +472,13 @@ function ParentWorkspace({
     message: "",
     canRetry: false,
   });
+  // "What fits today" filters (044). Per visit only: today's constraints, not a saved preference.
+  const [fitFilters, setFitFilters] = useState({
+    maxMinutes: null,
+    alone: false,
+    offline: false,
+  });
+  const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
   const [calendarOperation, setCalendarOperation] = useState({
     status: "idle",
     message: "",
@@ -907,7 +915,7 @@ function ParentWorkspace({
 
   const today = localDateString();
   const dayDates = planDayDates(weeks, schedule);
-  const next = nextLessonForToday(weeks, activities, today, dayDates);
+  const next = nextLessonForToday(weeks, activities, today, dayDates, fitFilters);
   const saveCalendar = async (draft, { tookOff = null, undone = false } = {}) => {
     setCalendarOperation({ status: "loading", message: "Saving your calendar…", canRetry: false });
     try {
@@ -1046,6 +1054,21 @@ function ParentWorkspace({
                       Week {nextLesson.week.week_number} · Day {nextLesson.day.day_number} ·{" "}
                       {(nextLesson.status ?? "not_started").replaceAll("_", " ")}
                     </p>
+                    {nextLesson.fit === "unknown" ? (
+                      <p className="fit-note">
+                        Your educator hasn’t tagged this lesson yet, so check it
+                        fits before you start.
+                      </p>
+                    ) : nextLesson.fit === "none" ? (
+                      <p className="fit-note">
+                        Nothing due today fits those choices. This is the
+                        shortest lesson.
+                      </p>
+                    ) : lessonFitSummary(nextLesson.lesson) ? (
+                      <p className="fit-note">
+                        {lessonFitSummary(nextLesson.lesson)}
+                      </p>
+                    ) : null}
                   </div>
                   <button className="primary" type="button" onClick={jumpToNextLesson}>
                     Open next lesson
@@ -1056,6 +1079,54 @@ function ParentWorkspace({
                   All lessons complete! You can still review any day or adjust lesson statuses.
                 </p>
               )}
+              {nextLesson?.kind === "due" ? (
+                <details
+                  className="fit-filters"
+                  open={fitFiltersOpen}
+                  onToggle={(event) => setFitFiltersOpen(event.currentTarget.open)}
+                >
+                  <summary>What fits today?</summary>
+                  <div role="group" aria-label="What fits today">
+                    <label>
+                      Time available
+                      <select
+                        value={fitFilters.maxMinutes ?? ""}
+                        onChange={(event) =>
+                          setFitFilters((value) => ({
+                            ...value,
+                            maxMinutes: event.target.value ? Number(event.target.value) : null,
+                          }))
+                        }
+                      >
+                        <option value="">Any</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                        <option value="60">An hour</option>
+                      </select>
+                    </label>
+                    <label className="fit-toggle">
+                      <input
+                        type="checkbox"
+                        checked={fitFilters.alone}
+                        onChange={(event) =>
+                          setFitFilters((value) => ({ ...value, alone: event.target.checked }))
+                        }
+                      />
+                      My child works alone today
+                    </label>
+                    <label className="fit-toggle">
+                      <input
+                        type="checkbox"
+                        checked={fitFilters.offline}
+                        onChange={(event) =>
+                          setFitFilters((value) => ({ ...value, offline: event.target.checked }))
+                        }
+                      />
+                      No screens today
+                    </label>
+                  </div>
+                </details>
+              ) : null}
               <PlanCalendar
                 schedule={schedule}
                 today={today}
@@ -1252,6 +1323,12 @@ function ParentWorkspace({
                             ? "Not specified"
                             : `${selectedLesson.adult_help_minutes} minutes`}
                         </p>
+                        {lessonFitSummary(selectedLesson) ? (
+                          <p>
+                            <strong>At a glance:</strong>{" "}
+                            {lessonFitSummary(selectedLesson)}
+                          </p>
+                        ) : null}
                         <h4>Resources</h4>
                         {selectedLesson.resources?.length ? (
                           <ul className="lesson-resources">

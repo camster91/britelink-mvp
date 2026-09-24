@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -104,4 +104,22 @@ test("today's next lesson follows the family calendar",()=>{
   assert.deepEqual([r.kind,r.lesson.id,r.resumesOn],["later","b","2026-10-06"]);
   assert.equal(nextLessonForToday(weeks,{},"2026-10-07",dates).lesson.id,"a","yesterday's unfinished work is still due, in order");
   assert.equal(nextLessonForToday(weeks,{a:{scheduled_for:"2026-10-01"}},"2026-10-02",dates).lesson.id,"a","a lesson's own move beats the calendar");
+});
+
+test("what fits today picks a fitting lesson, never assumes an untagged one fits, and falls back honestly",()=>{
+  const tagged=(id,minutes,help,screen)=>({id,estimated_minutes:minutes,help_level:help,needs_screen:screen});
+  const weeks=[{week_number:1,plan_days:[{id:"d",day_number:1,lessons:[tagged("long",60,"together",true),{id:"untagged"},tagged("short",15,"independent",false)]}]}];
+  const pick=(filters)=>{const r=nextLessonForToday(weeks,{},"2026-10-05",{},filters);return `${r.lesson.id}${r.fit?`:${r.fit}`:""}`};
+  assert.equal(pick({}),"long","no filters keeps plan order");
+  assert.equal(pick({maxMinutes:30}),"short:fits");
+  assert.equal(pick({alone:true,offline:true}),"short:fits");
+  // Nothing tagged fits 10 minutes: the untagged lesson is offered as unknown before "nothing fits".
+  assert.equal(pick({maxMinutes:10}),"untagged:unknown");
+  const onlyTagged=[{week_number:1,plan_days:[{id:"d",day_number:1,lessons:[tagged("long",60,"together",true),tagged("mid",30,"some_help",true)]}]}];
+  const r=nextLessonForToday(onlyTagged,{},"2026-10-05",{},{maxMinutes:10});
+  assert.deepEqual([r.lesson.id,r.fit],["mid","none"],"nothing fits: offer the shortest");
+  assert.equal(lessonFit({},{alone:true}),"unknown");
+  assert.equal(lessonFit(tagged("x",20,"independent",true),{offline:true}),"no");
+  assert.equal(lessonFitSummary(tagged("x",20,"independent",false)),"About 20 min · child can do it alone · no screen needed");
+  assert.equal(lessonFitSummary({}),"");
 });

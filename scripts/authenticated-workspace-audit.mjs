@@ -16,6 +16,18 @@ try{
   const page=await context.newPage();
   await page.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});
   await page.getByRole("heading",{name:"Maya’s plan"}).waitFor();
+  // What fits today (044): the tagged lesson wins when it fits; an untagged one is never assumed to fit.
+  const nextUp0=page.locator("section.next-up");
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  await page.locator("details.fit-filters").getByText("What fits today?").click();
+  await page.getByRole("checkbox",{name:"My child works alone today"}).check();
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await nextUp0.getByText("About 15 min · child can do it alone · no screen needed").waitFor();
+  await page.getByRole("checkbox",{name:"My child works alone today"}).uncheck();
+  await page.getByLabel("Time available").selectOption("15");
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await page.getByLabel("Time available").selectOption("");
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
   await page.getByRole("heading",{name:"Instructions"}).waitFor();await page.getByText("Choose five familiar words.").waitFor();await page.getByText("Paper",{exact:true}).waitFor();await page.getByText("Read each instruction aloud.").waitFor();await page.getByText("Adult help:",{exact:false}).waitFor();await page.getByText("Printable sound cards").waitFor();
   await page.getByRole("button",{name:/Count a collection/}).click();await page.getByText("Choose a small collection.").waitFor();await page.getByText("Household objects").waitFor();await page.getByText("No external resources are required.").waitFor();await page.getByRole("button",{name:/Build a sound map/}).click();
   await page.getByRole("checkbox",{name:"Language",exact:true}).check();

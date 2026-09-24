@@ -83,3 +83,15 @@ test("staff plan documents validate nested weeks days lessons and bounded learni
 test("staff resources require safe classifications HTTPS and review evidence fields",()=>{
   const valid=validateStaffResource({title:" Cards ",url:"https://example.test/cards",requirement:"optional",accessType:"free",region:"Canada",privacyReviewedAt:"2026-08-28T15:00:00Z",rightsReviewedAt:"2026-08-28T15:00:00Z",linkCheckedAt:"2026-08-28T15:00:00Z",attribution:"Original"});assert.equal(valid.title,"Cards");assert.equal(valid.url,"https://example.test/cards");assert.equal(valid.privacyReviewedAt,"2026-08-28T15:00:00.000Z");assert.throws(()=>validateStaffResource({...valid,url:"http://example.test"}),/HTTPS/);assert.throws(()=>validateStaffResource({...valid,accessType:"subscription"}),/Resource access/);
 });
+
+test("lesson fit tags are optional, bounded, and never guessed", () => {
+  const plan = (lesson) => ({ weeks: [{ number: 1, theme: "Week", days: [{ number: 1, lessons: [{ subject: "Math", title: "Title", objective: "Goal", instructions: ["Do it"], ...lesson }] }] }] });
+  const first = (lesson) => validateStaffPlanDocument(plan(lesson)).weeks[0].days[0].lessons[0];
+  assert.deepEqual([first({}).estimatedMinutes, first({}).helpLevel, first({}).needsScreen], [null, null, null]);
+  assert.deepEqual([first({ estimatedMinutes: "25", helpLevel: "independent", needsScreen: "false" }).estimatedMinutes, first({ helpLevel: "together" }).helpLevel, first({ needsScreen: "false" }).needsScreen, first({ needsScreen: true }).needsScreen], [25, "together", false, true]);
+  assert.throws(() => first({ estimatedMinutes: 4 }), /5 to 240/);
+  assert.throws(() => first({ estimatedMinutes: 241 }), /5 to 240/);
+  assert.throws(() => first({ estimatedMinutes: 12.5 }), /5 to 240/);
+  assert.throws(() => first({ helpLevel: "mostly" }), /Help level/);
+  assert.throws(() => first({ needsScreen: "maybe" }), /screen/);
+});
