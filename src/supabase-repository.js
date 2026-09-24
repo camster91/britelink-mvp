@@ -16,8 +16,11 @@ export class SupabaseBriteLinkRepository {
 
   async session() { const result = await this.client.auth.getSession(); return unwrap(result, "Read session")?.session ?? null; }
   async signInWithEmail(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Sign-in redirect URL"), shouldCreateUser: false } }), "Send sign-in link"); }
-  async joinBeta(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true } }), "Join beta"); }
-  async provisionSignup({email,learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_household_from_signup",{guardian_email:requireEmail(email),learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Start onboarding");return rows?.[0]??null}
+  // The learner details ride along as signup metadata. Nothing is provisioned until the family
+  // follows the link: provision_beta_household (migration 041) only serves a signed-in,
+  // email-confirmed caller, so an unauthenticated visitor can no longer create or look up accounts.
+  async joinBeta(email, redirectTo, {learnerName,learnerGrade}={}) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true, data: { beta_learner_name: String(learnerName||"").trim(), beta_learner_grade: String(learnerGrade||"").trim() } } }), "Join beta"); }
+  async provisionBetaHousehold({learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_beta_household",{learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Set up your household");return rows?.[0]??null}
   async requestFreshSignIn(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Reauthentication redirect URL"), shouldCreateUser: false } }), "Send fresh sign-in link"); }
   async signOut() { return unwrap(await this.client.auth.signOut(), "Sign out"); }
 

@@ -118,9 +118,9 @@ jobs:
         run: npx playwright install --with-deps chromium
         timeout-minutes: 15
 
-      # Each audit spawns its own Vite dev server (127.0.0.1:4317..4321) with a
+      # Each audit spawns its own Vite dev server (127.0.0.1:4317..4322) with a
       # mocked harness under qa/. No network, no env vars, no dist/ dependency.
-      # `!cancelled()` => one run reports all five results instead of stopping at the first.
+      # `!cancelled()` => one run reports all six results instead of stopping at the first.
       - name: Audit - accessibility
         if: ${{ !cancelled() }}
         run: npm run test:a11y
@@ -144,6 +144,11 @@ jobs:
       - name: Audit - multi-household
         if: ${{ !cancelled() }}
         run: npm run test:households
+        timeout-minutes: 10
+
+      - name: Audit - beta signup
+        if: ${{ !cancelled() }}
+        run: npm run test:beta-signup
         timeout-minutes: 10
 
       # These paths are git-tracked and get overwritten here. Intentional and

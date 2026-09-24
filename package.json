@@ -21,7 +21,8 @@
     "health:hosted": "node scripts/hosted-health-check.mjs",
     "verify:hosted-isolation": "node scripts/hosted-isolation-check.mjs",
     "test:sites": "node --test tests/sites-worker.test.mjs",
-    "test:restore:production": "bash scripts/production-restore-drill.sh"
+    "test:restore:production": "bash scripts/production-restore-drill.sh",
+    "test:beta-signup": "node scripts/beta-signup-audit.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

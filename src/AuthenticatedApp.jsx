@@ -14,6 +14,134 @@ import { EducatorWorkspace } from "./EducatorWorkspace.jsx";
 import { MessageAttachments } from "./MessageAttachments.jsx";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 
+// A signed-in account with no household. Beta families arrive here straight from their sign-in
+// link: the details they typed on the join form come back as signup metadata, so the household is
+// created once, now that the email is proven. Anyone else (for example a staff member whose
+// invitation is not set up yet) sees the same form, prefilled with nothing, plus a way out.
+function BetaHouseholdSetup({ repository, metadata, onReady }) {
+  const [learnerName, setLearnerName] = useState(
+    String(metadata?.beta_learner_name ?? ""),
+  );
+  const [learnerGrade, setLearnerGrade] = useState(
+    String(metadata?.beta_learner_grade ?? ""),
+  );
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [invalid, setInvalid] = useState([]);
+  const nameRef = useRef(null);
+  const gradeRef = useRef(null);
+  const autoStarted = useRef(false);
+  const provision = useCallback(
+    async (name, grade) => {
+      const missing = [];
+      if (!name.trim()) missing.push("name");
+      if (!grade.trim()) missing.push("grade");
+      setInvalid(missing);
+      if (missing.length) {
+        setStatus("error");
+        setError(
+          `Add ${missing.map((field) => (field === "name" ? "your child's first name" : "their grade or level")).join(" and ")} to set up your household.`,
+        );
+        (missing[0] === "name" ? nameRef : gradeRef).current?.focus();
+        return;
+      }
+      setStatus("loading");
+      setError("");
+      try {
+        await repository.provisionBetaHousehold({
+          learnerName: name,
+          learnerGrade: grade,
+        });
+        await onReady();
+      } catch (failure) {
+        setStatus("error");
+        setError(failure.message);
+      }
+    },
+    [onReady, repository],
+  );
+  useEffect(() => {
+    const name = String(metadata?.beta_learner_name ?? "").trim();
+    const grade = String(metadata?.beta_learner_grade ?? "").trim();
+    if (autoStarted.current || !name || !grade) return;
+    autoStarted.current = true;
+    provision(name, grade);
+  }, [metadata, provision]);
+  if (status === "loading")
+    return (
+      <main className="auth-page" aria-labelledby="setup-heading">
+        <section className="auth-card" role="status">
+          <h1 id="setup-heading">Setting up your household…</h1>
+          <p>Creating your secure family workspace.</p>
+        </section>
+      </main>
+    );
+  return (
+    <main className="auth-page" aria-labelledby="setup-heading">
+      <section className="auth-card">
+        <h1 id="setup-heading">Set up your household</h1>
+        <p>
+          You're signed in, and your account isn't connected to a household yet.
+          Tell us who you're planning for to start the free beta. If BriteLink
+          invited you as staff, sign out and contact support instead.
+        </p>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            provision(learnerName, learnerGrade);
+          }}
+        >
+          {error ? (
+            <p role="alert" id="setup-error" className="form-error-summary">
+              {error}
+            </p>
+          ) : null}
+          <label>
+            Your child's first name
+            <input
+              ref={nameRef}
+              type="text"
+              autoComplete="off"
+              maxLength={120}
+              value={learnerName}
+              aria-invalid={invalid.includes("name") || undefined}
+              aria-describedby={invalid.includes("name") ? "setup-error" : undefined}
+              onChange={(event) => setLearnerName(event.target.value)}
+            />
+          </label>
+          <label>
+            Grade or level
+            <input
+              ref={gradeRef}
+              type="text"
+              autoComplete="off"
+              maxLength={60}
+              placeholder="e.g. Grade 3"
+              value={learnerGrade}
+              aria-invalid={invalid.includes("grade") || undefined}
+              aria-describedby={invalid.includes("grade") ? "setup-error" : undefined}
+              onChange={(event) => setLearnerGrade(event.target.value)}
+            />
+          </label>
+          <button className="primary">Start the free beta</button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => repository.signOut()}
+          >
+            Sign out
+          </button>
+        </form>
+        <small>
+          Do not send child, health, school, diagnosis, or IEP information by
+          email.
+        </small>
+      </section>
+    </main>
+  );
+}
+
 function SignIn({ repository }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle");
@@ -33,12 +161,12 @@ function SignIn({ repository }) {
           setMessage("Add your child's name and grade to join the beta.");
           return;
         }
-        await repository.provisionSignup({
-          email,
+        // The household is created after the link is followed, never before: see
+        // BetaHouseholdSetup and migration 041.
+        await repository.joinBeta(email, globalThis.location?.origin, {
           learnerName,
           learnerGrade,
         });
-        await repository.joinBeta(email, globalThis.location?.origin);
         setStatus("sent");
         setMessage(
           "Welcome to the beta. Check your email for a secure sign-in link.",
@@ -1085,19 +1213,11 @@ export function Workspace({
     );
   if (state.status === "empty")
     return (
-      <main className="auth-page">
-        <section className="auth-card">
-        <h1>No household access is assigned</h1>
-        <p>
-          Your account is signed in, but it has no invited BriteLink household
-          membership. Sign-in is invitation-only. Contact BriteLink support
-          from the invited email without sending child information.
-        </p>
-          <button className="ghost" onClick={() => repository.signOut()}>
-            Sign out
-          </button>
-        </section>
-      </main>
+      <BetaHouseholdSetup
+        repository={repository}
+        metadata={session?.user?.user_metadata}
+        onReady={load}
+      />
     );
   const isStaff = ["educator", "admin"].includes(state.household.role);
   return (

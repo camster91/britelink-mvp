@@ -65,6 +65,7 @@
 .staff-next-panel{grid-column:1/-1;display:grid;gap:12px;align-items:start}
 .staff-next-panel .primary{justify-self:start}
 .staff-next-hint{margin:0;color:#45566c;font-size:14px;line-height:1.5}
+.auth-card [aria-invalid="true"]{border-color:#c84444;background:#fff8f8}
 .form-error-summary{margin:0 0 18px;padding:14px 16px;border:1px solid #e4c7c7;border-radius:12px;background:#fff7f7;color:#8f2f2f}
 .form-error-summary strong{display:block;margin-bottom:8px}
 .form-error-summary ul{margin:0;padding-left:18px}

@@ -42,6 +42,7 @@
 | No README at all | Medium (onboarding) | Added |
 | Four migration invariants had no coverage (definer search_path, RLS on every table, write-grant allowlist, ordering) | Medium (silent-regression risk) | 4 tests added; negative control proven |
 | `SUPABASE_PROVISIONING.md` had a section titled "Blocker: the deploy path has no build-time env plumbing" — false since the plumbing landed | Medium (stale docs) | Corrected to RESOLVED with what remains true |
+| `provision_household_from_signup` (037) was SECURITY DEFINER and granted to `anon`, and the sign-in page called it before the link was followed: anyone with the public anon key could look up a family's household/learner/case ids by email, and create a *confirmed* account with a household and learner for an email they do not own | Critical (security, live since 037 shipped) | Fixed in 041: the anon function is dropped; `provision_beta_household` serves only the signed-in, email-confirmed caller, and the app provisions after sign-in. Proven by `tests/postgres-rls-full-chain.test.mjs` and `npm run test:beta-signup`. **Production stays exposed until 041 + the app are deployed.** |
 
 ## Verified clean
 
