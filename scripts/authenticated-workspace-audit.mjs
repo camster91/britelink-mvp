@@ -44,7 +44,20 @@ try{
   await page.getByLabel("New date").fill("2026-09-14");
   await page.getByLabel(/Caregiver note/).fill("Completed with a short movement break.");
   await page.getByRole("button",{name:"Save lesson activity"}).click();
-  await page.getByText("Lesson activity and new schedule saved securely.").waitFor();
+  // Completing a lesson gets a calm confirmation with Undo; undo restores exactly what was there.
+  const done=page.locator(".lesson-complete");
+  await done.getByText("is done.",{exact:false}).waitFor();
+  await done.getByRole("button",{name:"Undo"}).click();
+  await page.getByText("Undone. The lesson is not started again.").waitFor();
+  const undone=await page.evaluate(()=>globalThis.qaState.activities.find(item=>item.lesson_id==="lesson-a"));
+  if(undone?.status!=="not_started"||undone?.schedule_reason!==null||undone?.caregiver_note!=="")throw new Error(`Undo did not restore the lesson: ${JSON.stringify(undone)}`);
+  await page.getByLabel("Status").selectOption("completed");
+  await page.getByLabel("Reason").selectOption("illness");
+  await page.getByLabel("New date").fill("2026-09-14");
+  await page.getByLabel(/Caregiver note/).fill("Completed with a short movement break.");
+  await page.getByRole("button",{name:"Save lesson activity"}).click();
+  await done.getByText("is done.",{exact:false}).waitFor();
+  await done.getByRole("button",{name:"Open next lesson"}).waitFor();
   // Move this day: lesson-a is completed, so only lesson-b moves; a failed save is retried alone.
   const dayMove=page.locator("details.live-day-move");
   await dayMove.getByText("Need to move this day?").click();

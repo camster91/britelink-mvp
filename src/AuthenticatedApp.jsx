@@ -326,6 +326,8 @@ function ParentWorkspace({
     message: "",
     canRetry: false,
   });
+  // The lesson just marked complete, with what it was before, so it can be undone.
+  const [completion, setCompletion] = useState(null);
   const [dayMove, setDayMove] = useState({ reason: "", scheduledFor: "" });
   const [dayMoveOperation, setDayMoveOperation] = useState({
     status: "idle",
@@ -449,6 +451,7 @@ function ParentWorkspace({
   };
   const saveActivity = async () => {
     if (!selectedLesson) return;
+    const prior = activities[selectedLesson.id] ?? null;
     const input = {
       householdId: household.household_id,
       learnerId: selectedLearner.id,
@@ -499,9 +502,57 @@ function ParentWorkspace({
           : "Lesson activity saved securely.",
         canRetry: false,
       });
+      setCompletion(
+        draft.status === "completed" && prior?.status !== "completed"
+          ? { lessonId: selectedLesson.id, title: selectedLesson.title, prior }
+          : null,
+      );
     } catch (error) {
       setPlanState((state) => ({ ...state, activities: previous }));
       setActivityOperation(operationFailure(error, "Lesson activity"));
+    }
+  };
+  useEffect(() => {
+    setCompletion(null);
+  }, [selectedLesson?.id]);
+  // Puts the lesson back exactly as it was before it was marked complete.
+  const undoCompletion = async () => {
+    if (!completion) return;
+    const { lessonId, prior } = completion;
+    const restored = {
+      status: prior?.status ?? "not_started",
+      note: prior?.caregiver_note ?? "",
+      scheduleReason: prior?.schedule_reason ?? "",
+      scheduledFor: prior?.scheduled_for ?? "",
+    };
+    setActivityOperation({ status: "loading", message: "Undoing…", canRetry: false });
+    try {
+      const saved = await repository.saveLessonActivity({
+        householdId: household.household_id,
+        learnerId: selectedLearner.id,
+        lessonId,
+        userId,
+        ...restored,
+      });
+      setPlanState((state) => ({
+        ...state,
+        activities: [
+          ...state.activities.filter((item) => item.lesson_id !== lessonId),
+          saved,
+        ],
+      }));
+      setDraft(restored);
+      setCompletion(null);
+      setActivityOperation({
+        status: "success",
+        message: `Undone. The lesson is ${restored.status.replaceAll("_", " ")} again.`,
+        canRetry: false,
+      });
+    } catch (error) {
+      setActivityOperation({
+        ...operationFailure(error, "Undo"),
+        onRetry: undoCompletion,
+      });
     }
   };
   useEffect(() => {
@@ -1106,10 +1157,40 @@ function ParentWorkspace({
                       >
                         Save lesson activity
                       </button>
-                      <OperationNotice
-                        operation={activityOperation}
-                        retry={saveActivity}
-                      />
+                      {completion?.lessonId === selectedLesson.id &&
+                      activityOperation.status === "success" ? (
+                        <div className="lesson-complete" role="status">
+                          <p>
+                            <strong>“{completion.title}” is done.</strong> It’s
+                            saved to {selectedLearner.preferred_name}’s learning
+                            record.
+                          </p>
+                          <div>
+                            {nextLesson?.kind === "due" &&
+                            nextLesson.lesson.id !== completion.lessonId ? (
+                              <button
+                                type="button"
+                                className="primary"
+                                onClick={jumpToNextLesson}
+                              >
+                                Open next lesson
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={undoCompletion}
+                            >
+                              Undo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <OperationNotice
+                          operation={activityOperation}
+                          retry={saveActivity}
+                        />
+                      )}
                     </form>
                   ) : null}
                 </div>
