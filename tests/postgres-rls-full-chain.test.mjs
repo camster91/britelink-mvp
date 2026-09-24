@@ -100,6 +100,14 @@ function preprocessSeed(sql, vars) {
 async function database() {
   const db = new PGlite({ extensions: { pgcrypto } });
   await db.exec(await read("scripts/migration-harness/supabase-shim.sql"));
+  // Supabase's own init script (supabase/postgres, migrations/db/init-scripts/00000000000000-
+  // initial-schema.sql, as shipped in the 15.8.1.060 image the self-hosted stack runs) grants these
+  // to every client role for everything later created in public. A migration's "revoke ... from
+  // public" does not remove a grant made directly to anon or authenticated, so without this line
+  // the fixture would be stricter than production and hide exactly that class of mistake.
+  await db.exec(`alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+    alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;`);
   const files = (await readdir(new URL("supabase/migrations/", root))).filter((f) => f.endsWith(".sql")).sort();
   for (const file of files) await db.exec(await read(`supabase/migrations/${file}`));
   await db.exec(await read("supabase/storage-policies.sql"));
@@ -172,11 +180,11 @@ async function uuidsOfB(db, tables) {
   return found;
 }
 
-test("the full migration chain applies in order, ending with the 041 signup fix", async () => {
+test("the full migration chain applies in order, including the 041 signup fix", async () => {
   const { db, files } = await database();
   try {
-    assert.ok(files.length >= 41, `expected at least 41 migrations, found ${files.length}`);
-    assert.equal(files.at(-1), "202608280041_secure_beta_signup.sql");
+    assert.ok(files.length >= 42, `expected at least 42 migrations, found ${files.length}`);
+    assert.ok(files.includes("202608280041_secure_beta_signup.sql"));
     const old = await db.query(`select 1 from pg_proc where proname='provision_household_from_signup'`);
     assert.equal(old.rows.length, 0, "037's anon-callable signup function must be gone");
   } finally { await db.close(); }
@@ -315,6 +323,51 @@ test("every SECURITY DEFINER RPC refuses household A actors aimed at household B
     for (const [label, id] of actorsA) {
       const { rows } = await as(db, "authenticated", id, () => db.query(`select public.can_read_plan($1) as ok`, [plan]));
       assert.equal(rows[0].ok, false, `can_read_plan admits ${label} to household B's plan`);
+    }
+  } finally { await db.close(); }
+});
+
+// Client write privileges, as the catalog reports them under Supabase's default grants. 014 meant
+// writes to be this narrow; 042 makes it true on a real project. It is also what makes the hosted
+// D2 probe insert.case_messages conclusive: the privilege check refuses the forged row with 42501
+// before the rate-limit trigger (011) can answer with an ambiguous P0001.
+const CLIENT_WRITABLE = new Map([
+  ["lesson_activities", "INSERT,UPDATE"],
+  ["case_message_reads", "INSERT,UPDATE"],
+]);
+
+test("client roles hold only the allowlisted write privileges, and forged inserts are refused as authorization denials", async () => {
+  const { db } = await database();
+  try {
+    const writable = (await db.query(`
+      select c.relname as name, r.rolname as role,
+             string_agg(p.privilege_type, ',' order by p.privilege_type) as privileges
+        from pg_class c join pg_namespace n on n.oid=c.relnamespace
+        cross join (values ('anon'), ('authenticated')) as r(rolname)
+        cross join (values ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE')) as p(privilege_type)
+       where n.nspname='public' and c.relkind='r' and has_table_privilege(r.rolname, c.oid, p.privilege_type)
+       group by 1, 2 order by 1, 2`)).rows;
+    const expected = [...CLIENT_WRITABLE].map(([name, privileges]) => ({ name, role: "authenticated", privileges })).sort((x, y) => x.name.localeCompare(y.name));
+    assert.deepEqual(writable, expected);
+
+    const problems = [];
+    const guarded = (await db.query(`
+      select distinct c.relname as name from pg_trigger t join pg_class c on c.oid=t.tgrelid
+        join pg_proc p on p.oid=t.tgfoid where p.proname='enforce_insert_rate_limit' and not t.tgisinternal order by 1`)).rows.map((r) => r.name);
+    assert.ok(guarded.includes("case_messages"));
+    for (const name of guarded) {
+      for (const [label, id] of actorsA) {
+        const { error } = await attempt(db, id, `insert into public.${name}(household_id) values ('${houseB}')`);
+        if (!error) problems.push(`${label}: ${name} accepted a household B row`);
+        else if (error.code !== "42501") problems.push(`${label}: ${name} refused with ${error.code} (${error.message}), not 42501`);
+      }
+    }
+    assert.deepEqual(problems, []);
+
+    // The scanner still works: service_role keeps what 023's adapter calls.
+    for (const fn of ["admin_list_pending_scan_attachments(integer)", "admin_reconcile_attachment_objects(uuid,text[])"]) {
+      const { rows } = await db.query(`select has_function_privilege('service_role', 'public.${fn}', 'EXECUTE') as ok, has_function_privilege('authenticated', 'public.${fn}', 'EXECUTE') as client`);
+      assert.deepEqual(rows[0], { ok: true, client: false }, fn);
     }
   } finally { await db.close(); }
 });
