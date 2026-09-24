@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, localDateString, messageIsUnread, nextLessonForToday, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -69,4 +69,39 @@ test("today's next lesson skips work moved to a later date and never reports mov
 test("local date string uses the family's own calendar day",()=>{
   assert.equal(localDateString(new Date(2026,0,5,23,59)),"2026-01-05");
   assert.equal(localDateString(new Date(2026,11,31,0,0)),"2026-12-31");
+});
+
+test("the family calendar places plan days on school days, around days off and fixed dates",()=>{
+  const weeks=[{plan_days:[{id:"d1"},{id:"d2"},{id:"d3",planned_date:"2026-10-08"},{id:"d4"},{id:"d5"}]}];
+  // 2026-10-05 is a Monday. School Mon/Tue/Thu/Fri; Tue 6th is off; Thu 8th is an educator-fixed day.
+  assert.deepEqual(planDayDates(weeks,{start_date:"2026-10-05",school_days:[1,2,4,5],days_off:["2026-10-06"]}),
+    {d1:"2026-10-05",d2:"2026-10-09",d3:"2026-10-08",d4:"2026-10-12",d5:"2026-10-13"});
+  // Own pace: only educator-set dates exist.
+  assert.deepEqual(planDayDates(weeks,{start_date:null,school_days:[1]}),{d1:null,d2:null,d3:"2026-10-08",d4:null,d5:null});
+  assert.deepEqual(planDayDates(weeks,null).d3,"2026-10-08");
+  // A start date that is not a school day rolls forward to the first one (Sat 10th -> Mon 12th).
+  assert.equal(planDayDates([{plan_days:[{id:"x"}]}],{start_date:"2026-10-10",school_days:[1,2,3,4,5],days_off:[]}).x,"2026-10-12");
+  assert.throws(()=>planDayDates(weeks,{start_date:"2026-10-05",school_days:[]}),/at least one school day/);
+});
+
+test("taking a day off shifts the rest of the plan by one school day and can be undone",()=>{
+  const schedule={start_date:"2026-10-05",school_days:[1,2,3,4,5],days_off:[]};
+  const weeks=[{plan_days:[{id:"a"},{id:"b"},{id:"c"}]}];
+  const off=withDayOff(schedule,"2026-10-06");
+  assert.deepEqual(off,["2026-10-06"]);
+  assert.deepEqual(planDayDates(weeks,{...schedule,days_off:off}),{a:"2026-10-05",b:"2026-10-07",c:"2026-10-08"});
+  assert.deepEqual(withoutDayOff({...schedule,days_off:off},"2026-10-06"),[]);
+  assert.equal(withDayOff(schedule,"2026-10-10"),null,"a Saturday is not a school day");
+  assert.equal(withDayOff({...schedule,days_off:["2026-10-06"]},"2026-10-06"),null,"already off");
+  assert.equal(withDayOff(schedule,"2026-10-02"),null,"before the plan starts");
+  assert.equal(withDayOff({...schedule,start_date:null},"2026-10-06"),null,"own pace has no days to take off");
+});
+
+test("today's next lesson follows the family calendar",()=>{
+  const weeks=[{week_number:1,plan_days:[{id:"d1",day_number:1,lessons:[{id:"a"}]},{id:"d2",day_number:2,lessons:[{id:"b"}]}]}];
+  const dates={d1:"2026-10-05",d2:"2026-10-06"};
+  const r=nextLessonForToday(weeks,{a:{status:"completed"}},"2026-10-05",dates);
+  assert.deepEqual([r.kind,r.lesson.id,r.resumesOn],["later","b","2026-10-06"]);
+  assert.equal(nextLessonForToday(weeks,{},"2026-10-07",dates).lesson.id,"a","yesterday's unfinished work is still due, in order");
+  assert.equal(nextLessonForToday(weeks,{a:{scheduled_for:"2026-10-01"}},"2026-10-02",dates).lesson.id,"a","a lesson's own move beats the calendar");
 });

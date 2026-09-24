@@ -52,11 +52,21 @@ export class SupabaseBriteLinkRepository {
   async withdrawConsent(householdId,consentId){requireIdentifier(householdId,"Household ID");requireIdentifier(consentId,"Consent ID");return unwrap(await this.client.rpc("withdraw_guardian_consent",{target_household:householdId,target_consent:consentId}),"Withdraw consent")}
   async loadPublishedPlans(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
-    return unwrap(await this.client.from("plans").select("id, version, status, published_at, plan_weeks(id, week_number, theme, plan_days(id, day_number, planned_date, lessons(*, resources(*))))").eq("household_id", householdId).eq("learner_id", learnerId).eq("status", "published").order("version", { ascending: false }), "Load published plans");
+    return unwrap(await this.client.from("plans").select("id, version, status, published_at, plan_schedules(start_date, school_days, days_off, updated_at), plan_weeks(id, week_number, theme, plan_days(id, day_number, planned_date, lessons(*, resources(*))))").eq("household_id", householdId).eq("learner_id", learnerId).eq("status", "published").order("version", { ascending: false }), "Load published plans");
   }
   async listLessonActivities(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
     return unwrap(await this.client.from("lesson_activities").select("id, lesson_id, status, caregiver_note, schedule_reason, scheduled_for, updated_at").eq("household_id", householdId).eq("learner_id", learnerId).order("updated_at", { ascending: false }), "Load lesson activity");
+  }
+  // The family calendar for a published plan (migration 043). startDate null = own pace.
+  async setPlanSchedule({ householdId, planId, startDate = null, schoolDays, daysOff = [] }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(planId, "Plan ID");
+    if (startDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new TypeError("Start date must be a date");
+    const days = [...new Set((schoolDays ?? []).map(Number))];
+    if (!days.length || days.some((day) => !Number.isInteger(day) || day < 1 || day > 7)) throw new TypeError("Choose at least one school day");
+    if ((daysOff ?? []).some((day) => !/^\d{4}-\d{2}-\d{2}$/.test(day))) throw new TypeError("Days off must be dates");
+    const rows = unwrap(await this.client.rpc("set_plan_schedule", { target_household: householdId, target_plan: planId, schedule_start: startDate, schedule_school_days: days, schedule_days_off: daysOff ?? [] }), "Save your calendar");
+    return rows?.[0] ?? null;
   }
   async saveLessonActivity(input) {
     const valid=validateLessonActivityInput(input);

@@ -8,8 +8,12 @@ import {
   messageIsUnread,
   nextLessonForToday,
   orderedPlanWeeks,
+  planDayDates,
   planDayMove,
   unfinishedLessons,
+  WEEKDAY_LABELS,
+  withDayOff,
+  withoutDayOff,
 } from "./authenticated-workspace.js";
 import { classifyOperationError } from "./operation-state.js";
 import { AuthenticatedIntake } from "./AuthenticatedIntake.jsx";
@@ -145,6 +149,147 @@ function BetaHouseholdSetup({ repository, metadata, onReady }) {
     </main>
   );
 }
+
+// The family's calendar for the plan (migration 043): when they start and which weekdays they
+// school, or no fixed days at all. Kept below "Do this next" so it never competes with the next
+// action. Saving is the parent's job; this component only edits a draft.
+function PlanCalendar({ schedule, today, operation, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [startDate, setStartDate] = useState(schedule?.start_date ?? today);
+  const [schoolDays, setSchoolDays] = useState(
+    (schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number),
+  );
+  const [error, setError] = useState("");
+  const firstDayRef = useRef(null);
+  useEffect(() => {
+    setStartDate(schedule?.start_date ?? today);
+    setSchoolDays((schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number));
+  }, [schedule, today]);
+  const busy = operation.status === "loading";
+  const save = async (start) => {
+    if (!schoolDays.length) {
+      setError("Choose at least one school day.");
+      firstDayRef.current?.focus();
+      return;
+    }
+    setError("");
+    const saved = await onSave({
+      startDate: start,
+      schoolDays,
+      daysOff: schedule?.days_off ?? [],
+    });
+    if (saved) setEditing(false);
+  };
+  const dayOff = withDayOff(schedule, today);
+  const labels = Object.fromEntries(WEEKDAY_LABELS);
+  if (schedule && !editing)
+    return (
+      <section className="plan-calendar" aria-labelledby="plan-calendar-heading">
+        <h3 id="plan-calendar-heading">Your calendar</h3>
+        <p>
+          {schedule.start_date
+            ? `Starts ${schedule.start_date} · ${(schedule.school_days ?? []).map((day) => labels[day]).join(", ")}${schedule.days_off?.length ? ` · ${schedule.days_off.length} day${schedule.days_off.length === 1 ? "" : "s"} off` : ""}`
+            : "Going at your own pace, with no fixed dates."}
+        </p>
+        <div className="plan-calendar-actions">
+          {dayOff ? (
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy}
+              onClick={() =>
+                onSave({ ...toDraft(schedule), daysOff: dayOff }, { tookOff: today })
+              }
+            >
+              Take today off
+            </button>
+          ) : null}
+          <button type="button" className="ghost" onClick={() => setEditing(true)}>
+            {schedule.start_date ? "Change calendar" : "Set dates"}
+          </button>
+        </div>
+        <OperationNotice operation={operation} />
+      </section>
+    );
+  return (
+    <section className="plan-calendar" aria-labelledby="plan-calendar-heading">
+      <h3 id="plan-calendar-heading">When do you school?</h3>
+      <p>
+        Pick a start date and your school days, and each plan day gets a date.
+        Taking a day off later moves everything after it by one school day.
+      </p>
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          save(startDate || today);
+        }}
+      >
+        <label>
+          Start date
+          <input
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+          />
+        </label>
+        <fieldset
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "plan-calendar-error" : undefined}
+        >
+          <legend>School days</legend>
+          {WEEKDAY_LABELS.map(([day, label], index) => (
+            <label key={day} className="plan-calendar-day">
+              <input
+                ref={index === 0 ? firstDayRef : undefined}
+                type="checkbox"
+                checked={schoolDays.includes(day)}
+                onChange={(event) =>
+                  setSchoolDays((current) =>
+                    event.target.checked
+                      ? [...current, day].sort()
+                      : current.filter((item) => item !== day),
+                  )
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {error ? (
+          <p role="alert" id="plan-calendar-error" className="form-error-summary">
+            {error}
+          </p>
+        ) : null}
+        <div className="plan-calendar-actions">
+          <button className="primary" disabled={busy}>
+            Save my calendar
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            disabled={busy}
+            onClick={() => save(null)}
+          >
+            Go at my own pace
+          </button>
+          {schedule ? (
+            <button type="button" className="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
+        <OperationNotice operation={operation} />
+      </form>
+    </section>
+  );
+}
+
+const toDraft = (schedule) => ({
+  startDate: schedule?.start_date ?? null,
+  schoolDays: (schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number),
+  daysOff: schedule?.days_off ?? [],
+});
 
 function SignIn({ repository }) {
   const [email, setEmail] = useState("");
@@ -282,9 +427,9 @@ function OperationNotice({ operation, retry }) {
       role={failure ? "alert" : "status"}
     >
       <span>{operation.message}</span>
-      {operation.canRetry && retryAction ? (
+      {(operation.canRetry || operation.retryLabel) && retryAction ? (
         <button type="button" onClick={retryAction}>
-          Try again
+          {operation.retryLabel ?? "Try again"}
         </button>
       ) : null}
     </div>
@@ -322,6 +467,11 @@ function ParentWorkspace({
     scheduledFor: "",
   });
   const [activityOperation, setActivityOperation] = useState({
+    status: "idle",
+    message: "",
+    canRetry: false,
+  });
+  const [calendarOperation, setCalendarOperation] = useState({
     status: "idle",
     message: "",
     canRetry: false,
@@ -411,6 +561,10 @@ function ParentWorkspace({
   }, [loadMessages]);
 
   const plan = latestPublishedPlan(planState.plans);
+  // PostgREST embeds a one-to-one relation as an object; tolerate the array form too.
+  const schedule = Array.isArray(plan?.plan_schedules)
+    ? (plan.plan_schedules[0] ?? null)
+    : (plan?.plan_schedules ?? null);
   const weeks = useMemo(() => orderedPlanWeeks(plan), [plan]);
   const week = weeks[weekIndex] ?? weeks[0];
   const day = week?.plan_days?.[dayIndex] ?? week?.plan_days?.[0];
@@ -751,7 +905,59 @@ function ParentWorkspace({
     }
   };
 
-  const next = nextLessonForToday(weeks, activities, localDateString());
+  const today = localDateString();
+  const dayDates = planDayDates(weeks, schedule);
+  const next = nextLessonForToday(weeks, activities, today, dayDates);
+  const saveCalendar = async (draft, { tookOff = null, undone = false } = {}) => {
+    setCalendarOperation({ status: "loading", message: "Saving your calendar…", canRetry: false });
+    try {
+      const saved = await repository.setPlanSchedule({
+        householdId: household.household_id,
+        planId: plan.id,
+        ...draft,
+      });
+      setPlanState((state) => ({
+        ...state,
+        plans: state.plans.map((item) =>
+          item.id === plan.id ? { ...item, plan_schedules: saved } : item,
+        ),
+      }));
+      setCalendarOperation(
+        tookOff
+          ? {
+              status: "success",
+              message: "Today is off. Everything from today on moved by one school day.",
+              canRetry: false,
+              onRetry: () =>
+                saveCalendar(
+                  { ...toDraft(saved), daysOff: withoutDayOff(saved, tookOff) },
+                  { undone: true },
+                ),
+              retryLabel: "Undo",
+            }
+          : undone
+            ? {
+                status: "success",
+                message: "Undone. Today is a school day again.",
+                canRetry: false,
+              }
+          : {
+              status: "success",
+              message: saved?.start_date
+                ? "Calendar saved. Each plan day now has a date."
+                : "Saved. You're going at your own pace.",
+              canRetry: false,
+            },
+      );
+      return saved;
+    } catch (error) {
+      setCalendarOperation({
+        ...operationFailure(error, "Your calendar"),
+        onRetry: () => saveCalendar(draft, { tookOff, undone }),
+      });
+      return null;
+    }
+  };
   const nextLesson = next.kind === "done" ? null : next;
   const jumpToNextLesson = () => {
     if (!nextLesson) return;
@@ -850,6 +1056,12 @@ function ParentWorkspace({
                   All lessons complete! You can still review any day or adjust lesson statuses.
                 </p>
               )}
+              <PlanCalendar
+                schedule={schedule}
+                today={today}
+                operation={calendarOperation}
+                onSave={saveCalendar}
+              />
             </>
           )}
           {plan && weeks.length && planState.status === "success" ? (
@@ -892,7 +1104,7 @@ function ParentWorkspace({
                     <small>
                       {dayMovedTo(item, activities)
                         ? `Moved to ${dayMovedTo(item, activities)}`
-                        : (item.planned_date ?? "Flexible")}
+                        : (dayDates[item.id] ?? "Flexible")}
                     </small>
                   </button>
                 ))}

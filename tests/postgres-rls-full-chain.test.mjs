@@ -76,6 +76,9 @@ const PLACEHOLDER = {
   "text[]": "array['personalized_learning_plan']",
   "membership_role[]": "array['guardian','educator','admin']::public.membership_role[]",
   case_status: "(enum_range(null::public.case_status))[2]",
+  date: "current_date",
+  "smallint[]": "array[1,3,5]::smallint[]",
+  "date[]": "array[current_date]::date[]",
 };
 const DENIED = /access required|membership required|not found|permission denied|row-level security|response owner or admin required/i;
 
@@ -397,5 +400,31 @@ test("beta signup provisions only the signed-in, email-confirmed caller", async 
     assert.deepEqual([existing.household_id, existing.created], [houseA, false]);
     const households = Number((await db.query(`select count(*) as n from public.households`)).rows[0].n);
     assert.equal(households, 3, "only the fresh account's household is new");
+  } finally { await db.close(); }
+});
+
+test("a guardian sets their own plan calendar; staff cannot; the export carries it", async () => {
+  const { db } = await database();
+  try {
+    const planA = "5eed0000-0000-4000-8000-000000000a30";
+    const set = (who, days, off = "array[]::date[]", plan = planA) => as(db, "authenticated", who, () => db.query(
+      `select * from public.set_plan_schedule('${houseA}', '${plan}', '2026-10-05', ${days}, ${off})`));
+    const saved = (await set(users.guardianA, "array[5,1,1,3]::smallint[]", "array['2026-10-09','2026-10-09']::date[]")).rows[0];
+    assert.deepEqual([saved.start_date instanceof Date ? saved.start_date.toISOString().slice(0, 10) : saved.start_date, saved.school_days, saved.days_off.length],
+      ["2026-10-05", [1, 3, 5], 1], "school days are de-duplicated and sorted, days off de-duplicated");
+    await assert.rejects(() => set(users.educatorA, "array[1]::smallint[]"), /guardian access required/);
+    await assert.rejects(() => set(users.guardianA, "array[8]::smallint[]"), /school days are invalid/);
+    await assert.rejects(() => set(users.guardianA, "array[]::smallint[]"), /school days are invalid/);
+    // Only published plans get a family calendar.
+    await db.query(`update public.plans set status='draft' where id=$1`, [planA]);
+    await assert.rejects(() => set(users.guardianA, "array[1]::smallint[]"), /plan not found/);
+    await db.query(`update public.plans set status='published' where id=$1`, [planA]);
+
+    // The export sits behind require_recent_authentication (021), which reads the token's iat.
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    assert.equal(exported.schemaVersion, 2);
+    assert.ok(exported.manifest.included.includes("planSchedules"));
+    assert.deepEqual(exported.planSchedules.map((row) => [row.plan_id, row.school_days]), [[planA, [1, 3, 5]]]);
+    assert.ok(Array.isArray(exported.lessons), "the wrapped export keeps the original payload");
   } finally { await db.close(); }
 });

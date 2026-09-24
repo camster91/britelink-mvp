@@ -176,3 +176,17 @@ test("authentication rejects unsafe redirect URLs before calling Supabase", asyn
   await repository.requestFreshSignIn("guardian@example.ca","https://app.britelink.org");
   assert.equal(calls[1].email,"guardian@example.ca");assert.equal(calls[1].options.shouldCreateUser,false);
 });
+
+test("the family calendar is saved through its RPC with validated, de-duplicated input", async () => {
+  const calls = [];
+  const repository = new SupabaseBriteLinkRepository({ rpc: async (name, args) => { calls.push([name, args]); return { data: [{ plan_id: "plan-a" }] }; } });
+  const saved = await repository.setPlanSchedule({ householdId: "10000000-0000-4000-8000-000000000001", planId: "50000000-0000-4000-8000-000000000001", startDate: "2026-10-05", schoolDays: [1, 3, 3, 5], daysOff: ["2026-10-09"] });
+  assert.deepEqual(saved, { plan_id: "plan-a" });
+  assert.deepEqual(calls, [["set_plan_schedule", { target_household: "10000000-0000-4000-8000-000000000001", target_plan: "50000000-0000-4000-8000-000000000001", schedule_start: "2026-10-05", schedule_school_days: [1, 3, 5], schedule_days_off: ["2026-10-09"] }]]);
+  const ids = { householdId: "10000000-0000-4000-8000-000000000001", planId: "50000000-0000-4000-8000-000000000001" };
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [] }), /at least one school day/);
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [8] }), /at least one school day/);
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, startDate: "05/10/2026", schoolDays: [1] }), /Start date/);
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [1], daysOff: ["tomorrow"] }), /Days off/);
+  assert.equal(calls.length, 1, "invalid input never reaches the database");
+});

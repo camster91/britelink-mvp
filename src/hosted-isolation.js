@@ -34,6 +34,8 @@ const PRIVATE_TABLES = [
   "attachment_object_observations",
   "attachment_object_deletions",
   "retention_execution_ledger",
+  // Added with migration 043: the family's calendar for a plan.
+  "plan_schedules",
 ];
 
 // Tables with RLS enabled that are intentionally NOT swept here, with the reason.
