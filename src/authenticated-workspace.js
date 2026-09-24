@@ -41,3 +41,33 @@ export function findNextPublishedLesson(weeks = [], activitiesByLessonId = {}) {
   }
   return null;
 }
+
+// Lessons still to do on a plan day. Completed and skipped lessons are part of the record, not the
+// plan still to do, so a whole-day move leaves them where they happened.
+export function unfinishedLessons(day, activitiesByLessonId = {}) {
+  return (day?.lessons ?? []).filter((lesson) => !["completed", "skipped"].includes(activitiesByLessonId[lesson.id]?.status));
+}
+
+// "Move this day": the activity input for each unfinished lesson. Every moved lesson keeps its
+// status and caregiver note, so the move adapts the plan without rewriting history.
+export function planDayMove(day, activitiesByLessonId = {}, { reason, scheduledFor } = {}) {
+  if (!reason || !scheduledFor) throw new TypeError("Choose a reason and a new date to move this day");
+  return unfinishedLessons(day, activitiesByLessonId).map((lesson) => {
+    const activity = activitiesByLessonId[lesson.id];
+    return {
+      lessonId: lesson.id,
+      status: activity?.status ?? "not_started",
+      note: activity?.caregiver_note ?? "",
+      scheduleReason: reason,
+      scheduledFor,
+    };
+  });
+}
+
+// Where a day's unfinished lessons now sit, for the day tab: one shared new date, or null.
+export function dayMovedTo(day, activitiesByLessonId = {}) {
+  const open = unfinishedLessons(day, activitiesByLessonId);
+  if (!open.length) return null;
+  const dates = new Set(open.map((lesson) => activitiesByLessonId[lesson.id]?.scheduled_for ?? null));
+  return dates.size === 1 ? [...dates][0] : null;
+}

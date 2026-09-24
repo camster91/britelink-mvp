@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   activityMap,
   caseForLearner,
+  dayMovedTo,
   findNextPublishedLesson,
   latestPublishedPlan,
   messageIsUnread,
   orderedPlanWeeks,
+  planDayMove,
+  unfinishedLessons,
 } from "./authenticated-workspace.js";
 import { classifyOperationError } from "./operation-state.js";
 import { AuthenticatedIntake } from "./AuthenticatedIntake.jsx";
@@ -322,6 +325,12 @@ function ParentWorkspace({
     message: "",
     canRetry: false,
   });
+  const [dayMove, setDayMove] = useState({ reason: "", scheduledFor: "" });
+  const [dayMoveOperation, setDayMoveOperation] = useState({
+    status: "idle",
+    message: "",
+    canRetry: false,
+  });
   const [messageBody, setMessageBody] = useState("");
   const [messageFiles, setMessageFiles] = useState([]);
   const [attachmentRecovery, setAttachmentRecovery] = useState([]);
@@ -493,6 +502,63 @@ function ParentWorkspace({
       setPlanState((state) => ({ ...state, activities: previous }));
       setActivityOperation(operationFailure(error, "Lesson activity"));
     }
+  };
+  useEffect(() => {
+    setDayMove({ reason: "", scheduledFor: "" });
+    setDayMoveOperation({ status: "idle", message: "", canRetry: false });
+  }, [day?.id]);
+  // Moves every unfinished lesson of the selected day. Each lesson is its own upsert, so a
+  // failure part-way leaves the rest saved; retry then resends only the lessons that failed.
+  const moveDay = async (pending) => {
+    const moves =
+      pending ??
+      planDayMove(day, activities, {
+        reason: dayMove.reason,
+        scheduledFor: dayMove.scheduledFor,
+      });
+    if (!moves.length) return;
+    setDayMoveOperation({
+      status: "loading",
+      message: `Moving ${moves.length} lesson${moves.length === 1 ? "" : "s"}…`,
+      canRetry: false,
+    });
+    const failed = [];
+    let lastError = null;
+    for (const move of moves) {
+      try {
+        const saved = await repository.saveLessonActivity({
+          householdId: household.household_id,
+          learnerId: selectedLearner.id,
+          userId,
+          ...move,
+        });
+        setPlanState((state) => ({
+          ...state,
+          activities: [
+            ...state.activities.filter((item) => item.lesson_id !== move.lessonId),
+            saved,
+          ],
+        }));
+      } catch (error) {
+        failed.push(move);
+        lastError = error;
+      }
+    }
+    const date = moves[0].scheduledFor;
+    if (!failed.length) {
+      setDayMoveOperation({
+        status: "success",
+        message: `Moved ${moves.length} unfinished lesson${moves.length === 1 ? "" : "s"} to ${date}. Progress and notes were kept.`,
+        canRetry: false,
+      });
+      return;
+    }
+    const failure = operationFailure(lastError, "Moving this day");
+    setDayMoveOperation({
+      ...failure,
+      message: `${moves.length - failed.length} of ${moves.length} lessons moved to ${date}. ${failure.message}`,
+      onRetry: () => moveDay(failed),
+    });
   };
   const sendMessage = async (event) => {
     event.preventDefault();
@@ -763,10 +829,73 @@ function ParentWorkspace({
                     }}
                   >
                     Day {item.day_number}
-                    <small>{item.planned_date ?? "Flexible"}</small>
+                    <small>
+                      {dayMovedTo(item, activities)
+                        ? `Moved to ${dayMovedTo(item, activities)}`
+                        : (item.planned_date ?? "Flexible")}
+                    </small>
                   </button>
                 ))}
               </div>
+              {unfinishedLessons(day, activities).length ? (
+                <details
+                  className="live-day-move"
+                  open={dayMoveOperation.status !== "idle" || undefined}
+                >
+                  <summary>Need to move this day?</summary>
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      moveDay();
+                    }}
+                  >
+                    <fieldset className="live-schedule">
+                      <legend>
+                        Move this day <span>(unfinished lessons only)</span>
+                      </legend>
+                      <label>
+                        Why move this day?
+                        <select
+                          required
+                          value={dayMove.reason}
+                          onChange={(event) =>
+                            setDayMove((value) => ({ ...value, reason: event.target.value }))
+                          }
+                        >
+                          <option value="">Select one</option>
+                          <option value="illness">Illness</option>
+                          <option value="travel">Travel</option>
+                          <option value="caregiver_schedule">Caregiver schedule</option>
+                          <option value="catch_up">Catch-up day</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </label>
+                      <label>
+                        Move to
+                        <input
+                          type="date"
+                          required
+                          value={dayMove.scheduledFor}
+                          onChange={(event) =>
+                            setDayMove((value) => ({ ...value, scheduledFor: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <small>
+                        Life happens. Completed and skipped lessons stay where they
+                        are; everything else keeps its progress and notes.
+                      </small>
+                      <button
+                        className="ghost"
+                        disabled={dayMoveOperation.status === "loading"}
+                      >
+                        Move unfinished lessons
+                      </button>
+                    </fieldset>
+                    <OperationNotice operation={dayMoveOperation} />
+                  </form>
+                </details>
+              ) : null}
               {!day?.lessons?.length ? (
                 <p>No lessons are scheduled for this day.</p>
               ) : (
@@ -788,6 +917,9 @@ function ParentWorkspace({
                           {(
                             activities[item.id]?.status ?? "not_started"
                           ).replaceAll("_", " ")}
+                          {activities[item.id]?.scheduled_for
+                            ? ` · moved to ${activities[item.id].scheduled_for}`
+                            : ""}
                         </small>
                       </button>
                     ))}

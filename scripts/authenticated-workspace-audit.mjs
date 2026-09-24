@@ -45,6 +45,20 @@ try{
   await page.getByLabel(/Caregiver note/).fill("Completed with a short movement break.");
   await page.getByRole("button",{name:"Save lesson activity"}).click();
   await page.getByText("Lesson activity and new schedule saved securely.").waitFor();
+  // Move this day: lesson-a is completed, so only lesson-b moves; a failed save is retried alone.
+  const dayMove=page.locator("details.live-day-move");
+  await dayMove.getByText("Need to move this day?").click();
+  await dayMove.getByLabel("Why move this day?").selectOption("travel");
+  await dayMove.getByLabel("Move to").fill("2026-09-15");
+  await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
+  await dayMove.getByRole("button",{name:"Move unfinished lessons"}).click();
+  await dayMove.getByText("0 of 1 lessons moved to 2026-09-15.",{exact:false}).waitFor();
+  await dayMove.getByRole("button",{name:"Try again"}).click();
+  await dayMove.getByText("Moved 1 unfinished lesson to 2026-09-15. Progress and notes were kept.").waitFor();
+  await page.getByRole("group",{name:"Lessons"}).getByText("moved to 2026-09-15",{exact:false}).waitFor();
+  const moved=await page.evaluate(()=>globalThis.qaState.activities);
+  if(moved.find(item=>item.lesson_id==="lesson-a")?.status!=="completed"||moved.find(item=>item.lesson_id==="lesson-a")?.scheduled_for!=="2026-09-14")throw new Error("Moving the day touched a completed lesson");
+  if(moved.find(item=>item.lesson_id==="lesson-b")?.scheduled_for!=="2026-09-15"||moved.find(item=>item.lesson_id==="lesson-b")?.schedule_reason!=="travel")throw new Error("Moving the day did not move the unfinished lesson");
   await page.getByLabel("New secure message").fill("Could you suggest one more phonics example?");
   await page.getByLabel(/Attachments/).setInputFiles({name:"reading-plan.pdf",mimeType:"application/pdf",buffer:Buffer.from("synthetic QA attachment")});
   await page.getByRole("button",{name:"Send message"}).click();

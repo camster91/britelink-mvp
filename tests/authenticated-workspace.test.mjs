@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, findNextPublishedLesson, latestPublishedPlan, messageIsUnread, orderedPlanWeeks } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, findNextPublishedLesson, latestPublishedPlan, messageIsUnread, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -36,4 +36,24 @@ test("case selection never falls through to another learner",()=>{
   const cases=[{id:"case-a",learner_id:"learner-a"},{id:"case-b",learner_id:"learner-b"}];
   assert.equal(caseForLearner(cases,"learner-b").id,"case-b");
   assert.equal(caseForLearner(cases,"learner-c"),null);
+});
+
+test("moving a day carries only unfinished lessons and keeps their status and note",()=>{
+  const day={lessons:[{id:"done"},{id:"skipped"},{id:"started"},{id:"fresh"}]};
+  const activities={done:{status:"completed"},skipped:{status:"skipped"},started:{status:"in_progress",caregiver_note:"Halfway through"}};
+  assert.deepEqual(planDayMove(day,activities,{reason:"illness",scheduledFor:"2026-09-28"}),[
+    {lessonId:"started",status:"in_progress",note:"Halfway through",scheduleReason:"illness",scheduledFor:"2026-09-28"},
+    {lessonId:"fresh",status:"not_started",note:"",scheduleReason:"illness",scheduledFor:"2026-09-28"},
+  ]);
+  assert.deepEqual(planDayMove({lessons:[{id:"done"}]},{done:{status:"completed"}},{reason:"travel",scheduledFor:"2026-09-28"}),[]);
+  assert.throws(()=>planDayMove(day,activities,{reason:"illness"}),/reason and a new date/);
+  assert.throws(()=>planDayMove(day,activities,{scheduledFor:"2026-09-28"}),/reason and a new date/);
+});
+
+test("a day reports its new date only when every unfinished lesson shares it",()=>{
+  const day={lessons:[{id:"a"},{id:"b"},{id:"c"}]};
+  assert.equal(dayMovedTo(day,{a:{scheduled_for:"2026-09-28"},b:{scheduled_for:"2026-09-28"},c:{status:"completed"}}),"2026-09-28");
+  assert.equal(dayMovedTo(day,{a:{scheduled_for:"2026-09-28"},b:{scheduled_for:"2026-09-29"}}),null);
+  assert.equal(dayMovedTo(day,{a:{scheduled_for:"2026-09-28"}}),null);
+  assert.equal(dayMovedTo(day,{a:{status:"completed"},b:{status:"skipped"},c:{status:"completed"}}),null);
 });
