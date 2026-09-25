@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, planSubjects, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, planProgress, planSubjects, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -168,4 +168,17 @@ test("a paused subject is passed over by the next lesson and the student list, a
   assert.equal(nextLessonForToday(weeks,{},"2026-10-05",{},{}).lesson.id,"fr");
   assert.deepEqual(dueLessonsForToday(weeks,{},"2026-10-05",{},5,["French"]).map(l=>l.id),["ma"]);
   assert.deepEqual(nextLessonForToday(weeks,{ma:{status:"completed"}},"2026-10-05",{},{paused:["French"]}),{kind:"paused",subjects:["French"]},"paused work is never reported as done");
+});
+
+test("before the plan, the family sees the real step from the case status, never an ETA",()=>{
+  const states=(status)=>planProgress(status,"Maya").steps.map(step=>step.state).join(",");
+  assert.equal(states("intake_pending"),"current,upcoming,upcoming,upcoming");
+  assert.equal(states("triage"),"done,current,upcoming,upcoming");
+  assert.equal(states("internal_review"),"done,done,current,upcoming");
+  assert.equal(planProgress("intake_pending","Maya").steps[0].label,"Tell us about Maya");
+  assert.match(planProgress("clarification").note,/asked a question/);
+  assert.match(planProgress("on_hold").note,/paused/);
+  assert.equal(states("on_hold"),"upcoming,upcoming,upcoming,upcoming");
+  assert.equal(states(undefined),"current,upcoming,upcoming,upcoming","no case yet starts at the intake");
+  for(const status of ["paid","submitted","drafting","overdue","clarification"])assert.doesNotMatch(planProgress(status).note,/\b(minutes?|hours?|days?)\b.*(left|until|remaining)|ETA|online/i,status);
 });

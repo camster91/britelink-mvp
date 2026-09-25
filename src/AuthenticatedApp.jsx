@@ -13,6 +13,7 @@ import {
   orderedPlanWeeks,
   planDayDates,
   planDayMove,
+  planProgress,
   planSubjects,
   printableDays,
   unfinishedLessons,
@@ -1196,9 +1197,19 @@ function ParentWorkspace({
               </button>
             </div>
           ) : !plan ? (
-            <p className="parent-empty">
-              Your educator is working on your personalized plan. You'll see it here once it's ready to start.
-            </p>
+            <div className="plan-progress">
+              <h3>What happens next</h3>
+              <ol>
+                {planProgress(selectedCase?.status, selectedLearner.preferred_name).steps.map((step) => (
+                  <li key={step.label} className={step.state} aria-current={step.state === "current" ? "step" : undefined}>
+                    <span aria-hidden="true">{step.state === "done" ? "✓" : ""}</span>
+                    {step.label}
+                    {step.state === "done" ? <small> (done)</small> : step.state === "current" ? <small> (now)</small> : null}
+                  </li>
+                ))}
+              </ol>
+              <p>{planProgress(selectedCase?.status, selectedLearner.preferred_name).note}</p>
+            </div>
           ) : !weeks.length ? (
             <p className="parent-empty">
               This plan is being prepared. If this persists, contact BriteLink support (remember: no child details by email).
@@ -1899,6 +1910,28 @@ function ParentWorkspace({
         repository={repository}
         refreshKey={serviceRefresh}
       />
+      <section className="help-panel" aria-labelledby="help-heading">
+        <h2 id="help-heading">Need help?</h2>
+        <ul>
+          <li>
+            <strong>Questions about the plan or a lesson:</strong>{" "}
+            <a href="#messages-heading">message your educator</a>. It stays
+            private to your household.
+          </li>
+          <li>
+            <strong>Something looks wrong, or you’re worried about a plan:</strong>{" "}
+            say so in a message and we’ll look at it. You can also{" "}
+            <a href="#service-heading">request an included revision</a>.
+          </li>
+          <li>
+            <strong>Your data, consent, or deletion:</strong> use{" "}
+            <a href="#service-heading">Your data</a> above.
+          </li>
+        </ul>
+        <p>
+          Please don’t email child, health, school, diagnosis, or IEP details.
+        </p>
+      </section>
     </>
   );
 }

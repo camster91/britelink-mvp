@@ -258,3 +258,36 @@ export function dueLessonsForToday(weeks = [], activitiesByLessonId = {}, today,
 export function planSubjects(weeks = []) {
   return [...new Set(weeks.flatMap((week) => (week.plan_days ?? []).flatMap((day) => (day.lessons ?? []).map((lesson) => lesson.subject))).filter(Boolean))];
 }
+
+// Before the plan arrives (#53): where the family's case really is, in their words. Driven only by
+// the recorded case status -- never an ETA, never an invented "your educator is online".
+const PLAN_STEP_BY_STATUS = {
+  paid: 0, intake_pending: 0,
+  submitted: 1, triage: 1, clarification: 1, assigned: 1,
+  drafting: 2, internal_review: 2, overdue: 2, revision_requested: 2, revised: 2,
+  published: 3, delivered: 3, acknowledged: 3,
+};
+
+export function planProgress(caseStatus, learnerName = "your learner") {
+  const labels = [
+    `Tell us about ${learnerName}`,
+    "An educator reviews your answers",
+    "The plan is written and independently checked",
+    "Your plan arrives here",
+  ];
+  if (["on_hold", "cancelled", "refunded", "chargeback", "closed"].includes(caseStatus)) {
+    return {
+      steps: labels.map((label) => ({ label, state: "upcoming" })),
+      note: caseStatus === "on_hold"
+        ? "Work on this plan is paused. Check your messages and consent below, or message your educator."
+        : "This case is closed. Message BriteLink if you think that is a mistake.",
+    };
+  }
+  const current = PLAN_STEP_BY_STATUS[caseStatus] ?? 0;
+  const note = caseStatus === "clarification"
+    ? "Your educator asked a question. Check your messages below."
+    : current === 0
+      ? "Start with the intake form above."
+      : "There is nothing you need to do right now. We will show the plan here as soon as it is ready.";
+  return { steps: labels.map((label, index) => ({ label, state: index < current ? "done" : index === current ? "current" : "upcoming" })), note };
+}
