@@ -83,8 +83,8 @@ test("the feed route proxies a live token to PostgREST as text/calendar, and hid
   const api = createServer((request, response) => {
     seen.push({ url: request.url, headers: request.headers });
     const url = new URL(request.url, "http://api");
-    if (url.pathname === "/rest/v1/rpc/calendar_feed" && url.searchParams.get("token") === TOKEN && request.headers.accept === "text/plain") {
-      response.writeHead(200, { "content-type": "text/plain; charset=utf-8", "set-cookie": "should=not-pass" });
+    if (url.pathname === "/rest/v1/rpc/calendar_feed" && url.searchParams.get("token") === TOKEN && request.headers.accept === "text/calendar") {
+      response.writeHead(200, { "content-type": "text/calendar", "set-cookie": "should=not-pass" });
       response.end("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n");
       return;
     }

@@ -731,6 +731,11 @@ test("the calendar feed answers only an active token, matches the family's own .
     await assert.rejects(() => feed(third.token), /calendar feed not found/);
     for (const bad of [null, "", "x".repeat(64), "0".repeat(64), `${third.token}'`]) await assert.rejects(() => feed(bad), /calendar feed not found/);
 
+    // PostgREST 12 only serves a raw body for a media type a function declares through a domain
+    // (052); a plain `text` return is answered 406 for text/plain, which is what production did.
+    const returns = (await db.query(`select format_type(prorettype, null) as t from pg_proc where oid = 'public.calendar_feed(text)'::regprocedure`)).rows[0].t;
+    assert.equal(returns, '"text/calendar"');
+    await assert.rejects(() => as(db, "anon", null, () => db.query(`select public.calendar_feed_ics($1)`, [third.token])), /permission denied/, "the inner function is not an entry point");
     // Signed-in clients do not get the anon entry point.
     await assert.rejects(() => as(db, "authenticated", users.guardianA, () => db.query(`select public.calendar_feed($1)`, [third.token])), /permission denied/);
     const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
