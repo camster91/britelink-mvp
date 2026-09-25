@@ -4,6 +4,7 @@ import {
   activityMap,
   caseForLearner,
   dayMovedTo,
+  dueLessonsForToday,
   latestPublishedPlan,
   lessonFitSummary,
   localDateString,
@@ -26,6 +27,7 @@ import { EducatorWorkspace } from "./EducatorWorkspace.jsx";
 import { MessageAttachments } from "./MessageAttachments.jsx";
 import { LearningCaptures } from "./LearningCaptures.jsx";
 import { WeeklyStory } from "./WeeklyStory.jsx";
+import { StudentView } from "./StudentView.jsx";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
@@ -535,6 +537,7 @@ function ParentWorkspace({
   // Learning outside the plan (#44), lifted here so the weekly summary can include it.
   const [captures, setCaptures] = useState([]);
   const [storyOffset, setStoryOffset] = useState(0);
+  const [studentView, setStudentView] = useState(false);
   const [printScope, setPrintScope] = useState(null);
   // Render the sheet first, then open the print dialog; drop it once printing is done.
   useEffect(() => {
@@ -984,6 +987,27 @@ function ParentWorkspace({
   const today = localDateString();
   const dayDates = planDayDates(weeks, schedule);
   const next = nextLessonForToday(weeks, activities, today, dayDates, fitFilters);
+  // Student view (#49): mark one lesson done, keeping its note and schedule exactly as they were.
+  const markLessonDone = async (lesson) => {
+    const activity = activities[lesson.id];
+    const saved = await repository.saveLessonActivity({
+      householdId: household.household_id,
+      learnerId: selectedLearner.id,
+      lessonId: lesson.id,
+      userId,
+      status: "completed",
+      note: activity?.caregiver_note ?? "",
+      scheduleReason: activity?.schedule_reason ?? "",
+      scheduledFor: activity?.scheduled_for ?? "",
+    });
+    setPlanState((state) => ({
+      ...state,
+      activities: [
+        ...state.activities.filter((item) => item.lesson_id !== lesson.id),
+        saved,
+      ],
+    }));
+  };
   const saveCalendar = async (draft, { tookOff = null, undone = false } = {}) => {
     setCalendarOperation({ status: "loading", message: "Saving your calendar…", canRetry: false });
     try {
@@ -1249,6 +1273,9 @@ function ParentWorkspace({
                 ))}
               </div>
               <div className="print-actions">
+                <button type="button" className="ghost" onClick={() => setStudentView(true)}>
+                  Open student view
+                </button>
                 <button type="button" className="ghost" onClick={() => setPrintScope("week")}>
                   Print this week
                 </button>
@@ -1256,6 +1283,14 @@ function ParentWorkspace({
                   Print this day
                 </button>
               </div>
+              {studentView ? (
+                <StudentView
+                  learnerName={selectedLearner.preferred_name}
+                  lessons={dueLessonsForToday(weeks, activities, today, dayDates)}
+                  onDone={markLessonDone}
+                  onExit={() => setStudentView(false)}
+                />
+              ) : null}
               {printScope ? (
                 <PrintSheet
                   learnerName={selectedLearner.preferred_name}

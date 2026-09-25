@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -150,4 +150,13 @@ test("the weekly story counts what happened in the family's Monday-to-Sunday wee
   assert.equal(story.moved,1);
   assert.equal(story.isEmpty,false);
   assert.equal(weeklyStory({weeks,today:"2026-10-07",offsetWeeks:3,toLocalDate:local}).isEmpty,true);
+});
+
+test("the student list is today's unfinished work, in order, and short",()=>{
+  const weeks=[{plan_days:[{id:"d1",lessons:[{id:"a"},{id:"b"}]},{id:"d2",lessons:[{id:"c"}]},{id:"d3",lessons:[{id:"d"},{id:"e"},{id:"f"},{id:"g"}]}]}];
+  const dates={d1:"2026-10-05",d2:"2026-10-06",d3:"2026-10-07"};
+  assert.deepEqual(dueLessonsForToday(weeks,{a:{status:"completed"}},"2026-10-06",dates).map(l=>l.id),["b","c"],"yesterday's leftovers and today's, not tomorrow's");
+  assert.deepEqual(dueLessonsForToday(weeks,{b:{scheduled_for:"2026-10-09"}},"2026-10-06",dates).map(l=>l.id),["a","c"],"moved-ahead work waits");
+  assert.equal(dueLessonsForToday(weeks,{},"2026-10-07",dates).length,5,"capped at five");
+  assert.deepEqual(dueLessonsForToday(weeks,{},"2026-10-06",{},2).map(l=>l.id),["a","b"],"own pace: the next few in order");
 });

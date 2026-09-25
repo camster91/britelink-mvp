@@ -229,3 +229,22 @@ export function weeklyStory({ weeks = [], activities = [], captures = [], schedu
   const moved = activities.filter((activity) => activity.scheduled_for && inWeek(activity.scheduled_for) && activity.status !== "completed" && activity.status !== "skipped").length;
   return { start, end, completed, notes, subjects, daysOff, moved, isEmpty: !completed.length && !notes.length };
 }
+
+// Today's list for the student view (#49): unfinished lessons due today or earlier (or undated, for
+// families at their own pace), in plan order, capped so a child sees a short, finishable list.
+export function dueLessonsForToday(weeks = [], activitiesByLessonId = {}, today, dayDates = {}, limit = 5) {
+  const due = [];
+  for (const week of weeks) {
+    for (const day of week.plan_days ?? []) {
+      for (const lesson of day.lessons ?? []) {
+        const activity = activitiesByLessonId[lesson.id];
+        if (["completed", "skipped"].includes(activity?.status)) continue;
+        const date = activity?.scheduled_for ?? dayDates[day.id] ?? null;
+        if (date && date > today) continue;
+        due.push(lesson);
+        if (due.length >= limit) return due;
+      }
+    }
+  }
+  return due;
+}

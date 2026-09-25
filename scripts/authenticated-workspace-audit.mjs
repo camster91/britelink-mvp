@@ -29,6 +29,28 @@ try{
   await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
   await page.getByLabel("Time available").selectOption("");
   await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  // Student view (#49): a focus mode over an inert app; a failed save is explained; exit needs a hold.
+  await page.getByRole("button",{name:"Open student view"}).click();
+  const student=page.getByRole("dialog",{name:"Maya’s list for today"});
+  await student.waitFor();
+  if(!await page.evaluate(()=>document.getElementById("root").inert))throw new Error("the app behind the student view must be inert");
+  const studentAxe=await new AxeBuilder({page}).include(".student-view").withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze();
+  if(studentAxe.violations.length)throw new Error(`student view accessibility: ${studentAxe.violations.map(v=>v.id).join(", ")}`);
+  await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
+  await student.getByRole("button",{name:"I did it!"}).first().click();
+  await student.getByRole("alert").getByText("That didn’t save. Ask a grown-up to try again.",{exact:false}).waitFor();
+  await student.getByRole("button",{name:"I did it!"}).first().click();
+  await student.getByText("Done today: Build a sound map").waitFor();
+  await student.getByRole("button",{name:/press and hold to leave/}).focus();
+  await page.keyboard.down("Enter");await page.waitForTimeout(400);await page.keyboard.up("Enter");
+  if(!await student.isVisible())throw new Error("a short press must not leave the student view");
+  await page.keyboard.down("Enter");await page.waitForTimeout(2300);await page.keyboard.up("Enter");
+  await student.waitFor({state:"detached"});
+  if(await page.evaluate(()=>document.getElementById("root").inert))throw new Error("leaving the student view must restore the app");
+  // Put the lesson back so the rest of this audit starts from the same state.
+  await page.getByLabel("Status").selectOption("not_started");
+  await page.getByRole("button",{name:"Save lesson activity"}).click();
+  await page.getByText("Lesson activity saved securely.").waitFor();
   await page.getByRole("heading",{name:"Instructions"}).waitFor();await page.getByText("Choose five familiar words.").waitFor();await page.getByText("Paper",{exact:true}).waitFor();await page.getByText("Read each instruction aloud.").waitFor();await page.getByText("Adult help:",{exact:false}).waitFor();await page.getByText("Printable sound cards").waitFor();
   await page.getByRole("button",{name:/Count a collection/}).click();await page.getByText("Choose a small collection.").waitFor();await page.getByText("Household objects").waitFor();await page.getByText("No external resources are required.").waitFor();await page.getByRole("button",{name:/Build a sound map/}).click();
   await page.locator("section.live-intake").getByRole("checkbox",{name:"Language",exact:true}).check();
