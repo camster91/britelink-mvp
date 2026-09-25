@@ -211,6 +211,10 @@ try{
   await calendar.getByText("temporarily unavailable",{exact:false}).waitFor();
   await calendar.getByRole("button",{name:"Try again"}).click();
   await calendar.getByText(`Starts ${today} · Mon, Tue, Wed, Thu, Fri, Sat, Sun`).waitFor();
+  // Calendar file (#47): a real .ics download, private by default.
+  const [icsDownload]=await Promise.all([page.waitForEvent("download"),calendar.getByRole("button",{name:"Add to my calendar (.ics)"}).click()]);
+  const ics=await (await icsDownload.createReadStream()).toArray().then(chunks=>Buffer.concat(chunks).toString("utf8"));
+  if(icsDownload.suggestedFilename()!=="britelink-plan.ics"||!ics.startsWith("BEGIN:VCALENDAR\r\n")||/Maya/.test(ics))throw new Error(`calendar file is wrong or names the child: ${ics.slice(0,300)}`);
   await calendar.getByRole("button",{name:"Take today off"}).click();
   await calendar.getByText("Today is off. Everything from today on moved by one school day.").waitFor();
   if(JSON.stringify((await page.evaluate(()=>globalThis.qaState.schedule)).days_off)!==JSON.stringify([today]))throw new Error("taking today off did not record the day");

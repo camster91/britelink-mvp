@@ -30,6 +30,8 @@ import { LearningCaptures } from "./LearningCaptures.jsx";
 import { WeeklyStory } from "./WeeklyStory.jsx";
 import { StudentView } from "./StudentView.jsx";
 import { LearningReport } from "./LearningReport.jsx";
+import { planCalendarIcs } from "./calendar-export.js";
+import { downloadTextFile } from "./browser-download.js";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
@@ -163,13 +165,14 @@ function BetaHouseholdSetup({ repository, metadata, onReady }) {
 // The family's calendar for the plan (migration 043): when they start and which weekdays they
 // school, or no fixed days at all. Kept below "Do this next" so it never competes with the next
 // action. Saving is the parent's job; this component only edits a draft.
-function PlanCalendar({ schedule, today, operation, onSave }) {
+function PlanCalendar({ schedule, today, operation, onSave, onExport }) {
   const [editing, setEditing] = useState(false);
   const [startDate, setStartDate] = useState(schedule?.start_date ?? today);
   const [schoolDays, setSchoolDays] = useState(
     (schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number),
   );
   const [error, setError] = useState("");
+  const [includeTitles, setIncludeTitles] = useState(false);
   const firstDayRef = useRef(null);
   useEffect(() => {
     setStartDate(schedule?.start_date ?? today);
@@ -218,7 +221,22 @@ function PlanCalendar({ schedule, today, operation, onSave }) {
           <button type="button" className="ghost" onClick={() => setEditing(true)}>
             {schedule.start_date ? "Change calendar" : "Set dates"}
           </button>
+          {schedule.start_date && onExport ? (
+            <button type="button" className="ghost" onClick={() => onExport(includeTitles)}>
+              Add to my calendar (.ics)
+            </button>
+          ) : null}
         </div>
+        {schedule.start_date && onExport ? (
+          <label className="fit-toggle calendar-titles">
+            <input
+              type="checkbox"
+              checked={includeTitles}
+              onChange={(event) => setIncludeTitles(event.target.checked)}
+            />
+            Include lesson titles in the calendar file
+          </label>
+        ) : null}
         <OperationNotice operation={operation} />
       </section>
     );
@@ -1041,6 +1059,27 @@ function ParentWorkspace({
       setPauseOperation({ ...operationFailure(error, "Pausing a subject"), onRetry: () => savePaused(subjects) });
     }
   };
+  // Calendar file (#47): dated days with work left, private by default.
+  const exportCalendar = (includeTitles) => {
+    const { count, contents } = planCalendarIcs({
+      planId: plan.id,
+      weeks,
+      dayDates,
+      activitiesByLessonId: activities,
+      paused,
+      includeTitles,
+    });
+    if (!count) {
+      setCalendarOperation({ status: "success", message: "No dated lessons are left to add.", canRetry: false });
+      return;
+    }
+    downloadTextFile("britelink-plan.ics", contents, "text/calendar;charset=utf-8");
+    setCalendarOperation({
+      status: "success",
+      message: `Calendar file saved with ${count} ${count === 1 ? "day" : "days"}. Open it to add them to your calendar app.`,
+      canRetry: false,
+    });
+  };
   const saveCalendar = async (draft, { tookOff = null, undone = false } = {}) => {
     setCalendarOperation({ status: "loading", message: "Saving your calendar…", canRetry: false });
     try {
@@ -1276,6 +1315,7 @@ function ParentWorkspace({
                 today={today}
                 operation={calendarOperation}
                 onSave={saveCalendar}
+                onExport={exportCalendar}
               />
               <details
                 className="pause-subjects"
