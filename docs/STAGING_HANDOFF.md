@@ -50,6 +50,17 @@ Procedure and rationale: `docs/SUPABASE_PROVISIONING.md` §2a.
 
 Service-role keys never enter Vite or browser env.
 
+## Automated journeys (after the synthetic seed)
+
+`npm run test:staging-journeys` drives the deployed staging app with the seed's guardian and educator
+accounts, signed in through real magic links minted with the staging service key. It proves a
+learning note survives a reload and is visible on a second device (then removes it), and that the
+educator lands in the workbench. It writes `qa/staging/journey-report.json`.
+
+Set `BRITELINK_STAGING_APP_URL` and `BRITELINK_STAGING_SERVICE_ROLE_KEY` (see `.env.example`) plus
+the seed's `BRITELINK_TEST_*` block. It refuses to run unless `BRITELINK_TEST_ENVIRONMENT=staging`
+and neither URL is a production host. Never give it a production service key.
+
 ## Sites packaging (local, no credentials)
 
 ```sh
