@@ -13,5 +13,8 @@ test("staff plan drafts are isolated by household, case, and author and can be d
 
 test("latest immutable plan can be cloned into editable authoring fields",()=>{
  const weeks=planToAuthoringWeeks({plan_weeks:[{theme:"Space",plan_days:[{planned_date:"2026-09-01",lessons:[{subject:"Science",title:"Orbit",objective:"Explain orbit",instructions:["Read","Model"],materials:["Ball"],accommodations:["Audio"],adult_help_minutes:15}]}]}]});
- assert.deepEqual(weeks[0].days[0].lessons[0],{subject:"Science",title:"Orbit",objective:"Explain orbit",instructions:"Read\nModel",materials:"Ball",accommodations:"Audio",adultHelpMinutes:15});
+ assert.deepEqual(weeks[0].days[0].lessons[0],{subject:"Science",title:"Orbit",objective:"Explain orbit",instructions:"Read\nModel",materials:"Ball",accommodations:"Audio",adultHelpMinutes:15,estimatedMinutes:"",helpLevel:"",needsScreen:""});
+ // Tagged lessons (044) round-trip into the editor so a revision keeps the educator's tags.
+ const tagged=planToAuthoringWeeks({plan_weeks:[{theme:"Space",plan_days:[{lessons:[{subject:"Science",title:"Orbit",objective:"x",instructions:["Read"],estimated_minutes:25,help_level:"independent",needs_screen:false}]}]}]});
+ assert.deepEqual([tagged[0].days[0].lessons[0].estimatedMinutes,tagged[0].days[0].lessons[0].helpLevel,tagged[0].days[0].lessons[0].needsScreen],[25,"independent","false"]);
 });

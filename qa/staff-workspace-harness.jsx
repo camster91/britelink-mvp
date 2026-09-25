@@ -197,6 +197,7 @@ const repository = {
       input.householdId,
       input.caseId,
     ]);
+    (state.planDocuments ??= []).push(input.document);
     const serviceCase = state.cases.find((item) => item.id === input.caseId);
     if (globalThis.staffDelayNextPlanSave) {
       globalThis.staffDelayNextPlanSave = false;

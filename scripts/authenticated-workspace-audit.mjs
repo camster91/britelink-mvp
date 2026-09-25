@@ -1,7 +1,7 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
@@ -14,11 +14,69 @@ try{
   const browser=await chromium.launch(chromeLaunchOptions());
   const context=await browser.newContext({viewport:{width:1280,height:1000},reducedMotion:"reduce"});
   const page=await context.newPage();
+  await page.addInitScript(()=>{globalThis.qaPrintCalls=0;window.print=()=>{globalThis.qaPrintCalls+=1}});
   await page.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});
   await page.getByRole("heading",{name:"Maya’s plan"}).waitFor();
+  // What fits today (044): the tagged lesson wins when it fits; an untagged one is never assumed to fit.
+  const nextUp0=page.locator("section.next-up");
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  await page.locator("details.fit-filters").getByText("What fits today?").click();
+  await page.getByRole("checkbox",{name:"My child works alone today"}).check();
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await nextUp0.getByText("About 15 min · child can do it alone · no screen needed").waitFor();
+  await page.getByRole("checkbox",{name:"My child works alone today"}).uncheck();
+  // Low-energy day preset: short and independent, one tap; a second tap clears it.
+  await page.getByRole("button",{name:"Low-energy day"}).click();
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await page.getByRole("button",{name:"Low-energy day"}).click();
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  await page.getByLabel("Time available").selectOption("15");
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await page.getByLabel("Time available").selectOption("");
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  // Pause a subject (#40): its lessons are passed over, the panel stays open while toggling, resume restores.
+  await page.locator("details.pause-subjects").getByText("Pause a subject").click();
+  await page.getByRole("checkbox",{name:"Pause Language"}).check();
+  await page.getByText("Paused: Language. Those lessons wait until you resume.").waitFor();
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await page.getByRole("checkbox",{name:"Pause Math"}).check();
+  await page.locator("section.live-plan").getByText("Everything left is in a paused subject",{exact:false}).waitFor();
+  await page.getByRole("checkbox",{name:"Pause Math"}).uncheck();
+  await page.getByRole("checkbox",{name:"Pause Language"}).uncheck();
+  await page.getByText("All subjects are active again.").waitFor();
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  if(JSON.stringify(await page.evaluate(()=>globalThis.qaState.paused))!=="[]")throw new Error("resuming did not clear the paused subjects");
+  // Whole family today (#45): loaded on open; each child's list side by side.
+  await page.locator("details.family-day").getByText("Whole family today").click();
+  await page.getByRole("region",{name:"Maya’s day"}).getByText("Build a sound map",{exact:false}).waitFor();
+  await page.locator("details.family-day").getByText("No published plan yet.").waitFor();
+  await page.locator("details.family-day").getByText("Whole family today").click();
+  // Student view (#49): a focus mode over an inert app; a failed save is explained; exit needs a hold.
+  await page.getByRole("button",{name:"Open student view"}).click();
+  const student=page.getByRole("dialog",{name:"Maya’s list for today"});
+  await student.waitFor();
+  if(!await page.evaluate(()=>document.getElementById("root").inert))throw new Error("the app behind the student view must be inert");
+  const studentAxe=await new AxeBuilder({page}).include(".student-view").withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze();
+  if(studentAxe.violations.length)throw new Error(`student view accessibility: ${studentAxe.violations.map(v=>v.id).join(", ")}`);
+  await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
+  await student.getByRole("button",{name:"I did it!"}).first().click();
+  await student.getByRole("alert").getByText("That didn’t save. Ask a grown-up to try again.",{exact:false}).waitFor();
+  await student.getByRole("button",{name:"I did it!"}).first().click();
+  await student.getByText("Done today: Build a sound map").waitFor();
+  await student.getByRole("button",{name:/press and hold to leave/}).focus();
+  await page.keyboard.down("Enter");await page.waitForTimeout(400);await page.keyboard.up("Enter");
+  if(!await student.isVisible())throw new Error("a short press must not leave the student view");
+  await page.keyboard.down("Enter");await page.waitForTimeout(2300);await page.keyboard.up("Enter");
+  await student.waitFor({state:"detached"});
+  if(await page.evaluate(()=>document.getElementById("root").inert))throw new Error("leaving the student view must restore the app");
+  // Put the lesson back so the rest of this audit starts from the same state.
+  await page.getByLabel("Status").selectOption("not_started");
+  await page.getByRole("button",{name:"Save lesson activity"}).click();
+  await page.getByText("Lesson activity saved securely.").waitFor();
   await page.getByRole("heading",{name:"Instructions"}).waitFor();await page.getByText("Choose five familiar words.").waitFor();await page.getByText("Paper",{exact:true}).waitFor();await page.getByText("Read each instruction aloud.").waitFor();await page.getByText("Adult help:",{exact:false}).waitFor();await page.getByText("Printable sound cards").waitFor();
   await page.getByRole("button",{name:/Count a collection/}).click();await page.getByText("Choose a small collection.").waitFor();await page.getByText("Household objects").waitFor();await page.getByText("No external resources are required.").waitFor();await page.getByRole("button",{name:/Build a sound map/}).click();
-  await page.getByRole("checkbox",{name:"Language",exact:true}).check();
+  await page.locator("section.live-intake").getByRole("checkbox",{name:"Language",exact:true}).check();
+  await page.getByRole("radio",{name:/Weekly goals/}).check();
   await page.getByLabel("Current learning starting point").fill("Reads short paragraphs and counts to 100.");
   await page.getByLabel("Strengths and interests").fill("Enjoys machines, drawing, and practical projects.");
   await page.getByLabel("Goals for this plan").fill("Build reading fluency and explain math strategies.");
@@ -44,7 +102,39 @@ try{
   await page.getByLabel("New date").fill("2026-09-14");
   await page.getByLabel(/Caregiver note/).fill("Completed with a short movement break.");
   await page.getByRole("button",{name:"Save lesson activity"}).click();
-  await page.getByText("Lesson activity and new schedule saved securely.").waitFor();
+  // Completing a lesson gets a calm confirmation with Undo; undo restores exactly what was there.
+  const done=page.locator(".lesson-complete");
+  await done.getByText("is done.",{exact:false}).waitFor();
+  await done.getByRole("button",{name:"Undo"}).click();
+  await page.getByText("Undone. The lesson is not started again.").waitFor();
+  const undone=await page.evaluate(()=>globalThis.qaState.activities.find(item=>item.lesson_id==="lesson-a"));
+  if(undone?.status!=="not_started"||undone?.schedule_reason!==null||undone?.caregiver_note!=="")throw new Error(`Undo did not restore the lesson: ${JSON.stringify(undone)}`);
+  await page.getByLabel("Status").selectOption("completed");
+  await page.getByLabel("Reason").selectOption("illness");
+  await page.getByLabel("New date").fill("2026-09-14");
+  await page.getByLabel(/Caregiver note/).fill("Completed with a short movement break.");
+  await page.getByRole("button",{name:"Save lesson activity"}).click();
+  await done.getByText("is done.",{exact:false}).waitFor();
+  await done.getByRole("button",{name:"Open next lesson"}).waitFor();
+  // Move this day: lesson-a is completed, so only lesson-b moves; a failed save is retried alone.
+  const dayMove=page.locator("details.live-day-move");
+  await dayMove.getByText("Need to move this day?").click();
+  await dayMove.getByLabel("Why move this day?").selectOption("travel");
+  await dayMove.getByLabel("Move to").fill("2099-09-15");
+  await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
+  await dayMove.getByRole("button",{name:"Move unfinished lessons"}).click();
+  await dayMove.getByText("0 of 1 lessons moved to 2099-09-15.",{exact:false}).waitFor();
+  await dayMove.getByRole("button",{name:"Try again"}).click();
+  await dayMove.getByText("Moved 1 unfinished lesson to 2099-09-15. Progress and notes were kept.").waitFor();
+  await page.getByRole("group",{name:"Lessons"}).getByText("moved to 2099-09-15",{exact:false}).waitFor();
+  // Everything left is moved ahead, so the next-up card says when the plan resumes -- not "All lessons complete!".
+  const nextUp=page.locator("section.next-up");
+  await nextUp.getByText("Nothing is due today").waitFor();
+  await nextUp.getByText("Your plan picks up on 2099-09-15",{exact:false}).waitFor();
+  if(await page.getByText("All lessons complete!").count())throw new Error("moved work was reported as complete");
+  const moved=await page.evaluate(()=>globalThis.qaState.activities);
+  if(moved.find(item=>item.lesson_id==="lesson-a")?.status!=="completed"||moved.find(item=>item.lesson_id==="lesson-a")?.scheduled_for!=="2026-09-14")throw new Error("Moving the day touched a completed lesson");
+  if(moved.find(item=>item.lesson_id==="lesson-b")?.scheduled_for!=="2099-09-15"||moved.find(item=>item.lesson_id==="lesson-b")?.schedule_reason!=="travel")throw new Error("Moving the day did not move the unfinished lesson");
   await page.getByLabel("New secure message").fill("Could you suggest one more phonics example?");
   await page.getByLabel(/Attachments/).setInputFiles({name:"reading-plan.pdf",mimeType:"application/pdf",buffer:Buffer.from("synthetic QA attachment")});
   await page.getByRole("button",{name:"Send message"}).click();
@@ -53,7 +143,107 @@ try{
   await page.getByRole("button",{name:"Mark as read"}).click();
   await page.getByText("Message marked as read.").waitFor();
   await page.getByRole("checkbox",{name:/I understand this pauses active service/}).check();await page.getByRole("button",{name:"Withdraw my active consent"}).click();await page.getByText("Consent withdrawn",{exact:false}).waitFor();
+  // Learning outside the plan (#44): validation names both fields and focuses the first; save; list; remove.
+  const captureCard=page.locator("section.learning-captures");
+  await captureCard.getByRole("heading",{name:"What else did Maya learn?"}).waitFor();
+  await captureCard.getByRole("button",{name:"Save to the record"}).click();
+  await captureCard.getByRole("alert").getByText("what kind of learning it was and a short note about what happened",{exact:false}).waitFor();
+  if(!await captureCard.getByLabel("What kind").evaluate(el=>el===document.activeElement))throw new Error("focus did not move to the first invalid capture field");
+  if(await captureCard.getByLabel("What happened").getAttribute("aria-invalid")!=="true")throw new Error("missing note is not marked aria-invalid");
+  await captureCard.getByLabel("What kind").selectOption("outing");
+  await captureCard.getByRole("checkbox",{name:"Science"}).check();
+  await captureCard.getByLabel("What happened").fill("Pond walk: counted frogs and sketched cattails.");
+  await captureCard.getByRole("button",{name:"Save to the record"}).click();
+  await captureCard.getByText("Saved to Maya’s learning record.").waitFor();
+  await captureCard.getByRole("list",{name:"Recent learning notes"}).getByText("Pond walk: counted frogs and sketched cattails.").waitFor();
+  // Weekly story (#43): today's note shows up in "This week", told plainly; the week can be paged.
+  const story=page.locator("section.weekly-story");
+  await story.getByText("1 note from outside the plan, across Science.").waitFor();
+  await story.getByText("Pond walk: counted frogs and sketched cattails.",{exact:false}).waitFor();
+  if(!await story.getByRole("button",{name:"Next week"}).isDisabled())throw new Error("the story must not page into the future");
+  await story.getByRole("button",{name:"Previous week"}).click();
+  await story.getByRole("heading",{name:"Last week"}).waitFor();
+  await story.getByText("Nothing recorded for this week yet.").waitFor();
+  await story.getByRole("button",{name:"Next week"}).click();
+  await story.getByRole("heading",{name:"This week"}).waitFor();
+  // Learning report (#50): count, a real CSV download with the disclaimer, and a printed table.
+  await story.getByText("Make a learning report").click();
+  await story.getByText("1 entry across Science.").waitFor();
+  const [reportDownload]=await Promise.all([page.waitForEvent("download"),story.getByRole("button",{name:"Download CSV"}).click()]);
+  const csv=await (await reportDownload.createReadStream()).toArray().then(chunks=>Buffer.concat(chunks).toString("utf8"));
+  if(!csv.includes("not an Ontario credit, transcript, or OSSD record")||!csv.includes("Pond walk: counted frogs and sketched cattails.")||!/\.csv$/.test(reportDownload.suggestedFilename()))throw new Error(`learning report CSV is wrong: ${reportDownload.suggestedFilename()} ${csv.slice(0,200)}`);
+  await story.getByRole("button",{name:"Print report"}).click();
+  await page.locator("body > section.print-sheet").getByRole("heading",{name:/Maya’s learning,/,includeHidden:true}).waitFor({state:"attached"});
+  await page.evaluate(()=>window.dispatchEvent(new Event("afterprint")));
+  await page.locator("body > section.print-sheet").waitFor({state:"detached"});
+  await captureCard.getByRole("button",{name:/Remove the note from/}).click();
+  await captureCard.getByText("Removed from the learning record.").waitFor();
+  await captureCard.getByText("Nothing recorded yet.").waitFor();
+  // Spreadsheet import (#51): bad rows are named by row number, good rows import, the list refreshes.
+  await captureCard.getByText("Import from a spreadsheet (CSV)").click();
+  await captureCard.getByLabel("CSV file").setInputFiles({name:"log.csv",mimeType:"text/csv",buffer:Buffer.from("date,kind,subjects,note\n2026-09-01,Book or reading,Language,Read aloud\n2026-09-02,therapy,,Speech\n")});
+  await captureCard.getByText("Row 3: kind is not one of",{exact:false}).waitFor();
+  await captureCard.getByRole("button",{name:"Import 1 note"}).click();
+  await captureCard.getByText("Imported 1 note into Maya’s record.").waitFor();
+  await captureCard.getByRole("list",{name:"Recent learning notes"}).getByText("Read aloud").waitFor();
+  await captureCard.getByRole("button",{name:/Remove the note from 2026-09-01/}).click();
+  await captureCard.getByText("Nothing recorded yet.").waitFor();
+  const captureState=await page.evaluate(()=>globalThis.qaState.captures);
+  if(captureState?.[0]?.kind!=="outing"||JSON.stringify(captureState?.[0]?.subjects)!=='["Science"]'||!captureState?.[0]?.removed_at)throw new Error(`capture did not round-trip: ${JSON.stringify(captureState)}`);
+  // Printable week and day (#48): a paper sheet in <body>, the only thing visible in print media.
+  const printsBefore=await page.evaluate(()=>globalThis.qaPrintCalls);
+  await page.getByRole("button",{name:"Print this week"}).click();
+  const sheet=page.locator("body > section.print-sheet");
+  await sheet.getByRole("heading",{name:"Maya’s week",includeHidden:true}).waitFor({state:"attached"});
+  if(await page.evaluate(()=>globalThis.qaPrintCalls)!==printsBefore+1)throw new Error("Print this week did not open the print dialog once");
+  for(const title of ["Build a sound map","Count a collection"])if(!(await sheet.textContent()).includes(title))throw new Error(`printed week is missing ${title}`);
+  await page.emulateMedia({media:"print"});
+  if(await page.locator("#root").isVisible()||!await sheet.isVisible())throw new Error("print media must show only the sheet");
+  await mkdir(new URL("../qa/print/",import.meta.url),{recursive:true});
+  // page.pdf() fires afterprint itself, which (correctly) removes the sheet, so re-open it per format.
+  for(const format of ["Letter","A4"]){
+    if(!await sheet.count()){await page.emulateMedia({media:"screen"});await page.getByRole("button",{name:"Print this week"}).click();await sheet.waitFor({state:"attached"});await page.emulateMedia({media:"print"})}
+    await page.pdf({path:fileURLToPath(new URL(`../qa/print/week-${format.toLowerCase()}.pdf`,import.meta.url)),format,printBackground:false});
+  }
+  await page.emulateMedia({media:"screen"});
+  await sheet.waitFor({state:"detached"});
+  await page.getByRole("button",{name:"Print this day"}).click();
+  await page.locator("body > section.print-sheet").getByRole("heading",{name:"Maya’s day",includeHidden:true}).waitFor({state:"attached"});
+  await page.evaluate(()=>window.dispatchEvent(new Event("afterprint")));
+  // Family calendar (043): validation names the problem and focuses it; save; take today off and undo; own pace.
+  const calendar=page.locator("section.plan-calendar");
+  await calendar.getByRole("heading",{name:"When do you school?"}).waitFor();
+  for(const day of ["Mon","Tue","Wed","Thu","Fri"])await calendar.getByRole("checkbox",{name:day}).uncheck();
+  await calendar.getByRole("button",{name:"Save my calendar"}).click();
+  await calendar.getByRole("alert").getByText("Choose at least one school day.").waitFor();
+  if(!await calendar.getByRole("checkbox",{name:"Mon"}).evaluate(el=>el===document.activeElement))throw new Error("focus did not move to the school days");
+  const today=await page.evaluate(()=>{const d=new Date(),p=v=>String(v).padStart(2,"0");return`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`});
+  for(const day of ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"])await calendar.getByRole("checkbox",{name:day}).check();
+  await calendar.getByLabel("Start date").fill(today);
+  await page.evaluate(()=>{globalThis.qaFailCalendarOnce=true});
+  await calendar.getByRole("button",{name:"Save my calendar"}).click();
+  await calendar.getByText("temporarily unavailable",{exact:false}).waitFor();
+  await calendar.getByRole("button",{name:"Try again"}).click();
+  await calendar.getByText(`Starts ${today} · Mon, Tue, Wed, Thu, Fri, Sat, Sun`).waitFor();
+  // Calendar file (#47): a real .ics download, private by default.
+  const [icsDownload]=await Promise.all([page.waitForEvent("download"),calendar.getByRole("button",{name:"Add to my calendar (.ics)"}).click()]);
+  const ics=await (await icsDownload.createReadStream()).toArray().then(chunks=>Buffer.concat(chunks).toString("utf8"));
+  if(icsDownload.suggestedFilename()!=="britelink-plan.ics"||!ics.startsWith("BEGIN:VCALENDAR\r\n")||/Maya/.test(ics))throw new Error(`calendar file is wrong or names the child: ${ics.slice(0,300)}`);
+  await calendar.getByRole("button",{name:"Take today off"}).click();
+  await calendar.getByText("Today is off. Everything from today on moved by one school day.").waitFor();
+  if(JSON.stringify((await page.evaluate(()=>globalThis.qaState.schedule)).days_off)!==JSON.stringify([today]))throw new Error("taking today off did not record the day");
+  await calendar.getByRole("button",{name:"Undo"}).click();
+  await calendar.getByText("Undone. Today is a school day again.").waitFor();
+  if((await page.evaluate(()=>globalThis.qaState.schedule)).days_off.length!==0)throw new Error("undo did not restore the day");
+  await calendar.getByRole("button",{name:"Change calendar"}).click();
+  await calendar.getByRole("button",{name:"Go at my own pace"}).click();
+  await calendar.getByText("Going at your own pace, with no fixed dates.").waitFor();
+  // In-app help (#55): real channels only, no invented contact.
+  const help=page.getByRole("region",{name:"Need help?"});
+  await help.getByRole("link",{name:"message your educator"}).waitFor();
+  if(await help.getByText(/@/).count())throw new Error("the help panel must not show an unconfigured support address");
   const state=await page.evaluate(()=>globalThis.qaState);
+  if(state.profiles[0]?.planning_context?.planningStructure!=="weekly_goals")throw new Error("The planning structure answer did not reach the repository");
   if(state.profiles[0]?.version!==1||state.profiles[0]?.planning_context?.goals!=="Build reading fluency and explain math strategies.")throw new Error("Rendered versioned intake submission did not reach the repository");
   if(state.deliveries[0]?.status!=="acknowledged"||state.revisions[0]?.status!=="requested"||state.privacyRequests[0]?.status!=="pending"||!state.consents[0]?.withdrawn_at)throw new Error("Rendered guardian service/privacy actions did not reach the repository");
   if(state.activities[0]?.status!=="completed"||state.activities[0]?.caregiver_note!=="Completed with a short movement break."||state.activities[0]?.schedule_reason!=="illness"||state.activities[0]?.scheduled_for!=="2026-09-14")throw new Error("Rendered activity and schedule save did not reach the repository");
@@ -64,11 +254,12 @@ try{
   if(serious.length)throw new Error(serious.flatMap(item=>item.nodes.map(node=>`${item.id}: ${node.target.join(" ")} ${node.failureSummary??""}`)).join("\n"));
   await page.screenshot({path:fileURLToPath(new URL("../qa/operations/03-authenticated-parent-workspace.png",import.meta.url)),fullPage:true});
   await page.getByRole("combobox",{name:/Learner/}).selectOption("learner-b");
-  await page.getByText("Your educator is working on your personalized plan").waitFor();
+  await page.getByRole("heading",{name:"What happens next"}).waitFor();
+  if(!await page.locator('.plan-progress li[aria-current="step"]').count())throw new Error("the pre-plan tracker must mark the current step");
   await page.getByText("Messaging will be available once your educator",{exact:false}).waitFor();
   const switchedCalls=await page.evaluate(()=>globalThis.qaState.calls);
   if(!switchedCalls.some(item=>item[0]==="loadPublishedPlans"&&item[2]==="learner-b"))throw new Error("Learner switch did not reload the selected learner scope");
-  const racePage=await context.newPage();await racePage.addInitScript(()=>{globalThis.qaDelayLearnerA=true});await racePage.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"domcontentloaded"});await racePage.getByRole("combobox",{name:/Learner/}).selectOption("learner-b");await racePage.getByText("Your educator is working on your personalized plan").waitFor();await racePage.waitForTimeout(500);if(await racePage.getByText("Build a sound map",{exact:true}).count())throw new Error("A superseded learner response overwrote the selected learner");await racePage.close();
+  const racePage=await context.newPage();await racePage.addInitScript(()=>{globalThis.qaDelayLearnerA=true});await racePage.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"domcontentloaded"});await racePage.getByRole("combobox",{name:/Learner/}).selectOption("learner-b");await racePage.getByRole("heading",{name:"What happens next"}).waitFor();await racePage.waitForTimeout(500);if(await racePage.getByText("Build a sound map",{exact:true}).count())throw new Error("A superseded learner response overwrote the selected learner");await racePage.close();
   const recoveryPage=await context.newPage();await recoveryPage.addInitScript(()=>{globalThis.qaFailNextAttachment=true});await recoveryPage.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});await recoveryPage.getByLabel("New secure message").fill("This message must be sent exactly once.");await recoveryPage.getByLabel(/Attachments/).setInputFiles({name:"retry.txt",mimeType:"text/plain",buffer:Buffer.from("retry me")});await recoveryPage.getByRole("button",{name:"Send message"}).click();await recoveryPage.getByText("Message sent once.",{exact:false}).waitFor();await recoveryPage.getByRole("button",{name:"Try again"}).click();await recoveryPage.waitForTimeout(1000);const recovery=await recoveryPage.evaluate(()=>({text:document.body.innerText,notices:Array.from(document.querySelectorAll('.live-operation')).map(node=>node.textContent),messages:globalThis.qaState.messages.filter(item=>item.body==="This message must be sent exactly once."),sendCalls:globalThis.qaState.calls.filter(item=>item[0]==="sendMessage"),retryCalls:globalThis.qaState.calls.filter(item=>item[0]==="retryMessageAttachmentUpload")}));if(!recovery.text.includes("Failed attachments uploaded to the original message"))throw new Error(`Attachment retry did not report success: ${JSON.stringify({retryCalls:recovery.retryCalls,messages:recovery.messages,notices:recovery.notices,text:recovery.text.slice(-600)})}`);if(recovery.messages.length!==1||recovery.messages[0].case_attachments.length!==1||recovery.messages[0].case_attachments[0].status!=="pending_scan"||recovery.sendCalls.length!==1||recovery.retryCalls.length!==1)throw new Error("Attachment-only retry duplicated or failed to recover the original message attachment");await recoveryPage.close();const inactivityPage=await context.newPage();await inactivityPage.addInitScript(()=>{globalThis.qaInactivityMs=1000});await inactivityPage.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});await inactivityPage.waitForTimeout(1200);if(!(await inactivityPage.evaluate(()=>globalThis.qaState.calls.some(item=>item[0]==="signOut"))))throw new Error("Inactive authenticated workspace did not sign out");await inactivityPage.close();
   await writeFile(new URL("../qa/operations/authenticated-workspace-report.json",import.meta.url),JSON.stringify({generatedAt:new Date().toISOString(),lessonExecutionDetails:true,lessonSwitchIsolation:true,supersededResponseIsolation:true,recoverableAttachmentOnlyRetry:true,noDuplicateMessageOnAttachmentFailure:true,successfulWriteSurvivesFailedRefresh:true,panelScopedPrivacyDegradation:true,recentAuthenticationForSensitiveActions:true,inactivitySignOut:true,governedResourceDetails:true,versionedIntake:true,consentRecord:true,deliveryAcknowledgement:true,entitledRevisionRequest:true,householdExport:true,deletionRequest:true,consentWithdrawal:true,activitySave:true,scheduleException:true,activityPreservedWhileRescheduled:true,messageSend:true,quarantinedAttachmentUpload:true,readAcknowledgement:true,learnerSwitch:true,householdScope:true,seriousOrCriticalAccessibilityViolations:[]},null,2));
   await context.close(); await browser.close();

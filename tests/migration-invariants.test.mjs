@@ -126,3 +126,49 @@ test("migrations are numbered, unique, and ordered without gaps in naming", () =
     }
   }
 });
+
+// A later migration that `create or replace`s a function replaces its whole body. Twice here that
+// silently dropped checks: 037's signup shape was fixed in 041, and 034 rebuilt
+// submit_guardian_intake without any of 004's context validation (restored in 045). This pins the
+// final state: every `raise exception` a function has ever had must still be in its final body,
+// unless it is listed below with the reason it was deliberately removed. Renames
+// (`alter function a rename to b`, as 021 and 043 do to wrap a function) move the history with the
+// body, so a wrapper is not mistaken for a loss.
+const DELIBERATELY_DROPPED = new Map([
+  // name -> Map(message -> reason)
+]);
+
+test("a redefined function keeps every check it has ever raised", () => {
+  const history = new Map(); // name -> { messages: Map(message -> first file), body }
+  const re = /(create\s+(?:or\s+replace\s+)?function\s+public\.(\w+)\s*\([\s\S]*?\)\s*returns[\s\S]*?(\$\w*\$)([\s\S]*?)\3)|(alter\s+function\s+public\.(\w+)\s*\([^)]*\)\s+rename\s+to\s+(\w+))/gi;
+  for (const file of files) {
+    const sql = readFileSync(path.join(migrationsDir, file), "utf8");
+    for (const m of sql.matchAll(re)) {
+      if (m[5]) {
+        const [from, to] = [m[6], m[7]];
+        if (history.has(from)) { history.set(to, history.get(from)); history.delete(from); }
+        continue;
+      }
+      const name = m[2];
+      const body = m[4];
+      const raised = [...body.matchAll(/raise\s+exception\s+'([^']*)'/gi)].map((x) => x[1]);
+      const entry = history.get(name) ?? { messages: new Map(), body: "" };
+      for (const message of raised) if (!entry.messages.has(message)) entry.messages.set(message, file);
+      entry.body = body;
+      history.set(name, entry);
+    }
+  }
+  // Guard the guard: if the parser stopped seeing functions, this test would pass vacuously.
+  assert.ok(history.size >= 40, `expected to parse the migration functions, parsed ${history.size}`);
+  assert.ok((history.get("submit_guardian_intake")?.messages.size ?? 0) >= 10, "submit_guardian_intake's checks were not parsed");
+  assert.ok(history.has("export_guardian_household_core"), "renames are not being followed");
+  const lost = [];
+  for (const [name, { messages, body }] of history) {
+    for (const [message, file] of messages) {
+      if (body.includes(`'${message}'`)) continue;
+      if (DELIBERATELY_DROPPED.get(name)?.has(message)) continue;
+      lost.push(`${name}: '${message}' (first raised in ${file}) is gone from the final definition`);
+    }
+  }
+  assert.deepEqual(lost, [], `redefinitions dropped checks; restore them or list them in DELIBERATELY_DROPPED with a reason:\n${lost.join("\n")}`);
+});

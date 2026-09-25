@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { requireDate, requireEmail, requireHttpUrl, requireIdentifier, requireIsoTimestamp, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "../src/input-validation.js";
+import { requireDate, requireEmail, requireHttpUrl, requireIdentifier, requireIsoTimestamp, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLearningCapture, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "../src/input-validation.js";
 
 test("identifiers reject empty, control, path, and oversized values",()=>{
   for(const value of ["","../house","house a","house\nadmin","a".repeat(129)]) assert.throws(()=>requireIdentifier(value),/invalid/);
@@ -55,7 +55,7 @@ test("message read acknowledgement validates scope and normalizes its timestamp"
   assert.throws(()=>validateMessageReadInput({...valid,readAt:"soon"}),/Read time/);
 });
 
-const intake={householdId:"house-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,subjects:["Language","Math"],priorAttainment:"Reads short paragraphs and counts to 100.",strengthsInterests:"Enjoys machines and drawing.",goals:"Build reading fluency.",learningSupports:"Short instructions and movement breaks.",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes after breakfast",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"Avoid frightening content",accessibilityNeeds:"Large type when possible"};
+const intake={householdId:"house-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,planningStructure:"weekly_goals",subjects:["Language","Math"],priorAttainment:"Reads short paragraphs and counts to 100.",strengthsInterests:"Enjoys machines and drawing.",goals:"Build reading fluency.",learningSupports:"Short instructions and movement breaks.",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes after breakfast",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"Avoid frightening content",accessibilityNeeds:"Large type when possible"};
 
 test("guardian intake is bounded, purpose-limited, and normalized",()=>{
   const valid=validateGuardianIntake({...intake,subjects:["Language","Language","Math"]});
@@ -66,6 +66,9 @@ test("guardian intake rejects missing consent, invented subjects, invalid option
   assert.throws(()=>validateGuardianIntake({...intake,guardianConsent:false}),/consent is required/);
   assert.throws(()=>validateGuardianIntake({...intake,subjects:["Diagnosis"]}),/valid subject/);
   assert.throws(()=>validateGuardianIntake({...intake,deviceAccess:"always_online"}),/Device access/);
+  assert.equal(validateGuardianIntake(intake).context.planningStructure,"weekly_goals");
+  assert.throws(()=>validateGuardianIntake({...intake,planningStructure:"school_at_home"}),/How you like to plan/);
+  assert.throws(()=>validateGuardianIntake({...intake,planningStructure:""}),/How you like to plan/);
   assert.throws(()=>validateGuardianIntake({...intake,goals:"x".repeat(1001)}),/Learning goals/);
 });
 
@@ -82,4 +85,27 @@ test("staff plan documents validate nested weeks days lessons and bounded learni
 
 test("staff resources require safe classifications HTTPS and review evidence fields",()=>{
   const valid=validateStaffResource({title:" Cards ",url:"https://example.test/cards",requirement:"optional",accessType:"free",region:"Canada",privacyReviewedAt:"2026-08-28T15:00:00Z",rightsReviewedAt:"2026-08-28T15:00:00Z",linkCheckedAt:"2026-08-28T15:00:00Z",attribution:"Original"});assert.equal(valid.title,"Cards");assert.equal(valid.url,"https://example.test/cards");assert.equal(valid.privacyReviewedAt,"2026-08-28T15:00:00.000Z");assert.throws(()=>validateStaffResource({...valid,url:"http://example.test"}),/HTTPS/);assert.throws(()=>validateStaffResource({...valid,accessType:"subscription"}),/Resource access/);
+});
+
+test("lesson fit tags are optional, bounded, and never guessed", () => {
+  const plan = (lesson) => ({ weeks: [{ number: 1, theme: "Week", days: [{ number: 1, lessons: [{ subject: "Math", title: "Title", objective: "Goal", instructions: ["Do it"], ...lesson }] }] }] });
+  const first = (lesson) => validateStaffPlanDocument(plan(lesson)).weeks[0].days[0].lessons[0];
+  assert.deepEqual([first({}).estimatedMinutes, first({}).helpLevel, first({}).needsScreen], [null, null, null]);
+  assert.deepEqual([first({ estimatedMinutes: "25", helpLevel: "independent", needsScreen: "false" }).estimatedMinutes, first({ helpLevel: "together" }).helpLevel, first({ needsScreen: "false" }).needsScreen, first({ needsScreen: true }).needsScreen], [25, "together", false, true]);
+  assert.throws(() => first({ estimatedMinutes: 4 }), /5 to 240/);
+  assert.throws(() => first({ estimatedMinutes: 241 }), /5 to 240/);
+  assert.throws(() => first({ estimatedMinutes: 12.5 }), /5 to 240/);
+  assert.throws(() => first({ helpLevel: "mostly" }), /Help level/);
+  assert.throws(() => first({ needsScreen: "maybe" }), /screen/);
+});
+
+test("a learning capture is bounded to known kinds and subjects, with a required short note", () => {
+  const base = { householdId: "house-a", learnerId: "learner-a", capturedOn: "2026-09-20", kind: "outing", subjects: ["Science", "Science"], note: " Pond walk " };
+  const valid = validateLearningCapture(base);
+  assert.deepEqual([valid.kind, valid.subjects, valid.note], ["outing", ["Science"], "Pond walk"]);
+  assert.throws(() => validateLearningCapture({ ...base, kind: "therapy" }), /What kind of learning/);
+  assert.throws(() => validateLearningCapture({ ...base, subjects: ["Diagnosis"] }), /valid subjects/);
+  assert.throws(() => validateLearningCapture({ ...base, note: "" }), /What happened/);
+  assert.throws(() => validateLearningCapture({ ...base, note: "x".repeat(1001) }), /What happened/);
+  assert.throws(() => validateLearningCapture({ ...base, capturedOn: "yesterday" }), /Date/);
 });

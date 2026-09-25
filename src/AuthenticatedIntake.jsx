@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { INTAKE_SUBJECTS } from "./input-validation.js";
+
+// How much structure the family wants (#46): a spectrum, not a philosophy label. Changeable on any
+// later intake version.
+const PLANNING_OPTIONS = [
+  ["plan_every_day", "Plan each day for us", "A day-by-day plan we follow."],
+  ["weekly_goals", "Weekly goals", "Goals for the week that we fit in when we can."],
+  ["capture_after", "We’ll record as we go", "We learn our own way and note what happened."],
+];
 import { classifyOperationError } from "./operation-state.js";
 
 const EMPTY = {
@@ -15,6 +23,7 @@ const EMPTY = {
   resourceBudget: "",
   contentConstraints: "",
   accessibilityNeeds: "",
+  planningStructure: "",
   guardianConsent: false,
 };
 function draftFromProfile(profile) {
@@ -184,6 +193,26 @@ export function AuthenticatedIntake({
                   onChange={subject(item)}
                 />{" "}
                 {item}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="intake-structure">
+            <legend>How do you like to plan?</legend>
+            {PLANNING_OPTIONS.map(([value, label, hint]) => (
+              <label key={value} htmlFor={`${formId}-structure-${value}`}>
+                <input
+                  id={`${formId}-structure-${value}`}
+                  type="radio"
+                  name={`${formId}-structure`}
+                  required
+                  value={value}
+                  checked={draft.planningStructure === value}
+                  onChange={field("planningStructure")}
+                />
+                <span>
+                  <strong>{label}</strong>
+                  <small>{hint}</small>
+                </span>
               </label>
             ))}
           </fieldset>

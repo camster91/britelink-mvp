@@ -1,0 +1,101 @@
+// End-to-end journeys against deployed VPS staging with real Auth (#39).
+//
+// Every other browser audit drives a mocked harness. This one drives the deployed staging app with
+// the synthetic staging seed's own accounts (supabase/seed/synthetic-staging.sql), signed in through
+// real magic links minted with the staging service key -- the same path a family uses, without an
+// inbox. It proves what the harness cannot: that a write survives a reload and is visible from a
+// second device, and that staff land in their workbench.
+//
+// It writes only synthetic rows and cleans up after itself. stagingJourneyConfig refuses to run
+// unless BRITELINK_TEST_ENVIRONMENT=staging and neither URL is a production host.
+//
+// Usage: npm run test:staging-journeys   (needs the env below; see docs/STAGING_HANDOFF.md)
+//   BRITELINK_TEST_ENVIRONMENT=staging
+//   BRITELINK_STAGING_APP_URL=https://<staging app host>
+//   BRITELINK_SUPABASE_URL=https://<staging api host>
+//   BRITELINK_STAGING_SERVICE_ROLE_KEY=<staging only; never production>
+//   BRITELINK_TEST_GUARDIAN_A_USER_ID / BRITELINK_TEST_EDUCATOR_A_USER_ID / BRITELINK_TEST_HOUSEHOLD_A_ID (from the seed)
+import { createClient } from "@supabase/supabase-js";
+import { chromium } from "playwright";
+import { mkdir, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { chromeLaunchOptions } from "./resolve-chrome.mjs";
+import { stagingJourneyConfig } from "./staging-journey-config.mjs";
+
+const config = stagingJourneyConfig();
+const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+const steps = [];
+const step = async (name, run) => {
+  const started = Date.now();
+  try {
+    await run();
+    steps.push({ name, ok: true, ms: Date.now() - started });
+  } catch (error) {
+    steps.push({ name, ok: false, ms: Date.now() - started, error: error.message });
+    throw error;
+  }
+};
+
+async function signInLink(userId) {
+  const { data: user, error } = await admin.auth.admin.getUserById(userId);
+  if (error || !user?.user?.email) throw new Error(`staging user ${userId} not found: ${error?.message ?? "no email"}`);
+  const { data, error: linkError } = await admin.auth.admin.generateLink({ type: "magiclink", email: user.user.email, options: { redirectTo: config.appUrl } });
+  if (linkError || !data?.properties?.action_link) throw new Error(`could not mint a sign-in link: ${linkError?.message ?? "no link"}`);
+  return data.properties.action_link;
+}
+
+async function signedInPage(browser, userId) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  await page.goto(await signInLink(userId), { waitUntil: "networkidle" });
+  return { context, page };
+}
+
+const marker = `SYNTHETIC staging journey ${new Date().toISOString()}`;
+const browser = await chromium.launch(chromeLaunchOptions());
+let exitCode = 0;
+try {
+  const deviceOne = await signedInPage(browser, config.guardianUserId);
+  await step("guardian signs in through a real magic link and lands in the household workspace", async () => {
+    await deviceOne.page.getByText("Household workspace").waitFor({ timeout: 20000 });
+  });
+  await step("guardian records learning outside the plan", async () => {
+    const card = deviceOne.page.locator("section.learning-captures");
+    await card.getByLabel("What kind").selectOption("note");
+    await card.getByLabel("What happened").fill(marker);
+    await card.getByRole("button", { name: "Save to the record" }).click();
+    await card.getByText("Saved to", { exact: false }).waitFor();
+  });
+  await step("the note shows in this week's story", async () => {
+    await deviceOne.page.locator("section.weekly-story").getByText(marker, { exact: false }).waitFor();
+  });
+  await step("the note survives a reload", async () => {
+    await deviceOne.page.reload({ waitUntil: "networkidle" });
+    await deviceOne.page.locator("section.learning-captures").getByText(marker).waitFor({ timeout: 20000 });
+  });
+  const deviceTwo = await signedInPage(browser, config.guardianUserId);
+  await step("a second device sees the same note, then removes it (cleanup)", async () => {
+    const card = deviceTwo.page.locator("section.learning-captures");
+    await card.getByText(marker).waitFor({ timeout: 20000 });
+    await card.getByRole("listitem").filter({ hasText: marker }).getByRole("button", { name: /Remove the note/ }).click();
+    await card.getByText("Removed from the learning record.").waitFor();
+  });
+  await deviceOne.context.close();
+  await deviceTwo.context.close();
+
+  const educator = await signedInPage(browser, config.educatorUserId);
+  await step("educator signs in and lands in the educator workbench", async () => {
+    await educator.page.getByRole("heading", { name: "Educator workbench" }).waitFor({ timeout: 20000 });
+  });
+  await educator.context.close();
+} catch {
+  exitCode = 1;
+} finally {
+  await browser.close();
+  const report = { ranAt: new Date().toISOString(), appUrl: config.appUrl, passed: steps.every((item) => item.ok) && exitCode === 0, steps };
+  await mkdir(new URL("../qa/staging/", import.meta.url), { recursive: true });
+  await writeFile(fileURLToPath(new URL("../qa/staging/journey-report.json", import.meta.url)), `${JSON.stringify(report, null, 2)}\n`);
+  for (const item of steps) console.log(`${item.ok ? "ok  " : "FAIL"} ${item.name}${item.error ? ` -- ${item.error}` : ""}`);
+  console.log(report.passed ? "Staging journeys passed." : "Staging journeys FAILED.");
+  process.exitCode = report.passed ? 0 : 1;
+}

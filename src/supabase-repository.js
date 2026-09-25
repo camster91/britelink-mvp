@@ -1,4 +1,4 @@
-import { requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
+import { validateLearningCapture, requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
 
 function unwrap(result, operation) {
   if (result.error) {
@@ -16,8 +16,11 @@ export class SupabaseBriteLinkRepository {
 
   async session() { const result = await this.client.auth.getSession(); return unwrap(result, "Read session")?.session ?? null; }
   async signInWithEmail(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Sign-in redirect URL"), shouldCreateUser: false } }), "Send sign-in link"); }
-  async joinBeta(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true } }), "Join beta"); }
-  async provisionSignup({email,learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_household_from_signup",{guardian_email:requireEmail(email),learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Start onboarding");return rows?.[0]??null}
+  // The learner details ride along as signup metadata. Nothing is provisioned until the family
+  // follows the link: provision_beta_household (migration 041) only serves a signed-in,
+  // email-confirmed caller, so an unauthenticated visitor can no longer create or look up accounts.
+  async joinBeta(email, redirectTo, {learnerName,learnerGrade}={}) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true, data: { beta_learner_name: String(learnerName||"").trim(), beta_learner_grade: String(learnerGrade||"").trim() } } }), "Join beta"); }
+  async provisionBetaHousehold({learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_beta_household",{learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Set up your household");return rows?.[0]??null}
   async requestFreshSignIn(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Reauthentication redirect URL"), shouldCreateUser: false } }), "Send fresh sign-in link"); }
   async signOut() { return unwrap(await this.client.auth.signOut(), "Sign out"); }
 
@@ -49,11 +52,41 @@ export class SupabaseBriteLinkRepository {
   async withdrawConsent(householdId,consentId){requireIdentifier(householdId,"Household ID");requireIdentifier(consentId,"Consent ID");return unwrap(await this.client.rpc("withdraw_guardian_consent",{target_household:householdId,target_consent:consentId}),"Withdraw consent")}
   async loadPublishedPlans(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
-    return unwrap(await this.client.from("plans").select("id, version, status, published_at, plan_weeks(id, week_number, theme, plan_days(id, day_number, planned_date, lessons(*, resources(*))))").eq("household_id", householdId).eq("learner_id", learnerId).eq("status", "published").order("version", { ascending: false }), "Load published plans");
+    return unwrap(await this.client.from("plans").select("id, version, status, published_at, plan_schedules(start_date, school_days, days_off, calendar_set, paused_subjects, updated_at), plan_weeks(id, week_number, theme, plan_days(id, day_number, planned_date, lessons(*, resources(*))))").eq("household_id", householdId).eq("learner_id", learnerId).eq("status", "published").order("version", { ascending: false }), "Load published plans");
   }
   async listLessonActivities(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
     return unwrap(await this.client.from("lesson_activities").select("id, lesson_id, status, caregiver_note, schedule_reason, scheduled_for, updated_at").eq("household_id", householdId).eq("learner_id", learnerId).order("updated_at", { ascending: false }), "Load lesson activity");
+  }
+  // Learning outside the plan (migration 046). Removed captures are soft-deleted and hidden here.
+  async listLearningCaptures(householdId, learnerId) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    return unwrap(await this.client.from("learning_captures").select("id, captured_on, kind, subjects, note, created_at").eq("household_id", householdId).eq("learner_id", learnerId).is("removed_at", null).order("captured_on", { ascending: false }).order("created_at", { ascending: false }).limit(100), "Load learning notes");
+  }
+  async recordLearningCapture(input) {
+    const valid = validateLearningCapture(input);
+    const rows = unwrap(await this.client.rpc("record_learning_capture", { target_household: valid.householdId, target_learner: valid.learnerId, capture_date: valid.capturedOn, capture_kind: valid.kind, capture_subjects: valid.subjects, capture_note: valid.note }), "Save learning note");
+    return rows?.[0] ?? null;
+  }
+  async removeLearningCapture({ householdId, captureId }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(captureId, "Capture ID");
+    return unwrap(await this.client.rpc("remove_learning_capture", { target_household: householdId, target_capture: captureId }), "Remove learning note");
+  }
+  // Paused subjects for a published plan (migration 047). An empty list resumes everything.
+  async setPausedSubjects({ householdId, planId, subjects }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(planId, "Plan ID");
+    const clean = [...new Set((subjects ?? []).map((item) => String(item).trim()).filter(Boolean))];
+    return unwrap(await this.client.rpc("set_paused_subjects", { target_household: householdId, target_plan: planId, subjects: clean }), "Pause a subject");
+  }
+  // The family calendar for a published plan (migration 043). startDate null = own pace.
+  async setPlanSchedule({ householdId, planId, startDate = null, schoolDays, daysOff = [] }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(planId, "Plan ID");
+    if (startDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) throw new TypeError("Start date must be a date");
+    const days = [...new Set((schoolDays ?? []).map(Number))];
+    if (!days.length || days.some((day) => !Number.isInteger(day) || day < 1 || day > 7)) throw new TypeError("Choose at least one school day");
+    if ((daysOff ?? []).some((day) => !/^\d{4}-\d{2}-\d{2}$/.test(day))) throw new TypeError("Days off must be dates");
+    const rows = unwrap(await this.client.rpc("set_plan_schedule", { target_household: householdId, target_plan: planId, schedule_start: startDate, schedule_school_days: days, schedule_days_off: daysOff ?? [] }), "Save your calendar");
+    return rows?.[0] ?? null;
   }
   async saveLessonActivity(input) {
     const valid=validateLessonActivityInput(input);

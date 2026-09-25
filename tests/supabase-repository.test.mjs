@@ -48,7 +48,7 @@ test("latest intake read is household and learner scoped",async()=>{
 
 test("guardian intake uses the atomic RPC with fixed purpose and validated context",async()=>{
   const calls=[];const client={rpc:async(name,args)=>{calls.push([name,args]);return{data:[{profile_version:2}]}}};
-  const result=await new SupabaseBriteLinkRepository(client).submitGuardianIntake({householdId:"household-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,subjects:["Language"],priorAttainment:"Reads short passages",strengthsInterests:"Enjoys machines",goals:"Build fluency",learningSupports:"Short directions",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes daily",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"",accessibilityNeeds:""});
+  const result=await new SupabaseBriteLinkRepository(client).submitGuardianIntake({householdId:"household-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,planningStructure:"plan_every_day",subjects:["Language"],priorAttainment:"Reads short passages",strengthsInterests:"Enjoys machines",goals:"Build fluency",learningSupports:"Short directions",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes daily",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"",accessibilityNeeds:""});
   assert.equal(result.profile_version,2);assert.equal(calls[0][0],"submit_guardian_intake");assert.deepEqual(calls[0][1].consent_purposes,["personalized_learning_plan"]);assert.equal(calls[0][1].target_household,"household-a");assert.equal(calls[0][1].context.goals,"Build fluency");
 });
 
@@ -175,4 +175,18 @@ test("authentication rejects unsafe redirect URLs before calling Supabase", asyn
   assert.equal(calls[0].options.shouldCreateUser,false);
   await repository.requestFreshSignIn("guardian@example.ca","https://app.britelink.org");
   assert.equal(calls[1].email,"guardian@example.ca");assert.equal(calls[1].options.shouldCreateUser,false);
+});
+
+test("the family calendar is saved through its RPC with validated, de-duplicated input", async () => {
+  const calls = [];
+  const repository = new SupabaseBriteLinkRepository({ rpc: async (name, args) => { calls.push([name, args]); return { data: [{ plan_id: "plan-a" }] }; } });
+  const saved = await repository.setPlanSchedule({ householdId: "10000000-0000-4000-8000-000000000001", planId: "50000000-0000-4000-8000-000000000001", startDate: "2026-10-05", schoolDays: [1, 3, 3, 5], daysOff: ["2026-10-09"] });
+  assert.deepEqual(saved, { plan_id: "plan-a" });
+  assert.deepEqual(calls, [["set_plan_schedule", { target_household: "10000000-0000-4000-8000-000000000001", target_plan: "50000000-0000-4000-8000-000000000001", schedule_start: "2026-10-05", schedule_school_days: [1, 3, 5], schedule_days_off: ["2026-10-09"] }]]);
+  const ids = { householdId: "10000000-0000-4000-8000-000000000001", planId: "50000000-0000-4000-8000-000000000001" };
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [] }), /at least one school day/);
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [8] }), /at least one school day/);
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, startDate: "05/10/2026", schoolDays: [1] }), /Start date/);
+  await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [1], daysOff: ["tomorrow"] }), /Days off/);
+  assert.equal(calls.length, 1, "invalid input never reaches the database");
 });

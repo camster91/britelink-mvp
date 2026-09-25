@@ -67,6 +67,10 @@ try {
   await page.getByLabel(/Materials/).fill("Paper\nPencil");
   await page.getByLabel(/Accommodations/).fill("Read instructions aloud");
   await page.getByLabel("Adult help minutes").fill("10");
+  // What fits today tags (044): optional, typed, and carried into the saved plan document.
+  await page.getByLabel("Whole lesson, minutes").fill("20");
+  await page.getByLabel("Help needed").selectOption("independent");
+  await page.getByLabel("Needs a screen").selectOption("false");
   await page.getByRole("button", { name: "Add lesson" }).click();
   await page.getByLabel("Subject").nth(1).fill("Math");
   await page.getByLabel("Title").nth(1).fill("Count a collection");
@@ -220,6 +224,15 @@ try {
   await page.getByRole("button", { name: "Record absence and hold" }).click();
   await page.getByText("Educator absence completed and audited.").waitFor();
   const state = await page.evaluate(() => globalThis.staffQaState);
+  const taggedLessons =
+    (state.planDocuments ?? [])
+      .map((document) => document?.weeks?.[0]?.days?.[0]?.lessons ?? [])
+      .find((lessons) => lessons[0]?.title === "Build a sound map") ?? [];
+  if (
+    JSON.stringify(taggedLessons.map((lesson) => [lesson.estimatedMinutes, lesson.helpLevel, lesson.needsScreen])) !==
+    JSON.stringify([[20, "independent", false], [null, null, null]])
+  )
+    throw new Error(`Lesson fit tags did not reach the plan document: ${JSON.stringify(taggedLessons)}`);
   const caseAPlan = state.plans
     .filter((item) => item.case_id === "case-a")
     .sort((a, b) => b.version - a.version)[0];

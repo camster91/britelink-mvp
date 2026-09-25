@@ -13,6 +13,7 @@ const PRIORITY = {
 };
 const INTAKE_FIELDS = [
   ["subjects", "Subjects"],
+  ["planningStructure", "How they like to plan"],
   ["priorAttainment", "Current learning starting point"],
   ["strengthsInterests", "Strengths and interests"],
   ["goals", "Goals"],
@@ -125,9 +126,18 @@ export function nextStaffStatuses(status) {
     }[status] ?? []
   );
 }
+// Readable values for coded answers, so staff never have to decode an enum.
+const INTAKE_VALUE_LABELS = {
+  planningStructure: {
+    plan_every_day: "Plan each day for us",
+    weekly_goals: "Weekly goals",
+    capture_after: "Record as we go",
+  },
+};
 export function staffIntakeRows(context = {}) {
   return INTAKE_FIELDS.map(([key, label]) => {
-    const value = context?.[key];
+    const raw = context?.[key];
+    const value = INTAKE_VALUE_LABELS[key]?.[raw] ?? raw;
     return {
       key,
       label,

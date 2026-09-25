@@ -1,18 +1,374 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   activityMap,
   caseForLearner,
-  findNextPublishedLesson,
+  dayMovedTo,
+  dueLessonsForToday,
   latestPublishedPlan,
+  lessonFitSummary,
+  localDateString,
   messageIsUnread,
+  nextLessonForToday,
   orderedPlanWeeks,
+  planDayDates,
+  planDayMove,
+  planProgress,
+  planSubjects,
+  printableDays,
+  unfinishedLessons,
+  weeklyStory,
+  WEEKDAY_LABELS,
+  withDayOff,
+  withoutDayOff,
 } from "./authenticated-workspace.js";
 import { classifyOperationError } from "./operation-state.js";
 import { AuthenticatedIntake } from "./AuthenticatedIntake.jsx";
 import { AuthenticatedServicePrivacy } from "./AuthenticatedServicePrivacy.jsx";
 import { EducatorWorkspace } from "./EducatorWorkspace.jsx";
 import { MessageAttachments } from "./MessageAttachments.jsx";
+import { LearningCaptures } from "./LearningCaptures.jsx";
+import { WeeklyStory } from "./WeeklyStory.jsx";
+import { StudentView } from "./StudentView.jsx";
+import { LearningReport } from "./LearningReport.jsx";
+import { FamilyDay } from "./FamilyDay.jsx";
+import { planCalendarIcs } from "./calendar-export.js";
+import { downloadTextFile } from "./browser-download.js";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
+
+// A signed-in account with no household. Beta families arrive here straight from their sign-in
+// link: the details they typed on the join form come back as signup metadata, so the household is
+// created once, now that the email is proven. Anyone else (for example a staff member whose
+// invitation is not set up yet) sees the same form, prefilled with nothing, plus a way out.
+function BetaHouseholdSetup({ repository, metadata, onReady }) {
+  const [learnerName, setLearnerName] = useState(
+    String(metadata?.beta_learner_name ?? ""),
+  );
+  const [learnerGrade, setLearnerGrade] = useState(
+    String(metadata?.beta_learner_grade ?? ""),
+  );
+  const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
+  const [invalid, setInvalid] = useState([]);
+  const nameRef = useRef(null);
+  const gradeRef = useRef(null);
+  const autoStarted = useRef(false);
+  const provision = useCallback(
+    async (name, grade) => {
+      const missing = [];
+      if (!name.trim()) missing.push("name");
+      if (!grade.trim()) missing.push("grade");
+      setInvalid(missing);
+      if (missing.length) {
+        setStatus("error");
+        setError(
+          `Add ${missing.map((field) => (field === "name" ? "your child's first name" : "their grade or level")).join(" and ")} to set up your household.`,
+        );
+        (missing[0] === "name" ? nameRef : gradeRef).current?.focus();
+        return;
+      }
+      setStatus("loading");
+      setError("");
+      try {
+        await repository.provisionBetaHousehold({
+          learnerName: name,
+          learnerGrade: grade,
+        });
+        await onReady();
+      } catch (failure) {
+        setStatus("error");
+        setError(failure.message);
+      }
+    },
+    [onReady, repository],
+  );
+  useEffect(() => {
+    const name = String(metadata?.beta_learner_name ?? "").trim();
+    const grade = String(metadata?.beta_learner_grade ?? "").trim();
+    if (autoStarted.current || !name || !grade) return;
+    autoStarted.current = true;
+    provision(name, grade);
+  }, [metadata, provision]);
+  if (status === "loading")
+    return (
+      <main className="auth-page" aria-labelledby="setup-heading">
+        <section className="auth-card" role="status">
+          <h1 id="setup-heading">Setting up your household…</h1>
+          <p>Creating your secure family workspace.</p>
+        </section>
+      </main>
+    );
+  return (
+    <main className="auth-page" aria-labelledby="setup-heading">
+      <section className="auth-card">
+        <h1 id="setup-heading">Set up your household</h1>
+        <p>
+          You're signed in, and your account isn't connected to a household yet.
+          Tell us who you're planning for to start the free beta. If BriteLink
+          invited you as staff, sign out and contact support instead.
+        </p>
+        <form
+          noValidate
+          onSubmit={(event) => {
+            event.preventDefault();
+            provision(learnerName, learnerGrade);
+          }}
+        >
+          {error ? (
+            <p role="alert" id="setup-error" className="form-error-summary">
+              {error}
+            </p>
+          ) : null}
+          <label>
+            Your child's first name
+            <input
+              ref={nameRef}
+              type="text"
+              autoComplete="off"
+              maxLength={120}
+              value={learnerName}
+              aria-invalid={invalid.includes("name") || undefined}
+              aria-describedby={invalid.includes("name") ? "setup-error" : undefined}
+              onChange={(event) => setLearnerName(event.target.value)}
+            />
+          </label>
+          <label>
+            Grade or level
+            <input
+              ref={gradeRef}
+              type="text"
+              autoComplete="off"
+              maxLength={60}
+              placeholder="e.g. Grade 3"
+              value={learnerGrade}
+              aria-invalid={invalid.includes("grade") || undefined}
+              aria-describedby={invalid.includes("grade") ? "setup-error" : undefined}
+              onChange={(event) => setLearnerGrade(event.target.value)}
+            />
+          </label>
+          <button className="primary">Start the free beta</button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => repository.signOut()}
+          >
+            Sign out
+          </button>
+        </form>
+        <small>
+          Do not send child, health, school, diagnosis, or IEP information by
+          email.
+        </small>
+      </section>
+    </main>
+  );
+}
+
+// The family's calendar for the plan (migration 043): when they start and which weekdays they
+// school, or no fixed days at all. Kept below "Do this next" so it never competes with the next
+// action. Saving is the parent's job; this component only edits a draft.
+function PlanCalendar({ schedule, today, operation, onSave, onExport }) {
+  const [editing, setEditing] = useState(false);
+  const [startDate, setStartDate] = useState(schedule?.start_date ?? today);
+  const [schoolDays, setSchoolDays] = useState(
+    (schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number),
+  );
+  const [error, setError] = useState("");
+  const [includeTitles, setIncludeTitles] = useState(false);
+  const firstDayRef = useRef(null);
+  useEffect(() => {
+    setStartDate(schedule?.start_date ?? today);
+    setSchoolDays((schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number));
+  }, [schedule, today]);
+  const busy = operation.status === "loading";
+  const save = async (start) => {
+    if (!schoolDays.length) {
+      setError("Choose at least one school day.");
+      firstDayRef.current?.focus();
+      return;
+    }
+    setError("");
+    const saved = await onSave({
+      startDate: start,
+      schoolDays,
+      daysOff: schedule?.days_off ?? [],
+    });
+    if (saved) setEditing(false);
+  };
+  const dayOff = withDayOff(schedule, today);
+  const labels = Object.fromEntries(WEEKDAY_LABELS);
+  // A row created only by pausing a subject (047) is not a calendar choice yet.
+  if (schedule && schedule.calendar_set !== false && !editing)
+    return (
+      <section className="plan-calendar" aria-labelledby="plan-calendar-heading">
+        <h3 id="plan-calendar-heading">Your calendar</h3>
+        <p>
+          {schedule.start_date
+            ? `Starts ${schedule.start_date} · ${(schedule.school_days ?? []).map((day) => labels[day]).join(", ")}${schedule.days_off?.length ? ` · ${schedule.days_off.length} day${schedule.days_off.length === 1 ? "" : "s"} off` : ""}`
+            : "Going at your own pace, with no fixed dates."}
+        </p>
+        <div className="plan-calendar-actions">
+          {dayOff ? (
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy}
+              onClick={() =>
+                onSave({ ...toDraft(schedule), daysOff: dayOff }, { tookOff: today })
+              }
+            >
+              Take today off
+            </button>
+          ) : null}
+          <button type="button" className="ghost" onClick={() => setEditing(true)}>
+            {schedule.start_date ? "Change calendar" : "Set dates"}
+          </button>
+          {schedule.start_date && onExport ? (
+            <button type="button" className="ghost" onClick={() => onExport(includeTitles)}>
+              Add to my calendar (.ics)
+            </button>
+          ) : null}
+        </div>
+        {schedule.start_date && onExport ? (
+          <label className="fit-toggle calendar-titles">
+            <input
+              type="checkbox"
+              checked={includeTitles}
+              onChange={(event) => setIncludeTitles(event.target.checked)}
+            />
+            Include lesson titles in the calendar file
+          </label>
+        ) : null}
+        <OperationNotice operation={operation} />
+      </section>
+    );
+  return (
+    <section className="plan-calendar" aria-labelledby="plan-calendar-heading">
+      <h3 id="plan-calendar-heading">When do you school?</h3>
+      <p>
+        Pick a start date and your school days, and each plan day gets a date.
+        Taking a day off later moves everything after it by one school day.
+      </p>
+      <form
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          save(startDate || today);
+        }}
+      >
+        <label>
+          Start date
+          <input
+            type="date"
+            value={startDate}
+            onChange={(event) => setStartDate(event.target.value)}
+          />
+        </label>
+        <fieldset
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? "plan-calendar-error" : undefined}
+        >
+          <legend>School days</legend>
+          {WEEKDAY_LABELS.map(([day, label], index) => (
+            <label key={day} className="plan-calendar-day">
+              <input
+                ref={index === 0 ? firstDayRef : undefined}
+                type="checkbox"
+                checked={schoolDays.includes(day)}
+                onChange={(event) =>
+                  setSchoolDays((current) =>
+                    event.target.checked
+                      ? [...current, day].sort()
+                      : current.filter((item) => item !== day),
+                  )
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {error ? (
+          <p role="alert" id="plan-calendar-error" className="form-error-summary">
+            {error}
+          </p>
+        ) : null}
+        <div className="plan-calendar-actions">
+          <button className="primary" disabled={busy}>
+            Save my calendar
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            disabled={busy}
+            onClick={() => save(null)}
+          >
+            Go at my own pace
+          </button>
+          {schedule ? (
+            <button type="button" className="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
+        <OperationNotice operation={operation} />
+      </form>
+    </section>
+  );
+}
+
+// A plain paper version of the week or one day (#48). Rendered into <body> so print CSS can hide
+// the app entirely; invisible on screen. Black on white, tick boxes, no app chrome.
+function PrintSheet({ learnerName, scope, days, printedOn }) {
+  return createPortal(
+    <section className="print-sheet">
+      <h1>
+        {learnerName}’s {scope === "day" ? "day" : "week"}
+      </h1>
+      {days.map((day) => (
+        <article key={day.id}>
+          <h2>
+            {day.heading}
+            {day.date ? ` · ${day.date}` : ""}
+          </h2>
+          <ul>
+            {day.lessons.map((lesson) => (
+              <li key={lesson.id}>
+                <span className="print-box">{lesson.done ? "✓" : ""}</span>
+                <div>
+                  <strong>
+                    {lesson.subject}: {lesson.title}
+                  </strong>
+                  <p>{lesson.objective}</p>
+                  {lesson.instructions.length ? (
+                    <ol>
+                      {lesson.instructions.map((step, index) => (
+                        <li key={index}>{step}</li>
+                      ))}
+                    </ol>
+                  ) : null}
+                  {lesson.materials.length ? (
+                    <p>Materials: {lesson.materials.join(", ")}</p>
+                  ) : null}
+                  {lesson.fit ? <p>{lesson.fit}</p> : null}
+                  {lesson.movedTo ? <p>Moved to {lesson.movedTo}</p> : null}
+                  {lesson.done ? <p>Already {lesson.done}</p> : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </article>
+      ))}
+      <footer>Printed from BriteLink on {printedOn}</footer>
+    </section>,
+    document.body,
+  );
+}
+
+const toDraft = (schedule) => ({
+  startDate: schedule?.start_date ?? null,
+  schoolDays: (schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number),
+  daysOff: schedule?.days_off ?? [],
+});
 
 function SignIn({ repository }) {
   const [email, setEmail] = useState("");
@@ -33,12 +389,12 @@ function SignIn({ repository }) {
           setMessage("Add your child's name and grade to join the beta.");
           return;
         }
-        await repository.provisionSignup({
-          email,
+        // The household is created after the link is followed, never before: see
+        // BetaHouseholdSetup and migration 041.
+        await repository.joinBeta(email, globalThis.location?.origin, {
           learnerName,
           learnerGrade,
         });
-        await repository.joinBeta(email, globalThis.location?.origin);
         setStatus("sent");
         setMessage(
           "Welcome to the beta. Check your email for a secure sign-in link.",
@@ -150,9 +506,9 @@ function OperationNotice({ operation, retry }) {
       role={failure ? "alert" : "status"}
     >
       <span>{operation.message}</span>
-      {operation.canRetry && retryAction ? (
+      {(operation.canRetry || operation.retryLabel) && retryAction ? (
         <button type="button" onClick={retryAction}>
-          Try again
+          {operation.retryLabel ?? "Try again"}
         </button>
       ) : null}
     </div>
@@ -190,6 +546,43 @@ function ParentWorkspace({
     scheduledFor: "",
   });
   const [activityOperation, setActivityOperation] = useState({
+    status: "idle",
+    message: "",
+    canRetry: false,
+  });
+  // "What fits today" filters (044). Per visit only: today's constraints, not a saved preference.
+  const [fitFilters, setFitFilters] = useState({
+    maxMinutes: null,
+    alone: false,
+    offline: false,
+  });
+  const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
+  const [pauseOpen, setPauseOpen] = useState(false);
+  // Learning outside the plan (#44), lifted here so the weekly summary can include it.
+  const [captures, setCaptures] = useState([]);
+  const [storyOffset, setStoryOffset] = useState(0);
+  const [studentView, setStudentView] = useState(false);
+  const [printScope, setPrintScope] = useState(null);
+  // Render the sheet first, then open the print dialog; drop it once printing is done.
+  useEffect(() => {
+    if (!printScope) return undefined;
+    const done = () => setPrintScope(null);
+    globalThis.addEventListener?.("afterprint", done);
+    const frame = globalThis.requestAnimationFrame?.(() => globalThis.print?.());
+    return () => {
+      globalThis.removeEventListener?.("afterprint", done);
+      if (frame) globalThis.cancelAnimationFrame?.(frame);
+    };
+  }, [printScope]);
+  const [calendarOperation, setCalendarOperation] = useState({
+    status: "idle",
+    message: "",
+    canRetry: false,
+  });
+  // The lesson just marked complete, with what it was before, so it can be undone.
+  const [completion, setCompletion] = useState(null);
+  const [dayMove, setDayMove] = useState({ reason: "", scheduledFor: "" });
+  const [dayMoveOperation, setDayMoveOperation] = useState({
     status: "idle",
     message: "",
     canRetry: false,
@@ -271,6 +664,10 @@ function ParentWorkspace({
   }, [loadMessages]);
 
   const plan = latestPublishedPlan(planState.plans);
+  // PostgREST embeds a one-to-one relation as an object; tolerate the array form too.
+  const schedule = Array.isArray(plan?.plan_schedules)
+    ? (plan.plan_schedules[0] ?? null)
+    : (plan?.plan_schedules ?? null);
   const weeks = useMemo(() => orderedPlanWeeks(plan), [plan]);
   const week = weeks[weekIndex] ?? weeks[0];
   const day = week?.plan_days?.[dayIndex] ?? week?.plan_days?.[0];
@@ -311,6 +708,7 @@ function ParentWorkspace({
   };
   const saveActivity = async () => {
     if (!selectedLesson) return;
+    const prior = activities[selectedLesson.id] ?? null;
     const input = {
       householdId: household.household_id,
       learnerId: selectedLearner.id,
@@ -361,10 +759,115 @@ function ParentWorkspace({
           : "Lesson activity saved securely.",
         canRetry: false,
       });
+      setCompletion(
+        draft.status === "completed" && prior?.status !== "completed"
+          ? { lessonId: selectedLesson.id, title: selectedLesson.title, prior }
+          : null,
+      );
     } catch (error) {
       setPlanState((state) => ({ ...state, activities: previous }));
       setActivityOperation(operationFailure(error, "Lesson activity"));
     }
+  };
+  useEffect(() => {
+    setCompletion(null);
+  }, [selectedLesson?.id]);
+  // Puts the lesson back exactly as it was before it was marked complete.
+  const undoCompletion = async () => {
+    if (!completion) return;
+    const { lessonId, prior } = completion;
+    const restored = {
+      status: prior?.status ?? "not_started",
+      note: prior?.caregiver_note ?? "",
+      scheduleReason: prior?.schedule_reason ?? "",
+      scheduledFor: prior?.scheduled_for ?? "",
+    };
+    setActivityOperation({ status: "loading", message: "Undoing…", canRetry: false });
+    try {
+      const saved = await repository.saveLessonActivity({
+        householdId: household.household_id,
+        learnerId: selectedLearner.id,
+        lessonId,
+        userId,
+        ...restored,
+      });
+      setPlanState((state) => ({
+        ...state,
+        activities: [
+          ...state.activities.filter((item) => item.lesson_id !== lessonId),
+          saved,
+        ],
+      }));
+      setDraft(restored);
+      setCompletion(null);
+      setActivityOperation({
+        status: "success",
+        message: `Undone. The lesson is ${restored.status.replaceAll("_", " ")} again.`,
+        canRetry: false,
+      });
+    } catch (error) {
+      setActivityOperation({
+        ...operationFailure(error, "Undo"),
+        onRetry: undoCompletion,
+      });
+    }
+  };
+  useEffect(() => {
+    setDayMove({ reason: "", scheduledFor: "" });
+    setDayMoveOperation({ status: "idle", message: "", canRetry: false });
+  }, [day?.id]);
+  // Moves every unfinished lesson of the selected day. Each lesson is its own upsert, so a
+  // failure part-way leaves the rest saved; retry then resends only the lessons that failed.
+  const moveDay = async (pending) => {
+    const moves =
+      pending ??
+      planDayMove(day, activities, {
+        reason: dayMove.reason,
+        scheduledFor: dayMove.scheduledFor,
+      });
+    if (!moves.length) return;
+    setDayMoveOperation({
+      status: "loading",
+      message: `Moving ${moves.length} lesson${moves.length === 1 ? "" : "s"}…`,
+      canRetry: false,
+    });
+    const failed = [];
+    let lastError = null;
+    for (const move of moves) {
+      try {
+        const saved = await repository.saveLessonActivity({
+          householdId: household.household_id,
+          learnerId: selectedLearner.id,
+          userId,
+          ...move,
+        });
+        setPlanState((state) => ({
+          ...state,
+          activities: [
+            ...state.activities.filter((item) => item.lesson_id !== move.lessonId),
+            saved,
+          ],
+        }));
+      } catch (error) {
+        failed.push(move);
+        lastError = error;
+      }
+    }
+    const date = moves[0].scheduledFor;
+    if (!failed.length) {
+      setDayMoveOperation({
+        status: "success",
+        message: `Moved ${moves.length} unfinished lesson${moves.length === 1 ? "" : "s"} to ${date}. Progress and notes were kept.`,
+        canRetry: false,
+      });
+      return;
+    }
+    const failure = operationFailure(lastError, "Moving this day");
+    setDayMoveOperation({
+      ...failure,
+      message: `${moves.length - failed.length} of ${moves.length} lessons moved to ${date}. ${failure.message}`,
+      onRetry: () => moveDay(failed),
+    });
   };
   const sendMessage = async (event) => {
     event.preventDefault();
@@ -505,7 +1008,134 @@ function ParentWorkspace({
     }
   };
 
-  const nextLesson = findNextPublishedLesson(weeks, activities);
+  const today = localDateString();
+  const dayDates = planDayDates(weeks, schedule);
+  const paused = schedule?.paused_subjects ?? [];
+  const next = nextLessonForToday(weeks, activities, today, dayDates, { ...fitFilters, paused });
+  // Student view (#49): mark one lesson done, keeping its note and schedule exactly as they were.
+  const markLessonDone = async (lesson) => {
+    const activity = activities[lesson.id];
+    const saved = await repository.saveLessonActivity({
+      householdId: household.household_id,
+      learnerId: selectedLearner.id,
+      lessonId: lesson.id,
+      userId,
+      status: "completed",
+      note: activity?.caregiver_note ?? "",
+      scheduleReason: activity?.schedule_reason ?? "",
+      scheduledFor: activity?.scheduled_for ?? "",
+    });
+    setPlanState((state) => ({
+      ...state,
+      activities: [
+        ...state.activities.filter((item) => item.lesson_id !== lesson.id),
+        saved,
+      ],
+    }));
+  };
+  const [pauseOperation, setPauseOperation] = useState({ status: "idle", message: "", canRetry: false });
+  const savePaused = async (subjects) => {
+    setPauseOperation({ status: "loading", message: "Saving…", canRetry: false });
+    try {
+      const saved = await repository.setPausedSubjects({
+        householdId: household.household_id,
+        planId: plan.id,
+        subjects,
+      });
+      setPlanState((state) => ({
+        ...state,
+        plans: state.plans.map((item) =>
+          item.id === plan.id
+            ? { ...item, plan_schedules: { ...(schedule ?? { start_date: null, school_days: [1, 2, 3, 4, 5], days_off: [], calendar_set: false }), paused_subjects: saved ?? subjects } }
+            : item,
+        ),
+      }));
+      setPauseOperation({
+        status: "success",
+        message: (saved ?? subjects).length
+          ? `Paused: ${(saved ?? subjects).join(", ")}. Those lessons wait until you resume.`
+          : "All subjects are active again.",
+        canRetry: false,
+      });
+    } catch (error) {
+      setPauseOperation({ ...operationFailure(error, "Pausing a subject"), onRetry: () => savePaused(subjects) });
+    }
+  };
+  // Calendar file (#47): dated days with work left, private by default.
+  const exportCalendar = (includeTitles) => {
+    const { count, contents } = planCalendarIcs({
+      planId: plan.id,
+      weeks,
+      dayDates,
+      activitiesByLessonId: activities,
+      paused,
+      includeTitles,
+    });
+    if (!count) {
+      setCalendarOperation({ status: "success", message: "No dated lessons are left to add.", canRetry: false });
+      return;
+    }
+    downloadTextFile("britelink-plan.ics", contents, "text/calendar;charset=utf-8");
+    setCalendarOperation({
+      status: "success",
+      message: `Calendar file saved with ${count} ${count === 1 ? "day" : "days"}. Open it to add them to your calendar app.`,
+      canRetry: false,
+    });
+  };
+  const saveCalendar = async (draft, { tookOff = null, undone = false } = {}) => {
+    setCalendarOperation({ status: "loading", message: "Saving your calendar…", canRetry: false });
+    try {
+      const saved = await repository.setPlanSchedule({
+        householdId: household.household_id,
+        planId: plan.id,
+        ...draft,
+      });
+      setPlanState((state) => ({
+        ...state,
+        plans: state.plans.map((item) =>
+          // The RPC returns the calendar columns only; keep paused subjects (047) alongside.
+          item.id === plan.id
+            ? { ...item, plan_schedules: { ...(schedule ?? {}), ...saved, calendar_set: true } }
+            : item,
+        ),
+      }));
+      setCalendarOperation(
+        tookOff
+          ? {
+              status: "success",
+              message: "Today is off. Everything from today on moved by one school day.",
+              canRetry: false,
+              onRetry: () =>
+                saveCalendar(
+                  { ...toDraft(saved), daysOff: withoutDayOff(saved, tookOff) },
+                  { undone: true },
+                ),
+              retryLabel: "Undo",
+            }
+          : undone
+            ? {
+                status: "success",
+                message: "Undone. Today is a school day again.",
+                canRetry: false,
+              }
+          : {
+              status: "success",
+              message: saved?.start_date
+                ? "Calendar saved. Each plan day now has a date."
+                : "Saved. You're going at your own pace.",
+              canRetry: false,
+            },
+      );
+      return saved;
+    } catch (error) {
+      setCalendarOperation({
+        ...operationFailure(error, "Your calendar"),
+        onRetry: () => saveCalendar(draft, { tookOff, undone }),
+      });
+      return null;
+    }
+  };
+  const nextLesson = next.kind === "done" || next.kind === "paused" ? null : next;
   const jumpToNextLesson = () => {
     if (!nextLesson) return;
     setWeekIndex(nextLesson.weekIndex);
@@ -539,6 +1169,12 @@ function ParentWorkspace({
             ))}
           </select>
         </label>
+        <FamilyDay
+          repository={repository}
+          householdId={household.household_id}
+          learners={learners}
+          today={localDateString()}
+        />
       </section>
       <AuthenticatedIntake
         householdId={household.household_id}
@@ -568,9 +1204,19 @@ function ParentWorkspace({
               </button>
             </div>
           ) : !plan ? (
-            <p className="parent-empty">
-              Your educator is working on your personalized plan. You'll see it here once it's ready to start.
-            </p>
+            <div className="plan-progress">
+              <h3>What happens next</h3>
+              <ol>
+                {planProgress(selectedCase?.status, selectedLearner.preferred_name).steps.map((step) => (
+                  <li key={step.label} className={step.state} aria-current={step.state === "current" ? "step" : undefined}>
+                    <span aria-hidden="true">{step.state === "done" ? "✓" : ""}</span>
+                    {step.label}
+                    {step.state === "done" ? <small> (done)</small> : step.state === "current" ? <small> (now)</small> : null}
+                  </li>
+                ))}
+              </ol>
+              <p>{planProgress(selectedCase?.status, selectedLearner.preferred_name).note}</p>
+            </div>
           ) : !weeks.length ? (
             <p className="parent-empty">
               This plan is being prepared. If this persists, contact BriteLink support (remember: no child details by email).
@@ -580,12 +1226,34 @@ function ParentWorkspace({
               {nextLesson ? (
                 <section className="next-up compact" aria-labelledby="parent-next-heading">
                   <div>
-                    <span className="eyebrow">Do this next</span>
+                    <span className="eyebrow">
+                      {nextLesson.kind === "later"
+                        ? "Nothing is due today"
+                        : "Do this next"}
+                    </span>
                     <h3 id="parent-next-heading">{nextLesson.lesson.title}</h3>
                     <p>
+                      {nextLesson.kind === "later"
+                        ? `Your plan picks up on ${nextLesson.resumesOn} · `
+                        : ""}
                       Week {nextLesson.week.week_number} · Day {nextLesson.day.day_number} ·{" "}
                       {(nextLesson.status ?? "not_started").replaceAll("_", " ")}
                     </p>
+                    {nextLesson.fit === "unknown" ? (
+                      <p className="fit-note">
+                        Your educator hasn’t tagged this lesson yet, so check it
+                        fits before you start.
+                      </p>
+                    ) : nextLesson.fit === "none" ? (
+                      <p className="fit-note">
+                        Nothing due today fits those choices. This is the
+                        shortest lesson.
+                      </p>
+                    ) : lessonFitSummary(nextLesson.lesson) ? (
+                      <p className="fit-note">
+                        {lessonFitSummary(nextLesson.lesson)}
+                      </p>
+                    ) : null}
                   </div>
                   <button className="primary" type="button" onClick={jumpToNextLesson}>
                     Open next lesson
@@ -593,9 +1261,113 @@ function ParentWorkspace({
                 </section>
               ) : (
                 <p className="parent-empty" role="status">
-                  All lessons complete! You can still review any day or adjust lesson statuses.
+                  {next.kind === "paused"
+                    ? `Everything left is in a paused subject (${next.subjects.join(", ")}). Resume it below when you’re ready.`
+                    : "All lessons complete! You can still review any day or adjust lesson statuses."}
                 </p>
               )}
+              {nextLesson?.kind === "due" ? (
+                <details
+                  className="fit-filters"
+                  open={fitFiltersOpen}
+                  onToggle={(event) => setFitFiltersOpen(event.currentTarget.open)}
+                >
+                  <summary>What fits today?</summary>
+                  <div role="group" aria-label="What fits today">
+                    <button
+                      type="button"
+                      className="ghost"
+                      aria-pressed={fitFilters.maxMinutes === 15 && fitFilters.alone}
+                      onClick={() =>
+                        setFitFilters((value) =>
+                          value.maxMinutes === 15 && value.alone
+                            ? { maxMinutes: null, alone: false, offline: false }
+                            : { ...value, maxMinutes: 15, alone: true },
+                        )
+                      }
+                    >
+                      Low-energy day
+                    </button>
+                    <label>
+                      Time available
+                      <select
+                        value={fitFilters.maxMinutes ?? ""}
+                        onChange={(event) =>
+                          setFitFilters((value) => ({
+                            ...value,
+                            maxMinutes: event.target.value ? Number(event.target.value) : null,
+                          }))
+                        }
+                      >
+                        <option value="">Any</option>
+                        <option value="15">15 minutes</option>
+                        <option value="30">30 minutes</option>
+                        <option value="60">An hour</option>
+                      </select>
+                    </label>
+                    <label className="fit-toggle">
+                      <input
+                        type="checkbox"
+                        checked={fitFilters.alone}
+                        onChange={(event) =>
+                          setFitFilters((value) => ({ ...value, alone: event.target.checked }))
+                        }
+                      />
+                      My child works alone today
+                    </label>
+                    <label className="fit-toggle">
+                      <input
+                        type="checkbox"
+                        checked={fitFilters.offline}
+                        onChange={(event) =>
+                          setFitFilters((value) => ({ ...value, offline: event.target.checked }))
+                        }
+                      />
+                      No screens today
+                    </label>
+                  </div>
+                </details>
+              ) : null}
+              <PlanCalendar
+                schedule={schedule}
+                today={today}
+                operation={calendarOperation}
+                onSave={saveCalendar}
+                onExport={exportCalendar}
+              />
+              <details
+                className="pause-subjects"
+                open={pauseOpen}
+                onToggle={(event) => setPauseOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  {paused.length ? `Paused: ${paused.join(", ")}` : "Pause a subject"}
+                </summary>
+                <div role="group" aria-label="Pause a subject">
+                  <p>
+                    Taking a break from a subject? Its lessons stay in the plan and
+                    wait here until you resume it.
+                  </p>
+                  {planSubjects(weeks).map((subject) => (
+                    <label key={subject} className="fit-toggle">
+                      <input
+                        type="checkbox"
+                        checked={paused.includes(subject)}
+                        disabled={pauseOperation.status === "loading"}
+                        onChange={(event) =>
+                          savePaused(
+                            event.target.checked
+                              ? [...paused, subject]
+                              : paused.filter((item) => item !== subject),
+                          )
+                        }
+                      />
+                      Pause {subject}
+                    </label>
+                  ))}
+                  <OperationNotice operation={pauseOperation} />
+                </div>
+              </details>
             </>
           )}
           {plan && weeks.length && planState.status === "success" ? (
@@ -635,10 +1407,105 @@ function ParentWorkspace({
                     }}
                   >
                     Day {item.day_number}
-                    <small>{item.planned_date ?? "Flexible"}</small>
+                    <small>
+                      {dayMovedTo(item, activities)
+                        ? `Moved to ${dayMovedTo(item, activities)}`
+                        : (dayDates[item.id] ?? "Flexible")}
+                    </small>
                   </button>
                 ))}
               </div>
+              <div className="print-actions">
+                <button type="button" className="ghost" onClick={() => setStudentView(true)}>
+                  Open student view
+                </button>
+                <button type="button" className="ghost" onClick={() => setPrintScope("week")}>
+                  Print this week
+                </button>
+                <button type="button" className="ghost" onClick={() => setPrintScope("day")}>
+                  Print this day
+                </button>
+              </div>
+              {studentView ? (
+                <StudentView
+                  learnerName={selectedLearner.preferred_name}
+                  lessons={dueLessonsForToday(weeks, activities, today, dayDates, 5, paused)}
+                  onDone={markLessonDone}
+                  onExit={() => setStudentView(false)}
+                />
+              ) : null}
+              {printScope ? (
+                <PrintSheet
+                  learnerName={selectedLearner.preferred_name}
+                  scope={printScope}
+                  printedOn={today}
+                  days={printableDays(
+                    weeks,
+                    { scope: printScope, weekIndex, dayIndex },
+                    dayDates,
+                    activities,
+                  )}
+                />
+              ) : null}
+              {unfinishedLessons(day, activities).length ? (
+                <details
+                  className="live-day-move"
+                  open={dayMoveOperation.status !== "idle" || undefined}
+                >
+                  <summary>Need to move this day?</summary>
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      moveDay();
+                    }}
+                  >
+                    <fieldset className="live-schedule">
+                      <legend>
+                        Move this day <span>(unfinished lessons only)</span>
+                      </legend>
+                      <label>
+                        Why move this day?
+                        <select
+                          required
+                          value={dayMove.reason}
+                          onChange={(event) =>
+                            setDayMove((value) => ({ ...value, reason: event.target.value }))
+                          }
+                        >
+                          <option value="">Select one</option>
+                          <option value="illness">Illness</option>
+                          <option value="travel">Travel</option>
+                          <option value="caregiver_schedule">Caregiver schedule</option>
+                          <option value="catch_up">Catch-up day</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </label>
+                      <label>
+                        Move to
+                        <input
+                          type="date"
+                          required
+                          value={dayMove.scheduledFor}
+                          onChange={(event) =>
+                            setDayMove((value) => ({ ...value, scheduledFor: event.target.value }))
+                          }
+                        />
+                      </label>
+                      <small>
+                        Life happens. Completed and skipped lessons stay where they
+                        are; everything else keeps its progress and notes.
+                      </small>
+                      <button
+                        className="ghost"
+                        disabled={dayMoveOperation.status === "loading"}
+                      >
+                        Move unfinished lessons
+                      </button>
+                    </fieldset>
+                    <OperationNotice operation={dayMoveOperation} />
+                  </form>
+                </details>
+              ) : null}
               {!day?.lessons?.length ? (
                 <p>No lessons are scheduled for this day.</p>
               ) : (
@@ -660,6 +1527,9 @@ function ParentWorkspace({
                           {(
                             activities[item.id]?.status ?? "not_started"
                           ).replaceAll("_", " ")}
+                          {activities[item.id]?.scheduled_for
+                            ? ` · moved to ${activities[item.id].scheduled_for}`
+                            : ""}
                         </small>
                       </button>
                     ))}
@@ -720,6 +1590,12 @@ function ParentWorkspace({
                             ? "Not specified"
                             : `${selectedLesson.adult_help_minutes} minutes`}
                         </p>
+                        {lessonFitSummary(selectedLesson) ? (
+                          <p>
+                            <strong>At a glance:</strong>{" "}
+                            {lessonFitSummary(selectedLesson)}
+                          </p>
+                        ) : null}
                         <h4>Resources</h4>
                         {selectedLesson.resources?.length ? (
                           <ul className="lesson-resources">
@@ -740,7 +1616,7 @@ function ParentWorkspace({
                                   <a
                                     href={resource.url}
                                     target="_blank"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
                                   >
                                     Open reviewed resource
                                   </a>
@@ -837,10 +1713,40 @@ function ParentWorkspace({
                       >
                         Save lesson activity
                       </button>
-                      <OperationNotice
-                        operation={activityOperation}
-                        retry={saveActivity}
-                      />
+                      {completion?.lessonId === selectedLesson.id &&
+                      activityOperation.status === "success" ? (
+                        <div className="lesson-complete" role="status">
+                          <p>
+                            <strong>“{completion.title}” is done.</strong> It’s
+                            saved to {selectedLearner.preferred_name}’s learning
+                            record.
+                          </p>
+                          <div>
+                            {nextLesson?.kind === "due" &&
+                            nextLesson.lesson.id !== completion.lessonId ? (
+                              <button
+                                type="button"
+                                className="primary"
+                                onClick={jumpToNextLesson}
+                              >
+                                Open next lesson
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={undoCompletion}
+                            >
+                              Undo
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <OperationNotice
+                          operation={activityOperation}
+                          retry={saveActivity}
+                        />
+                      )}
                     </form>
                   ) : null}
                 </div>
@@ -848,6 +1754,40 @@ function ParentWorkspace({
             </>
           ) : null}
         </section>
+        {selectedLearner && plan ? (
+          <WeeklyStory
+            learnerName={selectedLearner.preferred_name}
+            offsetWeeks={storyOffset}
+            onOffset={setStoryOffset}
+            story={weeklyStory({
+              weeks,
+              activities: planState.activities,
+              captures,
+              schedule,
+              today,
+              offsetWeeks: storyOffset,
+            })}
+            report={
+              <LearningReport
+                learnerName={selectedLearner.preferred_name}
+                weeks={weeks}
+                activities={planState.activities}
+                captures={captures}
+                today={today}
+              />
+            }
+          />
+        ) : null}
+        {selectedLearner ? (
+          <LearningCaptures
+            key={selectedLearner.id}
+            repository={repository}
+            householdId={household.household_id}
+            learner={selectedLearner}
+            today={today}
+            onChange={setCaptures}
+          />
+        ) : null}
         <section className="live-messages" aria-labelledby="messages-heading">
           <header>
             <span className="eyebrow">Secure case messages</span>
@@ -977,6 +1917,28 @@ function ParentWorkspace({
         repository={repository}
         refreshKey={serviceRefresh}
       />
+      <section className="help-panel" aria-labelledby="help-heading">
+        <h2 id="help-heading">Need help?</h2>
+        <ul>
+          <li>
+            <strong>Questions about the plan or a lesson:</strong>{" "}
+            <a href="#messages-heading">message your educator</a>. It stays
+            private to your household.
+          </li>
+          <li>
+            <strong>Something looks wrong, or you’re worried about a plan:</strong>{" "}
+            say so in a message and we’ll look at it. You can also{" "}
+            <a href="#service-heading">request an included revision</a>.
+          </li>
+          <li>
+            <strong>Your data, consent, or deletion:</strong> use{" "}
+            <a href="#service-heading">Your data</a> above.
+          </li>
+        </ul>
+        <p>
+          Please don’t email child, health, school, diagnosis, or IEP details.
+        </p>
+      </section>
     </>
   );
 }
@@ -1085,19 +2047,11 @@ export function Workspace({
     );
   if (state.status === "empty")
     return (
-      <main className="auth-page">
-        <section className="auth-card">
-        <h1>No household access is assigned</h1>
-        <p>
-          Your account is signed in, but it has no invited BriteLink household
-          membership. Sign-in is invitation-only. Contact BriteLink support
-          from the invited email without sending child information.
-        </p>
-          <button className="ghost" onClick={() => repository.signOut()}>
-            Sign out
-          </button>
-        </section>
-      </main>
+      <BetaHouseholdSetup
+        repository={repository}
+        metadata={session?.user?.user_metadata}
+        onReady={load}
+      />
     );
   const isStaff = ["educator", "admin"].includes(state.household.role);
   return (

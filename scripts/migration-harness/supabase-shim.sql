@@ -8,7 +8,7 @@
 -- The migrations depend on only three pieces of Supabase that vanilla Postgres lacks
 -- (verified by grepping every reference rather than guessing):
 --   * the roles anon / authenticated / service_role, which grants target
---   * auth.users(id) -- the only column of it anything references
+--   * auth.users(id), plus email_confirmed_at, which 041 reads to require a confirmed account
 --   * auth.uid() -- used 80 times, and the whole tenant-isolation model rests on it
 -- storage.objects and storage.foldername() are needed only by supabase/storage-policies.sql.
 
@@ -24,6 +24,8 @@ end $$;
 create table if not exists auth.users(
   id uuid primary key default gen_random_uuid(),
   email text,
+  -- Set by GoTrue once the magic link is followed; provision_beta_household (041) requires it.
+  email_confirmed_at timestamptz,
   created_at timestamptz not null default now()
 );
 
