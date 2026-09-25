@@ -52,7 +52,7 @@ export class SupabaseBriteLinkRepository {
   async withdrawConsent(householdId,consentId){requireIdentifier(householdId,"Household ID");requireIdentifier(consentId,"Consent ID");return unwrap(await this.client.rpc("withdraw_guardian_consent",{target_household:householdId,target_consent:consentId}),"Withdraw consent")}
   async loadPublishedPlans(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
-    return unwrap(await this.client.from("plans").select("id, version, status, published_at, plan_schedules(start_date, school_days, days_off, updated_at), plan_weeks(id, week_number, theme, plan_days(id, day_number, planned_date, lessons(*, resources(*))))").eq("household_id", householdId).eq("learner_id", learnerId).eq("status", "published").order("version", { ascending: false }), "Load published plans");
+    return unwrap(await this.client.from("plans").select("id, version, status, published_at, plan_schedules(start_date, school_days, days_off, calendar_set, paused_subjects, updated_at), plan_weeks(id, week_number, theme, plan_days(id, day_number, planned_date, lessons(*, resources(*))))").eq("household_id", householdId).eq("learner_id", learnerId).eq("status", "published").order("version", { ascending: false }), "Load published plans");
   }
   async listLessonActivities(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
@@ -71,6 +71,12 @@ export class SupabaseBriteLinkRepository {
   async removeLearningCapture({ householdId, captureId }) {
     requireIdentifier(householdId, "Household ID"); requireIdentifier(captureId, "Capture ID");
     return unwrap(await this.client.rpc("remove_learning_capture", { target_household: householdId, target_capture: captureId }), "Remove learning note");
+  }
+  // Paused subjects for a published plan (migration 047). An empty list resumes everything.
+  async setPausedSubjects({ householdId, planId, subjects }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(planId, "Plan ID");
+    const clean = [...new Set((subjects ?? []).map((item) => String(item).trim()).filter(Boolean))];
+    return unwrap(await this.client.rpc("set_paused_subjects", { target_household: householdId, target_plan: planId, subjects: clean }), "Pause a subject");
   }
   // The family calendar for a published plan (migration 043). startDate null = own pace.
   async setPlanSchedule({ householdId, planId, startDate = null, schoolDays, daysOff = [] }) {

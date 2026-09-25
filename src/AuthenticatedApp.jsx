@@ -13,6 +13,7 @@ import {
   orderedPlanWeeks,
   planDayDates,
   planDayMove,
+  planSubjects,
   printableDays,
   unfinishedLessons,
   weeklyStory,
@@ -190,7 +191,8 @@ function PlanCalendar({ schedule, today, operation, onSave }) {
   };
   const dayOff = withDayOff(schedule, today);
   const labels = Object.fromEntries(WEEKDAY_LABELS);
-  if (schedule && !editing)
+  // A row created only by pausing a subject (047) is not a calendar choice yet.
+  if (schedule && schedule.calendar_set !== false && !editing)
     return (
       <section className="plan-calendar" aria-labelledby="plan-calendar-heading">
         <h3 id="plan-calendar-heading">Your calendar</h3>
@@ -534,6 +536,7 @@ function ParentWorkspace({
     offline: false,
   });
   const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
+  const [pauseOpen, setPauseOpen] = useState(false);
   // Learning outside the plan (#44), lifted here so the weekly summary can include it.
   const [captures, setCaptures] = useState([]);
   const [storyOffset, setStoryOffset] = useState(0);
@@ -986,7 +989,8 @@ function ParentWorkspace({
 
   const today = localDateString();
   const dayDates = planDayDates(weeks, schedule);
-  const next = nextLessonForToday(weeks, activities, today, dayDates, fitFilters);
+  const paused = schedule?.paused_subjects ?? [];
+  const next = nextLessonForToday(weeks, activities, today, dayDates, { ...fitFilters, paused });
   // Student view (#49): mark one lesson done, keeping its note and schedule exactly as they were.
   const markLessonDone = async (lesson) => {
     const activity = activities[lesson.id];
@@ -1008,6 +1012,34 @@ function ParentWorkspace({
       ],
     }));
   };
+  const [pauseOperation, setPauseOperation] = useState({ status: "idle", message: "", canRetry: false });
+  const savePaused = async (subjects) => {
+    setPauseOperation({ status: "loading", message: "Saving…", canRetry: false });
+    try {
+      const saved = await repository.setPausedSubjects({
+        householdId: household.household_id,
+        planId: plan.id,
+        subjects,
+      });
+      setPlanState((state) => ({
+        ...state,
+        plans: state.plans.map((item) =>
+          item.id === plan.id
+            ? { ...item, plan_schedules: { ...(schedule ?? { start_date: null, school_days: [1, 2, 3, 4, 5], days_off: [], calendar_set: false }), paused_subjects: saved ?? subjects } }
+            : item,
+        ),
+      }));
+      setPauseOperation({
+        status: "success",
+        message: (saved ?? subjects).length
+          ? `Paused: ${(saved ?? subjects).join(", ")}. Those lessons wait until you resume.`
+          : "All subjects are active again.",
+        canRetry: false,
+      });
+    } catch (error) {
+      setPauseOperation({ ...operationFailure(error, "Pausing a subject"), onRetry: () => savePaused(subjects) });
+    }
+  };
   const saveCalendar = async (draft, { tookOff = null, undone = false } = {}) => {
     setCalendarOperation({ status: "loading", message: "Saving your calendar…", canRetry: false });
     try {
@@ -1019,7 +1051,10 @@ function ParentWorkspace({
       setPlanState((state) => ({
         ...state,
         plans: state.plans.map((item) =>
-          item.id === plan.id ? { ...item, plan_schedules: saved } : item,
+          // The RPC returns the calendar columns only; keep paused subjects (047) alongside.
+          item.id === plan.id
+            ? { ...item, plan_schedules: { ...(schedule ?? {}), ...saved, calendar_set: true } }
+            : item,
         ),
       }));
       setCalendarOperation(
@@ -1058,7 +1093,7 @@ function ParentWorkspace({
       return null;
     }
   };
-  const nextLesson = next.kind === "done" ? null : next;
+  const nextLesson = next.kind === "done" || next.kind === "paused" ? null : next;
   const jumpToNextLesson = () => {
     if (!nextLesson) return;
     setWeekIndex(nextLesson.weekIndex);
@@ -1168,7 +1203,9 @@ function ParentWorkspace({
                 </section>
               ) : (
                 <p className="parent-empty" role="status">
-                  All lessons complete! You can still review any day or adjust lesson statuses.
+                  {next.kind === "paused"
+                    ? `Everything left is in a paused subject (${next.subjects.join(", ")}). Resume it below when you’re ready.`
+                    : "All lessons complete! You can still review any day or adjust lesson statuses."}
                 </p>
               )}
               {nextLesson?.kind === "due" ? (
@@ -1179,6 +1216,20 @@ function ParentWorkspace({
                 >
                   <summary>What fits today?</summary>
                   <div role="group" aria-label="What fits today">
+                    <button
+                      type="button"
+                      className="ghost"
+                      aria-pressed={fitFilters.maxMinutes === 15 && fitFilters.alone}
+                      onClick={() =>
+                        setFitFilters((value) =>
+                          value.maxMinutes === 15 && value.alone
+                            ? { maxMinutes: null, alone: false, offline: false }
+                            : { ...value, maxMinutes: 15, alone: true },
+                        )
+                      }
+                    >
+                      Low-energy day
+                    </button>
                     <label>
                       Time available
                       <select
@@ -1225,6 +1276,39 @@ function ParentWorkspace({
                 operation={calendarOperation}
                 onSave={saveCalendar}
               />
+              <details
+                className="pause-subjects"
+                open={pauseOpen}
+                onToggle={(event) => setPauseOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  {paused.length ? `Paused: ${paused.join(", ")}` : "Pause a subject"}
+                </summary>
+                <div role="group" aria-label="Pause a subject">
+                  <p>
+                    Taking a break from a subject? Its lessons stay in the plan and
+                    wait here until you resume it.
+                  </p>
+                  {planSubjects(weeks).map((subject) => (
+                    <label key={subject} className="fit-toggle">
+                      <input
+                        type="checkbox"
+                        checked={paused.includes(subject)}
+                        disabled={pauseOperation.status === "loading"}
+                        onChange={(event) =>
+                          savePaused(
+                            event.target.checked
+                              ? [...paused, subject]
+                              : paused.filter((item) => item !== subject),
+                          )
+                        }
+                      />
+                      Pause {subject}
+                    </label>
+                  ))}
+                  <OperationNotice operation={pauseOperation} />
+                </div>
+              </details>
             </>
           )}
           {plan && weeks.length && planState.status === "success" ? (
@@ -1286,7 +1370,7 @@ function ParentWorkspace({
               {studentView ? (
                 <StudentView
                   learnerName={selectedLearner.preferred_name}
-                  lessons={dueLessonsForToday(weeks, activities, today, dayDates)}
+                  lessons={dueLessonsForToday(weeks, activities, today, dayDates, 5, paused)}
                   onDone={markLessonDone}
                   onExit={() => setStudentView(false)}
                 />

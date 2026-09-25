@@ -25,10 +25,27 @@ try{
   await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
   await nextUp0.getByText("About 15 min · child can do it alone · no screen needed").waitFor();
   await page.getByRole("checkbox",{name:"My child works alone today"}).uncheck();
+  // Low-energy day preset: short and independent, one tap; a second tap clears it.
+  await page.getByRole("button",{name:"Low-energy day"}).click();
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await page.getByRole("button",{name:"Low-energy day"}).click();
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
   await page.getByLabel("Time available").selectOption("15");
   await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
   await page.getByLabel("Time available").selectOption("");
   await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  // Pause a subject (#40): its lessons are passed over, the panel stays open while toggling, resume restores.
+  await page.locator("details.pause-subjects").getByText("Pause a subject").click();
+  await page.getByRole("checkbox",{name:"Pause Language"}).check();
+  await page.getByText("Paused: Language. Those lessons wait until you resume.").waitFor();
+  await nextUp0.getByRole("heading",{name:"Count a collection"}).waitFor();
+  await page.getByRole("checkbox",{name:"Pause Math"}).check();
+  await page.locator("section.live-plan").getByText("Everything left is in a paused subject",{exact:false}).waitFor();
+  await page.getByRole("checkbox",{name:"Pause Math"}).uncheck();
+  await page.getByRole("checkbox",{name:"Pause Language"}).uncheck();
+  await page.getByText("All subjects are active again.").waitFor();
+  await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
+  if(JSON.stringify(await page.evaluate(()=>globalThis.qaState.paused))!=="[]")throw new Error("resuming did not clear the paused subjects");
   // Student view (#49): a focus mode over an inert app; a failed save is explained; exit needs a hold.
   await page.getByRole("button",{name:"Open student view"}).click();
   const student=page.getByRole("dialog",{name:"Maya’s list for today"});

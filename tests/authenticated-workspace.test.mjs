@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, planSubjects, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -159,4 +159,13 @@ test("the student list is today's unfinished work, in order, and short",()=>{
   assert.deepEqual(dueLessonsForToday(weeks,{b:{scheduled_for:"2026-10-09"}},"2026-10-06",dates).map(l=>l.id),["a","c"],"moved-ahead work waits");
   assert.equal(dueLessonsForToday(weeks,{},"2026-10-07",dates).length,5,"capped at five");
   assert.deepEqual(dueLessonsForToday(weeks,{},"2026-10-06",{},2).map(l=>l.id),["a","b"],"own pace: the next few in order");
+});
+
+test("a paused subject is passed over by the next lesson and the student list, and resumes cleanly",()=>{
+  const weeks=[{week_number:1,plan_days:[{id:"d",day_number:1,lessons:[{id:"fr",subject:"French"},{id:"ma",subject:"Math"},{id:"fr2",subject:"French"}]}]}];
+  assert.deepEqual(planSubjects(weeks),["French","Math"]);
+  assert.equal(nextLessonForToday(weeks,{},"2026-10-05",{},{paused:["French"]}).lesson.id,"ma");
+  assert.equal(nextLessonForToday(weeks,{},"2026-10-05",{},{}).lesson.id,"fr");
+  assert.deepEqual(dueLessonsForToday(weeks,{},"2026-10-05",{},5,["French"]).map(l=>l.id),["ma"]);
+  assert.deepEqual(nextLessonForToday(weeks,{ma:{status:"completed"}},"2026-10-05",{},{paused:["French"]}),{kind:"paused",subjects:["French"]},"paused work is never reported as done");
 });

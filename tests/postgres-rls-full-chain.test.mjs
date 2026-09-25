@@ -529,3 +529,27 @@ test("a guardian records and removes learning outside the plan; bad input and st
     assert.ok(exported.manifest.included.includes("planSchedules") && Array.isArray(exported.planSchedules), "043's addition is kept");
   } finally { await db.close(); }
 });
+
+test("a guardian pauses and resumes a plan subject; unknown subjects and staff are refused; the export carries it", async () => {
+  const { db } = await database();
+  try {
+    const planA = "5eed0000-0000-4000-8000-000000000a30";
+    const subject = (await db.query(`select l.subject from public.lessons l join public.plan_days d on d.id=l.day_id join public.plan_weeks w on w.id=d.week_id where w.plan_id=$1 limit 1`, [planA])).rows[0].subject;
+    const pause = (who, subjects) => as(db, "authenticated", who, () => db.query(`select public.set_paused_subjects($1, $2, $3::text[]) as paused`, [houseA, planA, subjects]));
+    assert.deepEqual((await pause(users.guardianA, [subject, subject, " "])).rows[0].paused, [subject]);
+    await assert.rejects(() => pause(users.guardianA, ["Underwater basket weaving"]), /subject is not in this plan/);
+    await assert.rejects(() => pause(users.educatorA, [subject]), /guardian access required/);
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    assert.deepEqual(exported.planSchedules.find((row) => row.plan_id === planA)?.paused_subjects, [subject]);
+    assert.ok(Array.isArray(exported.learningCaptures), "046's addition is kept");
+    assert.deepEqual((await pause(users.guardianA, [])).rows[0].paused, [], "resume by clearing");
+
+    // A calendar row created only by pausing is not a calendar choice; choosing one keeps the pause.
+    await db.query(`delete from public.plan_schedules where plan_id=$1`, [planA]);
+    await pause(users.guardianA, [subject]);
+    assert.deepEqual((await db.query(`select calendar_set, start_date, paused_subjects from public.plan_schedules where plan_id=$1`, [planA])).rows[0], { calendar_set: false, start_date: null, paused_subjects: [subject] });
+    await as(db, "authenticated", users.guardianA, () => db.query(`select * from public.set_plan_schedule($1, $2, current_date, array[1,2,3]::smallint[], array[]::date[])`, [houseA, planA]));
+    const chosen = (await db.query(`select calendar_set, paused_subjects from public.plan_schedules where plan_id=$1`, [planA])).rows[0];
+    assert.deepEqual(chosen, { calendar_set: true, paused_subjects: [subject] });
+  } finally { await db.close(); }
+});

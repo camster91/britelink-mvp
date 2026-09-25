@@ -70,6 +70,7 @@ export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today,
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today ?? "")) throw new TypeError("today must be a YYYY-MM-DD date");
   const filtering = hasFitFilters(filters);
   const due = [];
+  const pausedLeft = new Set();
   let later = null;
   for (const [weekIndex, week] of weeks.entries()) {
     for (const [dayIndex, day] of (week.plan_days ?? []).entries()) {
@@ -77,6 +78,7 @@ export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today,
         const activity = activitiesByLessonId[lesson.id];
         const status = activity?.status ?? "not_started";
         if (status === "completed" || status === "skipped") continue;
+        if (filters.paused?.includes(lesson.subject)) { pausedLeft.add(lesson.subject); continue; }
         const entry = { week, day, lesson, status, weekIndex, dayIndex };
         // A moved lesson's own date wins; otherwise the plan day's calendar date, if it has one.
         const movedTo = activity?.scheduled_for ?? dayDates[day.id] ?? null;
@@ -99,7 +101,9 @@ export function nextLessonForToday(weeks = [], activitiesByLessonId = {}, today,
     const shortest = [...due].sort((a, b) => (a.lesson.estimated_minutes ?? Infinity) - (b.lesson.estimated_minutes ?? Infinity))[0];
     return { kind: "due", fit: "none", ...shortest };
   }
-  return later ?? { kind: "done" };
+  if (later) return later;
+  // Work remains but every bit of it is in a paused subject: say so, never "done".
+  return pausedLeft.size ? { kind: "paused", subjects: [...pausedLeft] } : { kind: "done" };
 }
 
 // "What fits today" (044). Filters: maxMinutes (number or null), alone (child works independently),
@@ -232,13 +236,14 @@ export function weeklyStory({ weeks = [], activities = [], captures = [], schedu
 
 // Today's list for the student view (#49): unfinished lessons due today or earlier (or undated, for
 // families at their own pace), in plan order, capped so a child sees a short, finishable list.
-export function dueLessonsForToday(weeks = [], activitiesByLessonId = {}, today, dayDates = {}, limit = 5) {
+export function dueLessonsForToday(weeks = [], activitiesByLessonId = {}, today, dayDates = {}, limit = 5, paused = []) {
   const due = [];
   for (const week of weeks) {
     for (const day of week.plan_days ?? []) {
       for (const lesson of day.lessons ?? []) {
         const activity = activitiesByLessonId[lesson.id];
         if (["completed", "skipped"].includes(activity?.status)) continue;
+        if (paused.includes(lesson.subject)) continue;
         const date = activity?.scheduled_for ?? dayDates[day.id] ?? null;
         if (date && date > today) continue;
         due.push(lesson);
@@ -247,4 +252,9 @@ export function dueLessonsForToday(weeks = [], activitiesByLessonId = {}, today,
     }
   }
   return due;
+}
+
+// The subjects a plan actually teaches, for "Pause a subject" (#40), in first-appearance order.
+export function planSubjects(weeks = []) {
+  return [...new Set(weeks.flatMap((week) => (week.plan_days ?? []).flatMap((day) => (day.lessons ?? []).map((lesson) => lesson.subject))).filter(Boolean))];
 }
