@@ -163,6 +163,7 @@ jobs:
             qa/accessibility/report.json
             qa/accessibility/*.png
             qa/operations/*.json
+            qa/print/*.pdf
             qa/operations/*.png
           if-no-files-found: ignore
           retention-days: 7

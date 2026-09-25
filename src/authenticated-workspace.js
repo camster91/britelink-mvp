@@ -180,3 +180,27 @@ export function withoutDayOff(schedule, date) {
 }
 
 export const WEEKDAY_LABELS = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [7, "Sun"]];
+
+// What a printed sheet shows (#48): the selected week, or one day, with calendar dates and a plain
+// checklist. Completed and skipped lessons are marked, not dropped, so the paper matches the record.
+export function printableDays(weeks = [], { scope = "week", weekIndex = 0, dayIndex = 0 } = {}, dayDates = {}, activitiesByLessonId = {}) {
+  const week = weeks[weekIndex];
+  if (!week) return [];
+  const days = scope === "day" ? [week.plan_days?.[dayIndex]].filter(Boolean) : week.plan_days ?? [];
+  return days.map((day) => ({
+    id: day.id,
+    heading: `Week ${week.week_number} · Day ${day.day_number}`,
+    date: dayDates[day.id] ?? null,
+    lessons: (day.lessons ?? []).map((lesson) => ({
+      id: lesson.id,
+      subject: lesson.subject,
+      title: lesson.title,
+      objective: lesson.objective,
+      instructions: lesson.instructions ?? [],
+      materials: lesson.materials ?? [],
+      fit: lessonFitSummary(lesson),
+      done: ["completed", "skipped"].includes(activitiesByLessonId[lesson.id]?.status) ? activitiesByLessonId[lesson.id].status : null,
+      movedTo: activitiesByLessonId[lesson.id]?.scheduled_for ?? null,
+    })),
+  }));
+}

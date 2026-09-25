@@ -1,7 +1,7 @@
 import { AxeBuilder } from "@axe-core/playwright";
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
@@ -14,6 +14,7 @@ try{
   const browser=await chromium.launch(chromeLaunchOptions());
   const context=await browser.newContext({viewport:{width:1280,height:1000},reducedMotion:"reduce"});
   const page=await context.newPage();
+  await page.addInitScript(()=>{globalThis.qaPrintCalls=0;window.print=()=>{globalThis.qaPrintCalls+=1}});
   await page.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});
   await page.getByRole("heading",{name:"Maya’s plan"}).waitFor();
   // What fits today (044): the tagged lesson wins when it fits; an untagged one is never assumed to fit.
@@ -98,6 +99,25 @@ try{
   await page.getByRole("button",{name:"Mark as read"}).click();
   await page.getByText("Message marked as read.").waitFor();
   await page.getByRole("checkbox",{name:/I understand this pauses active service/}).check();await page.getByRole("button",{name:"Withdraw my active consent"}).click();await page.getByText("Consent withdrawn",{exact:false}).waitFor();
+  // Printable week and day (#48): a paper sheet in <body>, the only thing visible in print media.
+  await page.getByRole("button",{name:"Print this week"}).click();
+  const sheet=page.locator("body > section.print-sheet");
+  await sheet.getByRole("heading",{name:"Maya’s week",includeHidden:true}).waitFor({state:"attached"});
+  if(await page.evaluate(()=>globalThis.qaPrintCalls)!==1)throw new Error("Print this week did not open the print dialog once");
+  for(const title of ["Build a sound map","Count a collection"])if(!(await sheet.textContent()).includes(title))throw new Error(`printed week is missing ${title}`);
+  await page.emulateMedia({media:"print"});
+  if(await page.locator("#root").isVisible()||!await sheet.isVisible())throw new Error("print media must show only the sheet");
+  await mkdir(new URL("../qa/print/",import.meta.url),{recursive:true});
+  // page.pdf() fires afterprint itself, which (correctly) removes the sheet, so re-open it per format.
+  for(const format of ["Letter","A4"]){
+    if(!await sheet.count()){await page.emulateMedia({media:"screen"});await page.getByRole("button",{name:"Print this week"}).click();await sheet.waitFor({state:"attached"});await page.emulateMedia({media:"print"})}
+    await page.pdf({path:fileURLToPath(new URL(`../qa/print/week-${format.toLowerCase()}.pdf`,import.meta.url)),format,printBackground:false});
+  }
+  await page.emulateMedia({media:"screen"});
+  await sheet.waitFor({state:"detached"});
+  await page.getByRole("button",{name:"Print this day"}).click();
+  await page.locator("body > section.print-sheet").getByRole("heading",{name:"Maya’s day",includeHidden:true}).waitFor({state:"attached"});
+  await page.evaluate(()=>window.dispatchEvent(new Event("afterprint")));
   // Family calendar (043): validation names the problem and focuses it; save; take today off and undo; own pace.
   const calendar=page.locator("section.plan-calendar");
   await calendar.getByRole("heading",{name:"When do you school?"}).waitFor();

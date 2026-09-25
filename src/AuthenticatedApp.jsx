@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   activityMap,
   caseForLearner,
@@ -11,6 +12,7 @@ import {
   orderedPlanWeeks,
   planDayDates,
   planDayMove,
+  printableDays,
   unfinishedLessons,
   WEEKDAY_LABELS,
   withDayOff,
@@ -286,6 +288,54 @@ function PlanCalendar({ schedule, today, operation, onSave }) {
   );
 }
 
+// A plain paper version of the week or one day (#48). Rendered into <body> so print CSS can hide
+// the app entirely; invisible on screen. Black on white, tick boxes, no app chrome.
+function PrintSheet({ learnerName, scope, days, printedOn }) {
+  return createPortal(
+    <section className="print-sheet">
+      <h1>
+        {learnerName}’s {scope === "day" ? "day" : "week"}
+      </h1>
+      {days.map((day) => (
+        <article key={day.id}>
+          <h2>
+            {day.heading}
+            {day.date ? ` · ${day.date}` : ""}
+          </h2>
+          <ul>
+            {day.lessons.map((lesson) => (
+              <li key={lesson.id}>
+                <span className="print-box">{lesson.done ? "✓" : ""}</span>
+                <div>
+                  <strong>
+                    {lesson.subject}: {lesson.title}
+                  </strong>
+                  <p>{lesson.objective}</p>
+                  {lesson.instructions.length ? (
+                    <ol>
+                      {lesson.instructions.map((step, index) => (
+                        <li key={index}>{step}</li>
+                      ))}
+                    </ol>
+                  ) : null}
+                  {lesson.materials.length ? (
+                    <p>Materials: {lesson.materials.join(", ")}</p>
+                  ) : null}
+                  {lesson.fit ? <p>{lesson.fit}</p> : null}
+                  {lesson.movedTo ? <p>Moved to {lesson.movedTo}</p> : null}
+                  {lesson.done ? <p>Already {lesson.done}</p> : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </article>
+      ))}
+      <footer>Printed from BriteLink on {printedOn}</footer>
+    </section>,
+    document.body,
+  );
+}
+
 const toDraft = (schedule) => ({
   startDate: schedule?.start_date ?? null,
   schoolDays: (schedule?.school_days ?? [1, 2, 3, 4, 5]).map(Number),
@@ -479,6 +529,18 @@ function ParentWorkspace({
     offline: false,
   });
   const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
+  const [printScope, setPrintScope] = useState(null);
+  // Render the sheet first, then open the print dialog; drop it once printing is done.
+  useEffect(() => {
+    if (!printScope) return undefined;
+    const done = () => setPrintScope(null);
+    globalThis.addEventListener?.("afterprint", done);
+    const frame = globalThis.requestAnimationFrame?.(() => globalThis.print?.());
+    return () => {
+      globalThis.removeEventListener?.("afterprint", done);
+      if (frame) globalThis.cancelAnimationFrame?.(frame);
+    };
+  }, [printScope]);
   const [calendarOperation, setCalendarOperation] = useState({
     status: "idle",
     message: "",
@@ -1180,6 +1242,27 @@ function ParentWorkspace({
                   </button>
                 ))}
               </div>
+              <div className="print-actions">
+                <button type="button" className="ghost" onClick={() => setPrintScope("week")}>
+                  Print this week
+                </button>
+                <button type="button" className="ghost" onClick={() => setPrintScope("day")}>
+                  Print this day
+                </button>
+              </div>
+              {printScope ? (
+                <PrintSheet
+                  learnerName={selectedLearner.preferred_name}
+                  scope={printScope}
+                  printedOn={today}
+                  days={printableDays(
+                    weeks,
+                    { scope: printScope, weekIndex, dayIndex },
+                    dayDates,
+                    activities,
+                  )}
+                />
+              ) : null}
               {unfinishedLessons(day, activities).length ? (
                 <details
                   className="live-day-move"

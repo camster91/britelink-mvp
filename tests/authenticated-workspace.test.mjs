@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove, printableDays } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -122,4 +122,13 @@ test("what fits today picks a fitting lesson, never assumes an untagged one fits
   assert.equal(lessonFit(tagged("x",20,"independent",true),{offline:true}),"no");
   assert.equal(lessonFitSummary(tagged("x",20,"independent",false)),"About 20 min · child can do it alone · no screen needed");
   assert.equal(lessonFitSummary({}),"");
+});
+
+test("a printed week or day carries dates, steps, and what is already done",()=>{
+  const weeks=[{week_number:2,plan_days:[{id:"d1",day_number:1,lessons:[{id:"a",subject:"Math",title:"Count",objective:"Count to 20",instructions:["Count"],materials:["Beans"],estimated_minutes:15}]},{id:"d2",day_number:2,lessons:[{id:"b",subject:"Art",title:"Draw",objective:"Draw a leaf",instructions:["Look","Draw"]}]}]}];
+  const week=printableDays(weeks,{scope:"week",weekIndex:0},{d1:"2026-10-05"},{a:{status:"completed"},b:{scheduled_for:"2026-10-09"}});
+  assert.deepEqual(week.map(day=>[day.heading,day.date]),[["Week 2 · Day 1","2026-10-05"],["Week 2 · Day 2",null]]);
+  assert.deepEqual([week[0].lessons[0].done,week[0].lessons[0].fit,week[1].lessons[0].movedTo,week[1].lessons[0].materials],["completed","About 15 min","2026-10-09",[]]);
+  assert.deepEqual(printableDays(weeks,{scope:"day",weekIndex:0,dayIndex:1}).map(day=>day.id),["d2"]);
+  assert.deepEqual(printableDays(weeks,{scope:"week",weekIndex:5}),[]);
 });
