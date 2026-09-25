@@ -23,7 +23,8 @@
     "test:sites": "node --test tests/sites-worker.test.mjs",
     "test:restore:production": "bash scripts/production-restore-drill.sh",
     "test:beta-signup": "node scripts/beta-signup-audit.mjs",
-    "test:staging-journeys": "node scripts/staging-journey.mjs"
+    "test:staging-journeys": "node scripts/staging-journey.mjs",
+    "report:beta-funnel": "node scripts/beta-funnel-report.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

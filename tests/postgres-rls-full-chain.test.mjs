@@ -778,3 +778,33 @@ test("the hosted sweep's table lists match what clients can actually read", asyn
     assert.deepEqual(problems, []);
   } finally { await db.close(); }
 });
+
+test("first completion is server-stamped once and the beta funnel is service-role only", async () => {
+  const { db } = await database();
+  try {
+    const activityA = "5eed0000-0000-4000-8000-000000000a51";
+    const write = (sql) => as(db, "authenticated", users.guardianA, () => db.query(sql, [activityA]));
+    // A client cannot plant its own first-completion time.
+    await write(`update public.lesson_activities set status='in_progress', first_completed_at='2020-01-01', updated_by='${users.guardianA}' where id=$1`);
+    assert.equal((await db.query(`select first_completed_at from public.lesson_activities where id=$1`, [activityA])).rows[0].first_completed_at, null);
+    await write(`update public.lesson_activities set status='completed', updated_by='${users.guardianA}' where id=$1`);
+    const first = (await db.query(`select first_completed_at from public.lesson_activities where id=$1`, [activityA])).rows[0].first_completed_at;
+    assert.ok(first && first.getFullYear() >= 2026, "stamped by the server on first completion");
+    // Undo and redo keep the original moment.
+    await write(`update public.lesson_activities set status='not_started', first_completed_at=null, updated_by='${users.guardianA}' where id=$1`);
+    await write(`update public.lesson_activities set status='completed', updated_by='${users.guardianA}' where id=$1`);
+    const again = (await db.query(`select first_completed_at from public.lesson_activities where id=$1`, [activityA])).rows[0].first_completed_at;
+    assert.equal(again.getTime(), first.getTime());
+
+    for (const role of ["anon", "authenticated"]) {
+      const who = role === "anon" ? null : users.adminA;
+      await assert.rejects(() => as(db, role, who, () => db.query(`select * from public.service_beta_funnel()`)), /permission denied/);
+    }
+    assert.equal((await db.query(`select has_function_privilege('service_role', 'public.service_beta_funnel()', 'EXECUTE') as ok`)).rows[0].ok, true);
+    const rows = (await db.query(`select * from public.service_beta_funnel()`)).rows;
+    const a = rows.find((r) => r.household_id === houseA);
+    assert.ok(a.synthetic, "seed households are flagged synthetic");
+    assert.equal(a.first_completed_at.getTime(), first.getTime());
+    assert.deepEqual(Object.keys(a).sort(), ["created_at", "delivery_acknowledged_at", "first_completed_at", "guardian_messages_before_first_completion", "household_id", "intake_submitted_at", "plan_published_at", "synthetic"], "milestones only: no names or content");
+  } finally { await db.close(); }
+});
