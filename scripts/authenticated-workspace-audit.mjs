@@ -215,6 +215,10 @@ try{
   await page.getByRole("button",{name:"Print this week"}).click();
   const sheet=page.locator("body > section.print-sheet");
   await sheet.getByRole("heading",{name:"Maya’s week",includeHidden:true}).waitFor({state:"attached"});
+  // The app opens the dialog on the next animation frame; wait for it rather than racing it (a
+  // hosted headless Chrome had not painted that frame yet), then require exactly one call.
+  await page.waitForFunction((before)=>globalThis.qaPrintCalls>=before+1,printsBefore,{timeout:5000}).catch(()=>{});
+  await page.waitForTimeout(200);
   if(await page.evaluate(()=>globalThis.qaPrintCalls)!==printsBefore+1)throw new Error("Print this week did not open the print dialog once");
   for(const title of ["Build a sound map","Count a collection"])if(!(await sheet.textContent()).includes(title))throw new Error(`printed week is missing ${title}`);
   await page.emulateMedia({media:"print"});

@@ -56,11 +56,11 @@ async function withNginx(vars, run) {
   await writeFile(
     path.join(dir, "nginx.conf"),
     `pid ${dir}/nginx.pid; error_log ${dir}/error.log; daemon off; events {}
-     http { include /etc/nginx/mime.types; client_body_temp_path ${dir}; proxy_temp_path ${dir}; fastcgi_temp_path ${dir}; uwsgi_temp_path ${dir}; scgi_temp_path ${dir}; include ${dir}/site.conf; }`,
+     http { include /etc/nginx/mime.types; access_log off; client_body_temp_path ${dir}; proxy_temp_path ${dir}; fastcgi_temp_path ${dir}; uwsgi_temp_path ${dir}; scgi_temp_path ${dir}; include ${dir}/site.conf; }`,
   );
-  const checked = spawnSync(nginxBinary, ["-t", "-p", dir, "-c", `${dir}/nginx.conf`], { encoding: "utf8" });
+  const checked = spawnSync(nginxBinary, ["-t", "-e", `${dir}/error.log`, "-p", dir, "-c", `${dir}/nginx.conf`], { encoding: "utf8" });
   assert.equal(checked.status, 0, `nginx -t failed:\n${checked.stderr}`);
-  const server = spawn(nginxBinary, ["-p", dir, "-c", `${dir}/nginx.conf`], { stdio: "ignore" });
+  const server = spawn(nginxBinary, ["-e", `${dir}/error.log`, "-p", dir, "-c", `${dir}/nginx.conf`], { stdio: "ignore" });
   try {
     for (let i = 0; i < 50; i += 1) {
       try {
