@@ -71,7 +71,8 @@ server {
 
     # Calendar subscription feed (#47, migration 050). Calendar apps cannot sign in, so this proxies
     # /feed/<64-hex token>.ics to the one anon-executable RPC, public.calendar_feed(token), asking
-    # PostgREST for text/plain and answering text/calendar. Anything the RPC refuses (revoked,
+    # PostgREST for text/calendar (the media type 052's "text/calendar" domain declares; PostgREST 12
+    # answers 406 for text/plain) and answering text/calendar. Anything the RPC refuses (revoked,
     # rotated, consent withdrawn, unknown) becomes a plain 404 with no detail.
     #
     # The upstream is a variable so an unconfigured (demo) build still starts: BRITELINK_API_ORIGIN
@@ -99,7 +100,7 @@ server {
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_set_header apikey "${BRITELINK_API_ANON_KEY}";
         proxy_set_header Authorization "Bearer ${BRITELINK_API_ANON_KEY}";
-        proxy_set_header Accept "text/plain";
+        proxy_set_header Accept "text/calendar";
         proxy_set_header Cookie "";
         proxy_pass_request_body off;
         proxy_intercept_errors on;
