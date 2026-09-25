@@ -55,7 +55,7 @@ test("message read acknowledgement validates scope and normalizes its timestamp"
   assert.throws(()=>validateMessageReadInput({...valid,readAt:"soon"}),/Read time/);
 });
 
-const intake={householdId:"house-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,subjects:["Language","Math"],priorAttainment:"Reads short paragraphs and counts to 100.",strengthsInterests:"Enjoys machines and drawing.",goals:"Build reading fluency.",learningSupports:"Short instructions and movement breaks.",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes after breakfast",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"Avoid frightening content",accessibilityNeeds:"Large type when possible"};
+const intake={householdId:"house-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,planningStructure:"weekly_goals",subjects:["Language","Math"],priorAttainment:"Reads short paragraphs and counts to 100.",strengthsInterests:"Enjoys machines and drawing.",goals:"Build reading fluency.",learningSupports:"Short instructions and movement breaks.",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes after breakfast",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"Avoid frightening content",accessibilityNeeds:"Large type when possible"};
 
 test("guardian intake is bounded, purpose-limited, and normalized",()=>{
   const valid=validateGuardianIntake({...intake,subjects:["Language","Language","Math"]});
@@ -66,6 +66,9 @@ test("guardian intake rejects missing consent, invented subjects, invalid option
   assert.throws(()=>validateGuardianIntake({...intake,guardianConsent:false}),/consent is required/);
   assert.throws(()=>validateGuardianIntake({...intake,subjects:["Diagnosis"]}),/valid subject/);
   assert.throws(()=>validateGuardianIntake({...intake,deviceAccess:"always_online"}),/Device access/);
+  assert.equal(validateGuardianIntake(intake).context.planningStructure,"weekly_goals");
+  assert.throws(()=>validateGuardianIntake({...intake,planningStructure:"school_at_home"}),/How you like to plan/);
+  assert.throws(()=>validateGuardianIntake({...intake,planningStructure:""}),/How you like to plan/);
   assert.throws(()=>validateGuardianIntake({...intake,goals:"x".repeat(1001)}),/Learning goals/);
 });
 

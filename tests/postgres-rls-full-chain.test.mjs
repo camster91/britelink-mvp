@@ -464,3 +464,36 @@ test("educators can tag lessons with what fits today; bad tags are refused; the 
     assert.ok(exported.manifest.included.includes("planSchedules"), "044's wrapper keeps 043's addition");
   } finally { await db.close(); }
 });
+
+// 034 rebuilt submit_guardian_intake to advance the case and silently dropped every check 004 made on
+// the planning context; 045 restores them. This pins both halves: the validation and the advance.
+test("guardian intake refuses unsupported or oversized context and still advances the case", async () => {
+  const { db } = await database();
+  try {
+    const learnerA = "5eed0000-0000-4000-8000-000000000a10", caseA = "5eed0000-0000-4000-8000-000000000a20";
+    const context = { subjects: ["Language", "Math"], priorAttainment: "Reads short paragraphs", strengthsInterests: "Machines", goals: "Fluency", learningSupports: "", language: "English", weeklySchedule: "Mornings", caregiverAvailability: "Daily", deviceAccess: "tablet", resourceBudget: "free_only", contentConstraints: "", accessibilityNeeds: "", planningStructure: "weekly_goals" };
+    const submit = (ctx, who = users.guardianA) => as(db, "authenticated", who, () => db.query(
+      `select * from public.submit_guardian_intake($1, $2, 'notice-v1', array['personalized_learning_plan'], $3::jsonb)`, [houseA, learnerA, JSON.stringify(ctx)]));
+    for (const [bad, message] of [
+      [{ ...context, diagnosis: "ADHD" }, /unsupported fields/],
+      [{ ...context, goals: "x".repeat(1001) }, /goals are required/],
+      [{ ...context, subjects: ["Diagnosis"] }, /subject is invalid/],
+      [{ ...context, deviceAccess: "always_online" }, /access or budget option is invalid/],
+      [{ ...context, planningStructure: "school_at_home" }, /planning structure is invalid/],
+    ]) await assert.rejects(() => submit(bad), message);
+    await assert.rejects(() => submit(context, users.adminA), /guardian access required/);
+
+    await db.query(`update public.service_cases set status='intake_pending' where id=$1`, [caseA]);
+    const saved = (await submit(context)).rows[0];
+    assert.ok(saved.profile_version >= 1);
+    const stored = (await db.query(`select planning_context->>'planningStructure' as structure from public.learner_profiles where id=$1`, [saved.profile_id])).rows[0];
+    assert.equal(stored.structure, "weekly_goals");
+    const { planningStructure, ...olderClient } = context;
+    await submit(olderClient); // an older client that does not send the new key still works
+    const advanced = (await db.query(`select status from public.service_cases where id=$1`, [caseA])).rows[0];
+    assert.equal(advanced.status, "submitted", "034's case advance is kept");
+
+    await db.query(`update public.learners set deleted_at=now() where id=$1`, [learnerA]);
+    await assert.rejects(() => submit(context), /learner not found in household/);
+  } finally { await db.close(); }
+});

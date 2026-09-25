@@ -48,7 +48,7 @@ test("latest intake read is household and learner scoped",async()=>{
 
 test("guardian intake uses the atomic RPC with fixed purpose and validated context",async()=>{
   const calls=[];const client={rpc:async(name,args)=>{calls.push([name,args]);return{data:[{profile_version:2}]}}};
-  const result=await new SupabaseBriteLinkRepository(client).submitGuardianIntake({householdId:"household-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,subjects:["Language"],priorAttainment:"Reads short passages",strengthsInterests:"Enjoys machines",goals:"Build fluency",learningSupports:"Short directions",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes daily",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"",accessibilityNeeds:""});
+  const result=await new SupabaseBriteLinkRepository(client).submitGuardianIntake({householdId:"household-a",learnerId:"learner-a",noticeVersion:"notice-v1",guardianConsent:true,planningStructure:"plan_every_day",subjects:["Language"],priorAttainment:"Reads short passages",strengthsInterests:"Enjoys machines",goals:"Build fluency",learningSupports:"Short directions",language:"English",weeklySchedule:"Weekday mornings",caregiverAvailability:"Thirty minutes daily",deviceAccess:"computer_printer",resourceBudget:"free_only",contentConstraints:"",accessibilityNeeds:""});
   assert.equal(result.profile_version,2);assert.equal(calls[0][0],"submit_guardian_intake");assert.deepEqual(calls[0][1].consent_purposes,["personalized_learning_plan"]);assert.equal(calls[0][1].target_household,"household-a");assert.equal(calls[0][1].context.goals,"Build fluency");
 });
 

@@ -93,6 +93,9 @@ export function validateAttachmentFile(file){
 
 export const INTAKE_SUBJECTS=["Language","Math","Science","Social studies","French","Arts","Health and physical education"];
 
+// How much structure a family wants (#46). Mirrors migration 045.
+export const PLANNING_STRUCTURES = ["plan_every_day", "weekly_goals", "capture_after"];
+
 export function validateGuardianIntake(input) {
   if(!input||typeof input!=="object")throw new TypeError("Guardian intake is required");
   const subjects=Array.isArray(input.subjects)?[...new Set(input.subjects)]:[];
@@ -101,7 +104,7 @@ export function validateGuardianIntake(input) {
   return {
     householdId:requireIdentifier(input.householdId,"Household ID"),learnerId:requireIdentifier(input.learnerId,"Learner ID"),noticeVersion:requireText(input.noticeVersion,"Privacy notice version",{max:80}),
     purposes:["personalized_learning_plan"],
-    context:{subjects,priorAttainment:requireText(input.priorAttainment,"Prior attainment",{max:1000}),strengthsInterests:requireText(input.strengthsInterests,"Strengths and interests",{max:1000}),goals:requireText(input.goals,"Learning goals",{max:1000}),learningSupports:input.learningSupports?requireText(input.learningSupports,"Learning supports",{max:1000}):"",language:requireText(input.language,"Learning language",{max:120}),weeklySchedule:requireText(input.weeklySchedule,"Weekly schedule",{max:500}),caregiverAvailability:requireText(input.caregiverAvailability,"Caregiver availability",{max:500}),deviceAccess:requireEnum(input.deviceAccess,["computer_printer","computer_no_printer","tablet","limited"],"Device access"),resourceBudget:requireEnum(input.resourceBudget,["free_only","up_to_25","up_to_50","discuss"],"Resource budget"),contentConstraints:input.contentConstraints?requireText(input.contentConstraints,"Content constraints",{max:1000}):"",accessibilityNeeds:input.accessibilityNeeds?requireText(input.accessibilityNeeds,"Accessibility needs",{max:1000}):""}
+    context:{subjects,priorAttainment:requireText(input.priorAttainment,"Prior attainment",{max:1000}),strengthsInterests:requireText(input.strengthsInterests,"Strengths and interests",{max:1000}),goals:requireText(input.goals,"Learning goals",{max:1000}),learningSupports:input.learningSupports?requireText(input.learningSupports,"Learning supports",{max:1000}):"",language:requireText(input.language,"Learning language",{max:120}),weeklySchedule:requireText(input.weeklySchedule,"Weekly schedule",{max:500}),caregiverAvailability:requireText(input.caregiverAvailability,"Caregiver availability",{max:500}),deviceAccess:requireEnum(input.deviceAccess,["computer_printer","computer_no_printer","tablet","limited"],"Device access"),resourceBudget:requireEnum(input.resourceBudget,["free_only","up_to_25","up_to_50","discuss"],"Resource budget"),contentConstraints:input.contentConstraints?requireText(input.contentConstraints,"Content constraints",{max:1000}):"",accessibilityNeeds:input.accessibilityNeeds?requireText(input.accessibilityNeeds,"Accessibility needs",{max:1000}):"",planningStructure:requireEnum(input.planningStructure,PLANNING_STRUCTURES,"How you like to plan")}
   };
 }
 

@@ -31,6 +31,7 @@ try{
   await page.getByRole("heading",{name:"Instructions"}).waitFor();await page.getByText("Choose five familiar words.").waitFor();await page.getByText("Paper",{exact:true}).waitFor();await page.getByText("Read each instruction aloud.").waitFor();await page.getByText("Adult help:",{exact:false}).waitFor();await page.getByText("Printable sound cards").waitFor();
   await page.getByRole("button",{name:/Count a collection/}).click();await page.getByText("Choose a small collection.").waitFor();await page.getByText("Household objects").waitFor();await page.getByText("No external resources are required.").waitFor();await page.getByRole("button",{name:/Build a sound map/}).click();
   await page.getByRole("checkbox",{name:"Language",exact:true}).check();
+  await page.getByRole("radio",{name:/Weekly goals/}).check();
   await page.getByLabel("Current learning starting point").fill("Reads short paragraphs and counts to 100.");
   await page.getByLabel("Strengths and interests").fill("Enjoys machines, drawing, and practical projects.");
   await page.getByLabel("Goals for this plan").fill("Build reading fluency and explain math strategies.");
@@ -122,6 +123,7 @@ try{
   await calendar.getByRole("button",{name:"Go at my own pace"}).click();
   await calendar.getByText("Going at your own pace, with no fixed dates.").waitFor();
   const state=await page.evaluate(()=>globalThis.qaState);
+  if(state.profiles[0]?.planning_context?.planningStructure!=="weekly_goals")throw new Error("The planning structure answer did not reach the repository");
   if(state.profiles[0]?.version!==1||state.profiles[0]?.planning_context?.goals!=="Build reading fluency and explain math strategies.")throw new Error("Rendered versioned intake submission did not reach the repository");
   if(state.deliveries[0]?.status!=="acknowledged"||state.revisions[0]?.status!=="requested"||state.privacyRequests[0]?.status!=="pending"||!state.consents[0]?.withdrawn_at)throw new Error("Rendered guardian service/privacy actions did not reach the repository");
   if(state.activities[0]?.status!=="completed"||state.activities[0]?.caregiver_note!=="Completed with a short movement break."||state.activities[0]?.schedule_reason!=="illness"||state.activities[0]?.scheduled_for!=="2026-09-14")throw new Error("Rendered activity and schedule save did not reach the repository");

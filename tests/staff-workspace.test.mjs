@@ -64,6 +64,7 @@ test("staff intake summary preserves every canonical planning field with explici
     rows.map((row) => row.key),
     [
       "subjects",
+      "planningStructure",
       "priorAttainment",
       "strengthsInterests",
       "goals",
@@ -80,6 +81,15 @@ test("staff intake summary preserves every canonical planning field with explici
   assert.equal(
     rows.find((row) => row.key === "subjects").value,
     "Language, Math",
+  );
+  assert.equal(
+    rows.find((row) => row.key === "planningStructure").value,
+    "Not provided",
+    "profiles from before #46 show an explicit empty value",
+  );
+  assert.equal(
+    staffIntakeRows({ planningStructure: "capture_after" }).find((row) => row.key === "planningStructure").value,
+    "Record as we go",
   );
   assert.equal(
     rows.find((row) => row.key === "weeklySchedule").value,
