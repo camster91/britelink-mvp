@@ -1,0 +1,94 @@
+name: Migrate
+
+# Bring production's database up to date with scripts/apply-pending-migrations.sh, over the same
+# SSH path as Deploy (docs/APPLYING_MIGRATIONS.md). Manual only. "check" reports what is missing
+# and changes nothing; "apply" takes a pg_dump backup on the VPS first, then applies the missing
+# migrations one transaction at a time. Run it BEFORE enabling Deploy for a build that needs them.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check (report only) or apply (backup, then apply what is missing)"
+        required: true
+        default: check
+        type: choice
+        options: [check, apply]
+      db_container:
+        description: "Supabase Postgres container name; leave empty to auto-detect the single supabase/postgres container"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+# Never two at once, and never alongside a deploy.
+concurrency:
+  group: deploy-britelink-web
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 187.77.26.99
+  VPS_USER: root
+  MIGRATE_SHA: ${{ github.sha }}
+
+jobs:
+  migrate:
+    name: migrate (${{ inputs.mode }})
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 20
+    steps:
+      - name: Install SSH key and pin host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [ -n "$DEPLOY_SSH_KEY" ] || { echo "::error::DEPLOY_SSH_KEY is not set in the production environment"; exit 1; }
+          [ -n "$KNOWN_HOSTS" ] || { echo "::error::VPS_KNOWN_HOSTS is not set in the production environment"; exit 1; }
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/britelink_deploy"
+          chmod 600 "$HOME/.ssh/britelink_deploy"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/britelink_deploy" > /dev/null
+
+      - name: Run apply-pending-migrations on the VPS
+        env:
+          MODE: ${{ inputs.mode }}
+          DB_CONTAINER_INPUT: ${{ inputs.db_container }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in check|apply) ;; *) echo "::error::mode must be check or apply"; exit 1 ;; esac
+          if [ -n "$DB_CONTAINER_INPUT" ] && ! printf '%s' "$DB_CONTAINER_INPUT" | grep -Eq '^[A-Za-z0-9_.-]+$'; then
+            echo "::error::db_container may only contain letters, digits, dot, dash and underscore"; exit 1
+          fi
+          ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 -o ServerAliveInterval=15 \
+              "${VPS_USER}@${VPS_HOST}" "bash -s -- '$MODE' '$MIGRATE_SHA' '$DB_CONTAINER_INPUT'" <<'REMOTE'
+          set -euo pipefail
+          MODE="$1"; SHA="$2"; CONTAINER="${3:-}"
+          work="$(mktemp -d /root/bl-migrate.XXXXXX)"
+          trap 'rm -rf "$work"' EXIT
+          # Read the exact commit this run was dispatched on, without touching the deployed tree.
+          cd /docker/britelink-web
+          git fetch --depth=1 origin "$SHA"
+          git archive "$SHA" scripts/apply-pending-migrations.sh supabase/migrations | tar -x -C "$work"
+          if [ -z "$CONTAINER" ]; then
+            mapfile -t found < <(docker ps --format '{{.Names}} {{.Image}}' | awk '$2 ~ /(^|\/)supabase\/postgres(:|$)/ {print $1}')
+            if [ "${#found[@]}" -ne 1 ]; then
+              echo "::error::expected exactly one running supabase/postgres container, found ${#found[@]}: ${found[*]:-none}. Re-run with db_container set."
+              docker ps --format '{{.Names}}\t{{.Image}}'
+              exit 1
+            fi
+            CONTAINER="${found[0]}"
+          fi
+          echo "Database container: $CONTAINER   commit: $SHA   mode: $MODE"
+          flag="--check"; [ "$MODE" = "apply" ] && flag="--apply"
+          DB_CONTAINER="$CONTAINER" bash "$work/scripts/apply-pending-migrations.sh" "$flag"
+          REMOTE
+
+      - name: Remove the deploy key from the runner
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/britelink_deploy" "$HOME/.ssh/known_hosts"

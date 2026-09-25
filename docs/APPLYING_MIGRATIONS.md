@@ -9,7 +9,21 @@ order, one transaction per file. A file that fails is rolled back and nothing af
 **Order matters for launch:** apply migrations **before** enabling the Deploy workflow. The web
 build calls functions these migrations create (sign-up, calendar, learning notes, calendar feed).
 
-## Steps (on the VPS, about 5 minutes)
+## Easiest: the Migrate workflow (no SSH needed on your machine)
+
+Actions → **Migrate** → Run workflow on `main`
+(https://github.com/camster91/britelink-mvp/actions/workflows/migrate.yml).
+
+1. Run it with **mode = check**. The log lists `have` / `MISS` for 039–051 and nothing changes.
+2. Run it again with **mode = apply**. It backs up to `/root/britelink-backups/` on the VPS, then
+   applies what's missing.
+3. Run **check** once more. It should say "Up to date".
+
+It uses the Deploy workflow's `production` environment (`DEPLOY_SSH_KEY`, `VPS_KNOWN_HOSTS`). It
+auto-detects the single `supabase/postgres` container; if there is more than one, it lists them
+and you re-run with `db_container` set.
+
+## By hand (on the VPS, about 5 minutes)
 
 ```bash
 ssh root@187.77.26.99
