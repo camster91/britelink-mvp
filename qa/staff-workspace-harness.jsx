@@ -449,6 +449,37 @@ const repository = {
     ]);
     return { case_id: input.caseId };
   },
+  async listWeeklyNotes(householdId, learnerId) {
+    state.calls.push(["listWeeklyNotes", householdId, learnerId]);
+    return (state.weeklyNotes ?? []).filter((item) => item.learner_id === learnerId);
+  },
+  async setWeeklyNote(input) {
+    state.calls.push(["setWeeklyNote", input.householdId, input.learnerId, input.weekStart]);
+    state.weeklyNotes = (state.weeklyNotes ?? []).filter((item) => !(item.learner_id === input.learnerId && item.week_start === input.weekStart));
+    state.weeklyNotes.push({ id: `note-${input.learnerId}-${input.weekStart}`, learner_id: input.learnerId, week_start: input.weekStart, note: input.note.trim(), updated_at: now });
+    return { note_id: `note-${input.learnerId}-${input.weekStart}` };
+  },
+  async clearWeeklyNote(input) {
+    state.calls.push(["clearWeeklyNote", input.householdId, input.learnerId, input.weekStart]);
+    state.weeklyNotes = (state.weeklyNotes ?? []).filter((item) => !(item.learner_id === input.learnerId && item.week_start === input.weekStart));
+    return true;
+  },
+  async listSharedActivities(householdId) {
+    state.calls.push(["listSharedActivities", householdId]);
+    return (state.sharedActivities ?? []).filter((item) => !item.removed_at);
+  },
+  async createSharedActivity(input) {
+    state.calls.push(["createSharedActivity", input.householdId, input.outcomes.map((item) => item.learnerId)]);
+    const row = { id: `shared-${(state.sharedActivities ?? []).length + 1}`, title: input.title.trim(), description: input.description ?? null, subjects: [...(input.subjects ?? [])], scheduled_for: input.date ?? null, created_at: now, shared_activity_learners: input.outcomes.map((item) => ({ learner_id: item.learnerId, outcome: item.outcome.trim(), scheduled_for: null, completed_at: null })) };
+    (state.sharedActivities ??= []).push(row);
+    return { activity_id: row.id, learner_count: input.outcomes.length };
+  },
+  async removeSharedActivity(input) {
+    state.calls.push(["removeSharedActivity", input.householdId, input.activityId]);
+    const row = (state.sharedActivities ?? []).find((item) => item.id === input.activityId);
+    if (row) row.removed_at = now;
+    return now;
+  },
   async signOut() {
     state.calls.push(["signOut"]);
   },

@@ -38,6 +38,13 @@ const PRIVATE_TABLES = [
   "plan_schedules",
   // Added with migration 046: learning captured outside the plan.
   "learning_captures",
+  // Added with migration 048: the educator's optional weekly note.
+  "weekly_notes",
+  // Added with migration 049: shared activities and each learner's outcome.
+  "shared_activities",
+  "shared_activity_learners",
+  // Added with migration 050: calendar feeds (guardian/admin-readable; never the token).
+  "calendar_feeds",
 ];
 
 // Tables with RLS enabled that are intentionally NOT swept here, with the reason.

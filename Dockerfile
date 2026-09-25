@@ -66,5 +66,10 @@ ARG VITE_SUPABASE_URL=""
 # `${BRITELINK_API_ORIGIN}` -- which nginx then reads as a variable reference, fails with "unknown
 # variable", and refuses to start. That is a total outage at container start, not a broken header.
 ENV BRITELINK_API_ORIGIN=$VITE_SUPABASE_URL
+# The calendar feed route (nginx.conf.template, /feed/) calls the API with the ANON key -- the same
+# public key the bundle already carries (vite.config.mjs refuses a service_role key at build time).
+# Same rule as above: derived from the build arg, and defined even when empty so nginx starts.
+ARG VITE_SUPABASE_ANON_KEY=""
+ENV BRITELINK_API_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

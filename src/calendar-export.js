@@ -1,12 +1,13 @@
 // Calendar export (#47): the family calendar's dated plan days as an iCalendar file (RFC 5545) that
 // Google, Apple and Outlook calendars import. Private by default: event titles never carry the
 // child's name, and lesson titles only when the parent opts in. Stable UIDs mean re-importing
-// updates events instead of duplicating them. A live subscription feed and email reminders need a
-// server endpoint and SMTP, so they are not part of this file export.
+// updates events instead of duplicating them. The live subscription feed (migration 050's
+// calendar_feed) builds the same events in SQL; tests/postgres-rls-full-chain.test.mjs keeps the two
+// byte-identical. Email reminders need SMTP and are not built.
 
 // RFC 5545 3.3.11: backslash, semicolon, comma and newlines are escaped in TEXT values.
 export function icsText(value) {
-  return String(value ?? "").replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 }
 
 // RFC 5545 3.1: lines longer than 75 octets are folded with CRLF + a single space.
@@ -70,4 +71,11 @@ export function planCalendarIcs({ planId, weeks = [], dayDates = {}, activitiesB
   });
   const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//BriteLink//Family plan//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", ...events.flat(), "END:VCALENDAR"];
   return { count: events.length, contents: lines.map(foldIcsLine).join("\r\n") + "\r\n" };
+}
+
+// The subscription URL for a feed token (served by nginx.conf.template's /feed/ route). Only
+// well-formed tokens make a URL, so a bug upstream cannot produce a link that looks valid.
+export function calendarFeedUrl(token, origin = globalThis.location?.origin ?? "") {
+  if (!/^[0-9a-f]{64}$/.test(token ?? "")) throw new TypeError("Calendar link token is invalid");
+  return `${origin}/feed/${token}.ics`;
 }

@@ -46,7 +46,7 @@ test("hosted isolation checks every private table in both directions and the buc
   // which let three RLS-enabled household tables sit outside the isolation proof while
   // this test stayed green. A count that cannot drift from its source is the fix.
   assert.equal(report.tableCount, PRIVATE_TABLES.length);
-  assert.equal(PRIVATE_TABLES.length, 30);
+  assert.equal(PRIVATE_TABLES.length, 34);
   // checkCount = four table checks per table, plus four bucket checks (two actors x
   // own-prefix visible / foreign-prefix denied). The bucket contribution is additive and
   // was previously folded into a hardcoded 104, which hid the arithmetic.

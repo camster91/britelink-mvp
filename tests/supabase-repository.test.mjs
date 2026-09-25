@@ -190,3 +190,30 @@ test("the family calendar is saved through its RPC with validated, de-duplicated
   await assert.rejects(() => repository.setPlanSchedule({ ...ids, schoolDays: [1], daysOff: ["tomorrow"] }), /Days off/);
   assert.equal(calls.length, 1, "invalid input never reaches the database");
 });
+
+test("weekly notes, shared activities and calendar feeds call their RPCs with the migration's argument names", async () => {
+  const calls=[];const query=new Proxy({}, {get(_target,name){if(name==="then")return resolve=>resolve({data:[{id:"row-a"}]});return(...args)=>{calls.push([name,...args]);return query}}});
+  const client={from(table){calls.push(["from",table]);return query},rpc:async(name,args)=>{calls.push(["rpc",name,args]);return{data:[{id:"result-a",token:"f".repeat(64)}]}}};
+  const repository=new SupabaseBriteLinkRepository(client);
+  await repository.setWeeklyNote({ householdId:"household-a", learnerId:"learner-a", weekStart:"2026-09-21", note:"  Great week  " });
+  assert.deepEqual(calls.at(-1), ["rpc","staff_set_weekly_note",{ target_household:"household-a", target_learner:"learner-a", target_week:"2026-09-21", note_body:"Great week" }]);
+  await assert.rejects(() => repository.setWeeklyNote({ householdId:"household-a", learnerId:"learner-a", weekStart:"2026-09-22", note:"Tuesday" }), /Monday/);
+  await repository.clearWeeklyNote({ householdId:"household-a", learnerId:"learner-a", weekStart:"2026-09-21" });
+  assert.equal(calls.at(-1)[1], "staff_clear_weekly_note");
+
+  await repository.createSharedActivity({ householdId:"household-a", title:"Pond", description:" ", subjects:["Science","Science"], date:"2026-10-01", outcomes:[{learnerId:"l1",outcome:"Sketch"},{learnerId:"l2",outcome:"Point"}] });
+  assert.deepEqual(calls.at(-1), ["rpc","staff_create_shared_activity",{ target_household:"household-a", activity_title:"Pond", activity_description:null, activity_subjects:["Science"], activity_date:"2026-10-01", learner_outcomes:[{learnerId:"l1",outcome:"Sketch"},{learnerId:"l2",outcome:"Point"}] }]);
+  await assert.rejects(() => repository.createSharedActivity({ householdId:"household-a", title:"Pond", outcomes:[{learnerId:"l1",outcome:"Sketch"}] }), /at least two learners/);
+  await assert.rejects(() => repository.createSharedActivity({ householdId:"household-a", title:"Pond", outcomes:[{learnerId:"l1",outcome:"a"},{learnerId:"l1",outcome:"b"}] }), /once/);
+  await repository.moveSharedActivity({ householdId:"household-a", activityId:"act-a", date:"2026-10-02", learnerId:"l2" });
+  assert.deepEqual(calls.at(-1)[2], { target_household:"household-a", target_shared_activity:"act-a", new_date:"2026-10-02", target_learner:"l2" });
+  await repository.setSharedActivityDone({ householdId:"household-a", activityId:"act-a", learnerId:"l1", done:"yes" });
+  assert.equal(calls.at(-1)[2].done, false, "only a literal true marks done");
+
+  const feed = await repository.createCalendarFeed({ householdId:"household-a", learnerId:"learner-a", includeTitles:true });
+  assert.equal(feed.token, "f".repeat(64));
+  assert.deepEqual(calls.at(-1), ["rpc","create_calendar_feed",{ target_household:"household-a", target_learner:"learner-a", include_titles:true }]);
+  await repository.getCalendarFeed("household-a", "learner-a");
+  assert.ok(calls.some((call) => call[0]==="select" && !String(call[1]).includes("token")), "the feed row is read without any token column");
+  assert.ok(calls.some((call) => call[0]==="is" && call[1]==="revoked_at" && call[2]===null));
+});

@@ -4,7 +4,8 @@
 // the synthetic staging seed's own accounts (supabase/seed/synthetic-staging.sql), signed in through
 // real magic links minted with the staging service key -- the same path a family uses, without an
 // inbox. It proves what the harness cannot: that a write survives a reload and is visible from a
-// second device, and that staff land in their workbench.
+// second device, that a calendar link works for a signed-out calendar app and dies when turned off,
+// and that staff land in their workbench.
 //
 // It writes only synthetic rows and cleans up after itself. stagingJourneyConfig refuses to run
 // unless BRITELINK_TEST_ENVIRONMENT=staging and neither URL is a production host.
@@ -72,6 +73,21 @@ try {
   await step("the note survives a reload", async () => {
     await deviceOne.page.reload({ waitUntil: "networkidle" });
     await deviceOne.page.locator("section.learning-captures").getByText(marker).waitFor({ timeout: 20000 });
+  });
+  await step("a calendar link serves the family calendar to a signed-out client, and stops when turned off", async () => {
+    const panel = deviceOne.page.locator("details.calendar-feed");
+    await panel.getByText("Keep my calendar app up to date").click();
+    await panel.getByRole("button", { name: /Create calendar link|Replace link/ }).click();
+    const url = await panel.getByLabel("Your calendar link").inputValue();
+    const live = await fetch(url);
+    const body = await live.text();
+    if (live.status !== 200 || !/^text\/calendar/.test(live.headers.get("content-type") ?? "") || !body.startsWith("BEGIN:VCALENDAR"))
+      throw new Error(`feed did not serve a calendar: ${live.status} ${live.headers.get("content-type")} ${body.slice(0, 80)}`);
+    if (/SYNTHETIC Learner/.test(body)) throw new Error("the feed names the child");
+    await panel.getByRole("button", { name: "Turn off link" }).click();
+    await panel.getByText("Calendar link turned off.", { exact: false }).waitFor();
+    const gone = await fetch(url);
+    if (gone.status !== 404) throw new Error(`a turned-off feed still answers ${gone.status}`);
   });
   const deviceTwo = await signedInPage(browser, config.guardianUserId);
   await step("a second device sees the same note, then removes it (cleanup)", async () => {

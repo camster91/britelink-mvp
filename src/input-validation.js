@@ -117,6 +117,27 @@ export function validateLearningCapture(input){
   return{householdId:requireIdentifier(input.householdId,"Household ID"),learnerId:requireIdentifier(input.learnerId,"Learner ID"),capturedOn:requireDate(input.capturedOn,"Date"),kind:requireEnum(input.kind,CAPTURE_KINDS,"What kind of learning"),subjects,note:requireText(input.note,"What happened",{max:1000})};
 }
 
+// The educator's optional note for a learner's week (migration 048). weekStart is the ISO Monday.
+export function validateWeeklyNote(input){
+  if(!input||typeof input!=="object")throw new TypeError("Weekly note is required");
+  const weekStart=requireDate(input.weekStart,"Week");
+  if(new Date(`${weekStart}T00:00:00Z`).getUTCDay()!==1)throw new TypeError("Week must start on a Monday");
+  return{householdId:requireIdentifier(input.householdId,"Household ID"),learnerId:requireIdentifier(input.learnerId,"Learner ID"),weekStart,note:requireText(input.note,"Note for the week",{max:1000})};
+}
+
+// One activity for several learners, each with their own expected outcome (migration 049).
+export function validateSharedActivity(input){
+  if(!input||typeof input!=="object")throw new TypeError("Shared activity is required");
+  const subjects=Array.isArray(input.subjects)?[...new Set(input.subjects)]:[];
+  if(subjects.some(subject=>!INTAKE_SUBJECTS.includes(subject)))throw new TypeError("Choose valid subjects");
+  const outcomes=Array.isArray(input.outcomes)?input.outcomes:[];
+  if(outcomes.length<2||outcomes.length>12)throw new TypeError("Choose at least two learners");
+  const seen=new Set();
+  const clean=outcomes.map(item=>{const learnerId=requireIdentifier(item?.learnerId,"Learner ID");if(seen.has(learnerId))throw new TypeError("Each learner can appear once");seen.add(learnerId);return{learnerId,outcome:requireText(item?.outcome,"Expected outcome",{max:500})}});
+  const description=typeof input.description==="string"&&input.description.trim()?requireText(input.description,"Description",{max:2000}):null;
+  return{householdId:requireIdentifier(input.householdId,"Household ID"),title:requireText(input.title,"Activity title",{max:200}),description,subjects,date:input.date?requireDate(input.date,"Date"):null,outcomes:clean};
+}
+
 export function validateRevisionRequest(input){
   if(!input||typeof input!=="object")throw new TypeError("Revision request is required");
   return{householdId:requireIdentifier(input.householdId,"Household ID"),caseId:requireIdentifier(input.caseId,"Case ID"),reason:requireText(input.reason,"Revision reason",{max:2000})};

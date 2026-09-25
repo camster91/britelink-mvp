@@ -35,6 +35,22 @@ try{
   await page.getByLabel("Time available").selectOption("");
   await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
   // Pause a subject (#40): its lessons are passed over, the panel stays open while toggling, resume restores.
+  // Family activities (#45, 049): one activity, each child's own outcome, done per child, split one child.
+  const shared=page.getByRole("region",{name:"Family activities"});
+  await shared.getByRole("heading",{name:"Pond study walk"}).waitFor();
+  await shared.getByText("Point out five green things").waitFor();
+  await shared.getByRole("checkbox",{name:/Maya: Sketch and label three plants/}).check();
+  await shared.getByText("Marked done for Maya.").waitFor();
+  if(!await shared.getByRole("checkbox",{name:/Maya:/}).isChecked()||await shared.getByRole("checkbox",{name:/Noah:/}).isChecked())throw new Error("completion must be per child");
+  await shared.getByRole("button",{name:"Move this activity"}).click();
+  const moveTo=await page.evaluate(()=>{const d=new Date();d.setDate(d.getDate()+2);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`});
+  await shared.getByLabel("New date").fill(moveTo);
+  await shared.getByLabel("Who").selectOption({label:"Only Noah"});
+  await shared.getByRole("button",{name:"Move",exact:true}).click();
+  await shared.getByText("Moved for Noah only.").waitFor();
+  await shared.getByText(`(moved to ${moveTo})`).waitFor();
+  const sharedCall=await page.evaluate(()=>globalThis.qaState.calls.filter(item=>item[0]==="moveSharedActivity").at(-1));
+  if(sharedCall?.[3]!==moveTo||sharedCall?.[4]!=="learner-b")throw new Error(`split move did not reach the repository: ${JSON.stringify(sharedCall)}`);
   await page.locator("details.pause-subjects").getByText("Pause a subject").click();
   await page.getByRole("checkbox",{name:"Pause Language"}).check();
   await page.getByText("Paused: Language. Those lessons wait until you resume.").waitFor();
@@ -159,11 +175,15 @@ try{
   // Weekly story (#43): today's note shows up in "This week", told plainly; the week can be paged.
   const story=page.locator("section.weekly-story");
   await story.getByText("1 note from outside the plan, across Science.").waitFor();
+  // The educator's optional note for the week (#43, 048) sits inside that week's story only.
+  await story.getByRole("heading",{name:"A note from your educator"}).waitFor();
+  await story.getByText("Keep the five-word warm-up.",{exact:false}).waitFor();
   await story.getByText("Pond walk: counted frogs and sketched cattails.",{exact:false}).waitFor();
   if(!await story.getByRole("button",{name:"Next week"}).isDisabled())throw new Error("the story must not page into the future");
   await story.getByRole("button",{name:"Previous week"}).click();
   await story.getByRole("heading",{name:"Last week"}).waitFor();
   await story.getByText("Nothing recorded for this week yet.").waitFor();
+  if(await story.getByRole("heading",{name:"A note from your educator"}).count())throw new Error("this week's educator note leaked into last week's story");
   await story.getByRole("button",{name:"Next week"}).click();
   await story.getByRole("heading",{name:"This week"}).waitFor();
   // Learning report (#50): count, a real CSV download with the disclaimer, and a printed table.
@@ -229,6 +249,22 @@ try{
   const [icsDownload]=await Promise.all([page.waitForEvent("download"),calendar.getByRole("button",{name:"Add to my calendar (.ics)"}).click()]);
   const ics=await (await icsDownload.createReadStream()).toArray().then(chunks=>Buffer.concat(chunks).toString("utf8"));
   if(icsDownload.suggestedFilename()!=="britelink-plan.ics"||!ics.startsWith("BEGIN:VCALENDAR\r\n")||/Maya/.test(ics))throw new Error(`calendar file is wrong or names the child: ${ics.slice(0,300)}`);
+  // Calendar link (#47, 050): private by default, shown once, copyable, replace and turn off.
+  const feedPanel=page.locator("details.calendar-feed");
+  await feedPanel.getByText("Keep my calendar app up to date").click();
+  await feedPanel.getByText("It never includes Maya’s name.",{exact:false}).waitFor();
+  if(await feedPanel.getByRole("checkbox",{name:"Include lesson titles"}).isChecked())throw new Error("lesson titles must be off by default");
+  await feedPanel.getByRole("button",{name:"Create calendar link"}).click();
+  await feedPanel.getByText("Copy it now: it is shown only once.",{exact:false}).waitFor();
+  const feedUrl=await feedPanel.getByLabel("Your calendar link").inputValue();
+  if(feedUrl!==`${origin}/feed/${"c".repeat(64)}.ics`)throw new Error(`calendar link is wrong: ${feedUrl}`);
+  if(!await feedPanel.getByLabel("Your calendar link").evaluate(el=>el===document.activeElement))throw new Error("focus should move to the new link");
+  const feedCall=await page.evaluate(()=>globalThis.qaState.calls.filter(item=>item[0]==="createCalendarFeed").at(-1));
+  if(feedCall?.[3]!==false)throw new Error("the link was created with lesson titles although the box was not ticked");
+  await feedPanel.getByRole("button",{name:"Turn off link"}).click();
+  await feedPanel.getByText("Calendar link turned off.",{exact:false}).waitFor();
+  if(await feedPanel.getByLabel("Your calendar link").count())throw new Error("a turned-off link must not stay on screen");
+  await feedPanel.getByText("Keep my calendar app up to date").click();
   await calendar.getByRole("button",{name:"Take today off"}).click();
   await calendar.getByText("Today is off. Everything from today on moved by one school day.").waitFor();
   if(JSON.stringify((await page.evaluate(()=>globalThis.qaState.schedule)).days_off)!==JSON.stringify([today]))throw new Error("taking today off did not record the day");

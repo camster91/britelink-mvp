@@ -271,6 +271,37 @@ insert into public.plan_schedules
   ('5eed0000-0000-4000-8000-000000000b30', '5eed0000-0000-4000-8000-0000000000b1',
    '2026-09-07', array[1,2,3,4,5]::smallint[], array[]::date[], :'admin_b'::uuid);
 
+-- One educator weekly note per household (048), so the isolation sweep has a sentinel on both sides.
+insert into public.weekly_notes
+  (id, household_id, learner_id, week_start, note, author_user_id) values
+  ('5eed0000-0000-4000-8000-000000000a92', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a10', '2026-09-07', 'SYNTHETIC weekly note A', :'educator_a'::uuid),
+  ('5eed0000-0000-4000-8000-000000000b92', '5eed0000-0000-4000-8000-0000000000b1',
+   '5eed0000-0000-4000-8000-000000000b10', '2026-09-07', 'SYNTHETIC weekly note B', :'admin_b'::uuid);
+
+-- One shared activity per household (049). The seed has one learner per household; the
+-- multi-learner rules are exercised by tests/postgres-rls-full-chain.test.mjs.
+insert into public.shared_activities
+  (id, household_id, title, subjects, scheduled_for, created_by) values
+  ('5eed0000-0000-4000-8000-000000000a93', '5eed0000-0000-4000-8000-0000000000a1',
+   'SYNTHETIC shared activity A', array['Science']::text[], '2026-09-15', :'educator_a'::uuid),
+  ('5eed0000-0000-4000-8000-000000000b93', '5eed0000-0000-4000-8000-0000000000b1',
+   'SYNTHETIC shared activity B', array['Arts']::text[], '2026-09-15', :'admin_b'::uuid);
+insert into public.shared_activity_learners
+  (activity_id, household_id, learner_id, outcome) values
+  ('5eed0000-0000-4000-8000-000000000a93', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a10', 'SYNTHETIC outcome A'),
+  ('5eed0000-0000-4000-8000-000000000b93', '5eed0000-0000-4000-8000-0000000000b1',
+   '5eed0000-0000-4000-8000-000000000b10', 'SYNTHETIC outcome B');
+
+-- One REVOKED calendar feed per household (050): a sentinel for the sweep that no token can open.
+insert into public.calendar_feeds
+  (id, household_id, learner_id, token_hash, created_by, revoked_at) values
+  ('5eed0000-0000-4000-8000-000000000a94', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a10', sha256('SYNTHETIC revoked feed A'::bytea), :'guardian_a'::uuid, now()),
+  ('5eed0000-0000-4000-8000-000000000b94', '5eed0000-0000-4000-8000-0000000000b1',
+   '5eed0000-0000-4000-8000-000000000b10', sha256('SYNTHETIC revoked feed B'::bytea), :'admin_b'::uuid, now());
+
 -- resources: access_type='paid' would require estimated_cost_cents, so keep free.
 insert into public.resources
   (id, household_id, plan_id, lesson_id, title, url, requirement, access_type, account_required, ads_present) values

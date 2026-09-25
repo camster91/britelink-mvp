@@ -1,4 +1,4 @@
-import { validateLearningCapture, requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
+import { validateLearningCapture, validateSharedActivity, validateWeeklyNote, requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
 
 function unwrap(result, operation) {
   if (result.error) {
@@ -87,6 +87,62 @@ export class SupabaseBriteLinkRepository {
     if ((daysOff ?? []).some((day) => !/^\d{4}-\d{2}-\d{2}$/.test(day))) throw new TypeError("Days off must be dates");
     const rows = unwrap(await this.client.rpc("set_plan_schedule", { target_household: householdId, target_plan: planId, schedule_start: startDate, schedule_school_days: days, schedule_days_off: daysOff ?? [] }), "Save your calendar");
     return rows?.[0] ?? null;
+  }
+  // The educator's weekly note (migration 048): members read, educators and admins write.
+  async listWeeklyNotes(householdId, learnerId) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    return unwrap(await this.client.from("weekly_notes").select("id, week_start, note, updated_at").eq("household_id", householdId).eq("learner_id", learnerId).order("week_start", { ascending: false }).limit(60), "Load weekly notes");
+  }
+  async setWeeklyNote(input) {
+    const valid = validateWeeklyNote(input);
+    const rows = unwrap(await this.client.rpc("staff_set_weekly_note", { target_household: valid.householdId, target_learner: valid.learnerId, target_week: valid.weekStart, note_body: valid.note }), "Save the note for the week");
+    return rows?.[0] ?? null;
+  }
+  async clearWeeklyNote({ householdId, learnerId, weekStart }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart ?? "")) throw new TypeError("Week must be a date");
+    return unwrap(await this.client.rpc("staff_clear_weekly_note", { target_household: householdId, target_learner: learnerId, target_week: weekStart }), "Remove the note for the week");
+  }
+  // Shared activities (migration 049): staff author, guardians move and complete per learner.
+  async listSharedActivities(householdId) {
+    requireIdentifier(householdId, "Household ID");
+    return unwrap(await this.client.from("shared_activities").select("id, title, description, subjects, scheduled_for, created_at, shared_activity_learners(learner_id, outcome, scheduled_for, completed_at)").eq("household_id", householdId).is("removed_at", null).order("scheduled_for", { ascending: true, nullsFirst: false }).order("created_at", { ascending: true }).limit(100), "Load shared activities");
+  }
+  async createSharedActivity(input) {
+    const valid = validateSharedActivity(input);
+    const rows = unwrap(await this.client.rpc("staff_create_shared_activity", { target_household: valid.householdId, activity_title: valid.title, activity_description: valid.description, activity_subjects: valid.subjects, activity_date: valid.date, learner_outcomes: valid.outcomes }), "Save shared activity");
+    return rows?.[0] ?? null;
+  }
+  async removeSharedActivity({ householdId, activityId }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(activityId, "Activity ID");
+    return unwrap(await this.client.rpc("staff_remove_shared_activity", { target_household: householdId, target_shared_activity: activityId }), "Remove shared activity");
+  }
+  async moveSharedActivity({ householdId, activityId, date = null, learnerId = null }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(activityId, "Activity ID");
+    if (learnerId !== null) requireIdentifier(learnerId, "Learner ID");
+    if (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new TypeError("Date must be a date");
+    const rows = unwrap(await this.client.rpc("move_shared_activity", { target_household: householdId, target_shared_activity: activityId, new_date: date, target_learner: learnerId }), "Move shared activity");
+    return rows?.[0] ?? null;
+  }
+  async setSharedActivityDone({ householdId, activityId, learnerId, done }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(activityId, "Activity ID"); requireIdentifier(learnerId, "Learner ID");
+    return unwrap(await this.client.rpc("set_shared_activity_done", { target_household: householdId, target_shared_activity: activityId, target_learner: learnerId, done: done === true }), "Mark shared activity");
+  }
+  // Calendar subscription feed (migration 050). The token is returned once, on creation; the table
+  // only ever exposes that a feed exists.
+  async getCalendarFeed(householdId, learnerId) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    const rows = unwrap(await this.client.from("calendar_feeds").select("id, include_titles, created_at").eq("household_id", householdId).eq("learner_id", learnerId).is("revoked_at", null).limit(1), "Load calendar feed");
+    return rows?.[0] ?? null;
+  }
+  async createCalendarFeed({ householdId, learnerId, includeTitles = false }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    const rows = unwrap(await this.client.rpc("create_calendar_feed", { target_household: householdId, target_learner: learnerId, include_titles: includeTitles === true }), "Create calendar link");
+    return rows?.[0] ?? null;
+  }
+  async revokeCalendarFeed({ householdId, learnerId }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    return unwrap(await this.client.rpc("revoke_calendar_feed", { target_household: householdId, target_learner: learnerId }), "Turn off calendar link");
   }
   async saveLessonActivity(input) {
     const valid=validateLessonActivityInput(input);

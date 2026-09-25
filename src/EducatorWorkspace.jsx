@@ -12,6 +12,8 @@ import "./staff-workspace.css";
 import { StaffAuthoring } from "./StaffAuthoring.jsx";
 import "./staff-operations.css";
 import { MessageAttachments } from "./MessageAttachments.jsx";
+import { StaffSharedActivities, StaffWeeklyNote } from "./StaffFamilyTools.jsx";
+import { localDateString } from "./authenticated-workspace.js";
 
 function StaffNotice({ state }) {
   if (!state.message) return null;
@@ -917,6 +919,22 @@ export function EducatorWorkspace({
               </form>
             </section>
             <StaffNotice state={operation} />
+            {learner && repository.listWeeklyNotes ? (
+              <StaffWeeklyNote
+                key={`note-${learner.id}`}
+                repository={repository}
+                householdId={household.household_id}
+                learner={learner}
+                today={localDateString()}
+              />
+            ) : null}
+            {repository.listSharedActivities ? (
+              <StaffSharedActivities
+                repository={repository}
+                householdId={household.household_id}
+                learners={currentLearners}
+              />
+            ) : null}
             <StaffAuthoring
               key={selected.id}
               householdId={household.household_id}
