@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { INTAKE_SUBJECTS } from "./input-validation.js";
 import { classifyOperationError } from "./operation-state.js";
+import { captureRowsFromCsv } from "./capture-import.js";
 
 // Learning outside the plan (#44): books, outings, co-ops, tutors, anything the family did that the
 // plan did not prescribe. Text only; photos wait for the scanned attachment path and counsel review.
@@ -21,6 +22,7 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
   const [draft, setDraft] = useState(() => emptyDraft(today));
   const [invalid, setInvalid] = useState([]);
   const [operation, setOperation] = useState({ status: "idle", message: "" });
+  const [importState, setImportState] = useState({ ready: [], problems: [], status: "idle", message: "" });
   const kindRef = useRef(null);
   const noteRef = useRef(null);
   const request = useRef(0);
@@ -86,6 +88,39 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
     } catch (error) {
       setOperation({ status: "error", message: error.message });
     }
+  };
+
+  const readImport = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (file.size > 512 * 1024) {
+      setImportState({ ready: [], problems: ["That file is larger than 512 KB. Split it and import the parts."], status: "idle", message: "" });
+      return;
+    }
+    const { ready, problems } = captureRowsFromCsv(await file.text(), today);
+    setImportState({ ready, problems, status: "idle", message: "" });
+  };
+  const runImport = async () => {
+    const rows = importState.ready;
+    let saved = 0;
+    setImportState((value) => ({ ...value, status: "loading", message: `Importing ${rows.length}…` }));
+    for (const row of rows) {
+      try {
+        await repository.recordLearningCapture({ householdId, learnerId: learner.id, ...row });
+        saved += 1;
+      } catch (error) {
+        setImportState({
+          ready: rows.slice(saved),
+          problems: [`Stopped after ${saved} of ${rows.length}: ${error.message}`],
+          status: "idle",
+          message: "",
+        });
+        await load();
+        return;
+      }
+    }
+    await load();
+    setImportState({ ready: [], problems: [], status: "done", message: `Imported ${saved} ${saved === 1 ? "note" : "notes"} into ${learner.preferred_name}’s record.` });
   };
 
   const errorId = `${formId}-error`;
@@ -175,6 +210,32 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
           </p>
         ) : null}
       </form>
+      <details className="capture-import">
+        <summary>Import from a spreadsheet (CSV)</summary>
+        <div>
+          <p>
+            Already keeping a log? Save it as CSV with the columns <strong>date, kind, subjects, note</strong>{" "}
+            (subjects separated by “;”). Up to 50 rows at a time.
+          </p>
+          <label>
+            CSV file
+            <input type="file" accept=".csv,text/csv" onChange={readImport} />
+          </label>
+          {importState.problems.length ? (
+            <ul className="form-error-summary" aria-label="Rows that will not be imported">
+              {importState.problems.map((problem) => (
+                <li key={problem}>{problem}</li>
+              ))}
+            </ul>
+          ) : null}
+          {importState.ready.length ? (
+            <button type="button" className="primary" disabled={importState.status === "loading"} onClick={runImport}>
+              Import {importState.ready.length} {importState.ready.length === 1 ? "note" : "notes"}
+            </button>
+          ) : null}
+          {importState.message ? <p role="status">{importState.message}</p> : null}
+        </div>
+      </details>
       {state.status === "error" ? (
         <div className="plan-state">
           <p role="alert">{state.error}</p>

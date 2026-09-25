@@ -291,3 +291,22 @@ export function planProgress(caseStatus, learnerName = "your learner") {
       : "There is nothing you need to do right now. We will show the plan here as soon as it is ready.";
   return { steps: labels.map((label, index) => ({ label, state: index < current ? "done" : index === current ? "current" : "upcoming" })), note };
 }
+
+// Whole-family day (#45, first slice): each learner's due lessons side by side, and the subjects that
+// more than one child has today -- candidates to teach together. Suggestions only; nothing changes
+// in anyone's plan.
+export function familyDay(entries = []) {
+  const byLearner = entries.map(({ learner, lessons }) => ({ learner, lessons }));
+  const bySubject = new Map();
+  for (const { learner, lessons } of byLearner) {
+    for (const lesson of lessons) {
+      if (!bySubject.has(lesson.subject)) bySubject.set(lesson.subject, new Set());
+      bySubject.get(lesson.subject).add(learner.preferred_name);
+    }
+  }
+  const shared = [...bySubject.entries()]
+    .filter(([, names]) => names.size > 1)
+    .map(([subject, names]) => ({ subject, learners: [...names] }))
+    .sort((a, b) => b.learners.length - a.learners.length || a.subject.localeCompare(b.subject));
+  return { byLearner, shared };
+}

@@ -31,6 +31,7 @@ import { LearningCaptures } from "./LearningCaptures.jsx";
 import { WeeklyStory } from "./WeeklyStory.jsx";
 import { StudentView } from "./StudentView.jsx";
 import { LearningReport } from "./LearningReport.jsx";
+import { FamilyDay } from "./FamilyDay.jsx";
 import { planCalendarIcs } from "./calendar-export.js";
 import { downloadTextFile } from "./browser-download.js";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
@@ -1168,6 +1169,12 @@ function ParentWorkspace({
             ))}
           </select>
         </label>
+        <FamilyDay
+          repository={repository}
+          householdId={household.household_id}
+          learners={learners}
+          today={localDateString()}
+        />
       </section>
       <AuthenticatedIntake
         householdId={household.household_id}
@@ -1609,7 +1616,7 @@ function ParentWorkspace({
                                   <a
                                     href={resource.url}
                                     target="_blank"
-                                    rel="noreferrer"
+                                    rel="noopener noreferrer"
                                   >
                                     Open reviewed resource
                                   </a>

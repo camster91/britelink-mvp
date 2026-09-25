@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, planProgress, planSubjects, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, familyDay, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, dueLessonsForToday, planDayMove, planProgress, planSubjects, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -181,4 +181,15 @@ test("before the plan, the family sees the real step from the case status, never
   assert.equal(states("on_hold"),"upcoming,upcoming,upcoming,upcoming");
   assert.equal(states(undefined),"current,upcoming,upcoming,upcoming","no case yet starts at the intake");
   for(const status of ["paid","submitted","drafting","overdue","clarification"])assert.doesNotMatch(planProgress(status).note,/\b(minutes?|hours?|days?)\b.*(left|until|remaining)|ETA|online/i,status);
+});
+
+test("the family day shows each child's list and the subjects they could share",()=>{
+  const day=familyDay([
+    {learner:{preferred_name:"Maya"},lessons:[{subject:"Math"},{subject:"Science"}]},
+    {learner:{preferred_name:"Leo"},lessons:[{subject:"Math"},{subject:"Art"}]},
+    {learner:{preferred_name:"Ivy"},lessons:[{subject:"Science"},{subject:"Math"}]},
+  ]);
+  assert.deepEqual(day.shared,[{subject:"Math",learners:["Maya","Leo","Ivy"]},{subject:"Science",learners:["Maya","Ivy"]}]);
+  assert.equal(day.byLearner.length,3);
+  assert.deepEqual(familyDay([{learner:{preferred_name:"Solo"},lessons:[{subject:"Math"}]}]).shared,[]);
 });

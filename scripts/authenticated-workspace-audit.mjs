@@ -46,6 +46,11 @@ try{
   await page.getByText("All subjects are active again.").waitFor();
   await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
   if(JSON.stringify(await page.evaluate(()=>globalThis.qaState.paused))!=="[]")throw new Error("resuming did not clear the paused subjects");
+  // Whole family today (#45): loaded on open; each child's list side by side.
+  await page.locator("details.family-day").getByText("Whole family today").click();
+  await page.getByRole("region",{name:"Maya’s day"}).getByText("Build a sound map",{exact:false}).waitFor();
+  await page.locator("details.family-day").getByText("No published plan yet.").waitFor();
+  await page.locator("details.family-day").getByText("Whole family today").click();
   // Student view (#49): a focus mode over an inert app; a failed save is explained; exit needs a hold.
   await page.getByRole("button",{name:"Open student view"}).click();
   const student=page.getByRole("dialog",{name:"Maya’s list for today"});
@@ -173,6 +178,15 @@ try{
   await page.locator("body > section.print-sheet").waitFor({state:"detached"});
   await captureCard.getByRole("button",{name:/Remove the note from/}).click();
   await captureCard.getByText("Removed from the learning record.").waitFor();
+  await captureCard.getByText("Nothing recorded yet.").waitFor();
+  // Spreadsheet import (#51): bad rows are named by row number, good rows import, the list refreshes.
+  await captureCard.getByText("Import from a spreadsheet (CSV)").click();
+  await captureCard.getByLabel("CSV file").setInputFiles({name:"log.csv",mimeType:"text/csv",buffer:Buffer.from("date,kind,subjects,note\n2026-09-01,Book or reading,Language,Read aloud\n2026-09-02,therapy,,Speech\n")});
+  await captureCard.getByText("Row 3: kind is not one of",{exact:false}).waitFor();
+  await captureCard.getByRole("button",{name:"Import 1 note"}).click();
+  await captureCard.getByText("Imported 1 note into Maya’s record.").waitFor();
+  await captureCard.getByRole("list",{name:"Recent learning notes"}).getByText("Read aloud").waitFor();
+  await captureCard.getByRole("button",{name:/Remove the note from 2026-09-01/}).click();
   await captureCard.getByText("Nothing recorded yet.").waitFor();
   const captureState=await page.evaluate(()=>globalThis.qaState.captures);
   if(captureState?.[0]?.kind!=="outing"||JSON.stringify(captureState?.[0]?.subjects)!=='["Science"]'||!captureState?.[0]?.removed_at)throw new Error(`capture did not round-trip: ${JSON.stringify(captureState)}`);
