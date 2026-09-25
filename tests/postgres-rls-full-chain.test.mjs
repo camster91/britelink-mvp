@@ -739,3 +739,42 @@ test("the calendar feed answers only an active token, matches the family's own .
     assert.match(String(columns.message), /permission denied/, "the token hash column is not readable by clients");
   } finally { await db.close(); }
 });
+
+// The hosted verifier's table lists (src/hosted-isolation.js) held to the catalog. Three tables sat
+// in PRIVATE_TABLES from 2026-09-21 although the sweep could never pass on them: no household_id
+// column, or no client read path. This fails when a list and the schema disagree.
+test("the hosted sweep's table lists match what clients can actually read", async () => {
+  const { db } = await database();
+  const { PRIVATE_TABLES, SEALED_TABLES, INTENTIONALLY_UNSWEPT } = await import("../src/hosted-isolation.js");
+  try {
+    const rows = (await db.query(`
+      select c.relname as name,
+             exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attname='household_id' and not a.attisdropped) as has_household,
+             exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attname in ('household_id','household_ref') and not a.attisdropped) as household_data,
+             has_table_privilege('authenticated', c.oid, 'SELECT')
+               or exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped
+                          and has_column_privilege('authenticated', c.oid, a.attnum, 'SELECT')) as readable,
+             exists(select 1 from pg_policy p where p.polrelid=c.oid and p.polcmd in ('r','*')) as select_policy
+        from pg_class c join pg_namespace n on n.oid=c.relnamespace
+       where n.nspname='public' and c.relkind='r' order by 1`)).rows;
+    const byName = new Map(rows.map((row) => [row.name, row]));
+    const problems = [];
+    const listed = [...PRIVATE_TABLES, ...SEALED_TABLES, ...INTENTIONALLY_UNSWEPT];
+    for (const name of listed) if (!byName.has(name)) problems.push(`${name} is listed but does not exist`);
+    for (const row of rows)
+      if (row.household_data && !listed.includes(row.name))
+        problems.push(`${row.name} holds household data but is in no hosted-sweep list`);
+    for (const name of PRIVATE_TABLES) {
+      const row = byName.get(name);
+      if (!row) continue;
+      if (!row.has_household) problems.push(`${name}: swept by household_id but has no such column`);
+      if (!row.readable) problems.push(`${name}: swept, but clients hold no SELECT on it`);
+      if (!row.select_policy) problems.push(`${name}: swept, but no policy can ever return an own-household sentinel`);
+    }
+    for (const name of SEALED_TABLES) {
+      const row = byName.get(name);
+      if (row && row.readable && row.select_policy) problems.push(`${name}: listed as sealed but clients can read it through a policy`);
+    }
+    assert.deepEqual(problems, []);
+  } finally { await db.close(); }
+});

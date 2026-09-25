@@ -33,6 +33,8 @@ begin
   if not exists (select 1 from public.revision_requests where id='5eed0000-0000-4000-8000-000000000bb0' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_REVISION_ID'); end if;
   if not exists (select 1 from public.case_attachments where id='5eed0000-0000-4000-8000-000000000b80' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_ATTACHMENT_ID'); end if;
   if not exists (select 1 from public.guardian_consents where id='5eed0000-0000-4000-8000-000000000b61' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_CONSENT_ID'); end if;
+  if not exists (select 1 from public.learning_captures where id='5eed0000-0000-4000-8000-000000000b91' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_CAPTURE_ID'); end if;
+  if not exists (select 1 from public.shared_activities where id='5eed0000-0000-4000-8000-000000000b93' and household_id='5eed0000-0000-4000-8000-0000000000b1') then missing:=array_append(missing,'HOUSEHOLD_B_SHARED_ACTIVITY_ID'); end if;
   if not exists (select 1 from public.case_attachments where object_path='5eed0000-0000-4000-8000-0000000000b1/5eed0000-0000-4000-8000-000000000b20/5eed0000-0000-4000-8000-000000000b80.pdf') then missing:=array_append(missing,'HOUSEHOLD_B_OBJECT_PATH'); end if;
 
   -- The four staff identities are passed in, so these also catch a caller who handed the seed
@@ -44,7 +46,7 @@ begin
   if array_length(missing,1) > 0 then
     raise exception 'ASSERT FAILED: env block names % id(s) that do not resolve: %', array_length(missing,1), array_to_string(missing,', ');
   end if;
-  raise notice 'ok 1: all 16 ids in the emitted env block resolve in their intended household';
+  raise notice 'ok 1: all 18 ids in the emitted env block resolve in their intended household';
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -152,15 +154,17 @@ declare
     'plan_weeks','plan_days','lessons','lesson_activities','audit_events','orders',
     'payment_events','operation_rate_windows','operational_events','deletion_jobs',
     'educator_capacities','case_messages','case_message_reads','case_attachments','plan_reviews',
-    'resources','deliveries','revision_requests','privacy_requests'];
+    'resources','deliveries','revision_requests','privacy_requests',
+    'plan_schedules','learning_captures','weekly_notes','shared_activities',
+    'shared_activity_learners','calendar_feeds'];
   actors uuid[] := array['5eed0000-0000-4000-8000-00000000ad01'::uuid,
                          '5eed0000-0000-4000-8000-00000000ad04'::uuid];
   homes  uuid[] := array['5eed0000-0000-4000-8000-0000000000a1'::uuid,
                          '5eed0000-0000-4000-8000-0000000000b1'::uuid];
   t text; i int; own int; leak int; problems text[] := ARRAY[]::text[];
 begin
-  if array_length(tables,1) <> 25 then
-    raise exception 'ASSERT FAILED: this list must mirror PRIVATE_TABLES (25), found %', array_length(tables,1);
+  if array_length(tables,1) <> 31 then
+    raise exception 'ASSERT FAILED: this list must mirror PRIVATE_TABLES (31), found %', array_length(tables,1);
   end if;
 
   for i in 1..array_length(actors,1) loop
@@ -183,7 +187,7 @@ begin
   if array_length(problems,1) > 0 then
     raise exception 'ASSERT FAILED: % sentinel problem(s): %', array_length(problems,1), array_to_string(problems, '; ');
   end if;
-  raise notice 'ok 4: both admins see an own-household sentinel on all 25 private tables and zero foreign rows';
+  raise notice 'ok 4: both admins see an own-household sentinel on all 31 private tables and zero foreign rows';
 end $$;
 
 do $$ begin raise notice 'PASS: synthetic staging seed verified'; end $$;

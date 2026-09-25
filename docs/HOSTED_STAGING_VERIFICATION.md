@@ -54,6 +54,16 @@ A pass requires two independent parts.
 > 104-check run below did not prove cross-household denial on them. Rerun D1 to obtain
 > 116-check evidence before closing the gate.
 
+> **Corrected 2026-09-25.** That 116-check sweep could never have passed. It reads `household_id`
+> and needs an own-household sentinel, but `attachment_object_deletions` and
+> `retention_execution_ledger` have no `household_id` column (they keep an opaque
+> `household_ref`), and none of the three tables returns any row to any client. They are now
+> **sealed tables** (`SEALED_TABLES`): each actor's read must be refused or come back empty, and
+> any row fails the gate. With migrations 043–050 the sweep is now **31 private tables and 3 sealed
+> tables, 134 checks**. D2 is **36 probes**; the 12 new ones cover the calendar, pause, learning
+> capture, weekly note, shared activity and calendar feed RPCs. Both lists are held to the
+> catalog by `tests/postgres-rls-full-chain.test.mjs`. Rerun both on staging to close the gate.
+
 - both administrators can see an own-household sentinel on each of 25 private tables;
 - neither administrator can see the other household on any of those tables;
 - both administrators can list an own-household clean object in the private bucket;
