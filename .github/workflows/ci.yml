@@ -17,10 +17,16 @@ concurrency:
 env:
   NODE_VERSION: "22"
 
+# RUNNER CHOICE (#33). Hosted runners have never been assigned to this repository (account-level
+# Actions limits; see docs/CI_RUNNER.md). Every job therefore reads its runner from the repository
+# variable CI_RUNS_ON, a JSON value: unset means the hosted "ubuntu-24.04", and a self-hosted
+# runner on a NON-production host is selected with e.g. ["self-hosted","linux","britelink-ci"].
+# Switching is a variable change, not a code change, and switching back is deleting the variable.
+
 jobs:
   build-test:
     name: build-test
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +52,12 @@ jobs:
       # it belongs. See scripts/check-tracked-test-imports.mjs for the rationale.
       - name: Tests do not depend on untracked files
         run: node scripts/check-tracked-test-imports.mjs
+
+      # The calendar-feed nginx route (tests/nginx-calendar-feed.test.mjs) runs in a real nginx.
+      # Hosted images do not ship one; install it there and make the test refuse to skip.
+      - name: Install nginx for the feed-route test (hosted runners)
+        if: ${{ runner.environment == 'github-hosted' }}
+        run: sudo apt-get update -q && sudo apt-get install -y -q nginx-core && echo "BRITELINK_REQUIRE_NGINX=1" >> "$GITHUB_ENV"
 
       - name: Unit and integration tests
         run: npm test
@@ -82,7 +94,7 @@ jobs:
   # It needs docker (present on ubuntu runners) and network for the postgres image pull.
   migration-harness:
     name: migration-harness
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +106,7 @@ jobs:
   browser-audits:
     name: browser-audits
     needs: build-test
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -114,8 +126,10 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ms-playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
+      # --with-deps needs sudo apt, which a self-hosted runner should not have; provision the OS
+      # libraries on that host once instead (docs/CI_RUNNER.md).
       - name: Install Chromium and OS dependencies
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
         timeout-minutes: 15
 
       # Each audit spawns its own Vite dev server (127.0.0.1:4317..4322) with a

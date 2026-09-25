@@ -54,12 +54,24 @@ Service-role keys never enter Vite or browser env.
 
 `npm run test:staging-journeys` drives the deployed staging app with the seed's guardian and educator
 accounts, signed in through real magic links minted with the staging service key. It proves a
-learning note survives a reload and is visible on a second device (then removes it), and that the
-educator lands in the workbench. It writes `qa/staging/journey-report.json`.
+learning note survives a reload and is visible on a second device (then removes it), that a
+calendar link serves a signed-out client and stops when turned off, and that the educator lands in
+the workbench. It writes `qa/staging/journey-report.json`.
 
 Set `BRITELINK_STAGING_APP_URL` and `BRITELINK_STAGING_SERVICE_ROLE_KEY` (see `.env.example`) plus
 the seed's `BRITELINK_TEST_*` block. It refuses to run unless `BRITELINK_TEST_ENVIRONMENT=staging`
 and neither URL is a production host. Never give it a production service key.
+
+## Calendar subscription feed (migration 050)
+
+The web container serves `/feed/<64-hex token>.ics` by proxying to `public.calendar_feed(token)`
+with the **anon** key, which it takes from the same `VITE_SUPABASE_ANON_KEY` build argument as the
+bundle, so nothing new needs configuring. In the demo build the route answers 404.
+
+- The token is in the URL path. nginx does not log that route, but check that Traefik's access log
+  is off or path-redacted for the BriteLink routers before any family creates a link.
+- `npm run test:staging-journeys` creates a link, fetches it signed out, turns it off and expects a
+  404.
 
 ## Sites packaging (local, no credentials)
 

@@ -42,7 +42,8 @@ jobs:
           || (github.event_name == 'workflow_dispatch'
             && github.ref == 'refs/heads/main') }}
     environment: production # env secret scope + deployment history
-    runs-on: ubuntu-24.04
+    # Same runner choice as CI (#33, docs/CI_RUNNER.md). Never a runner on the production VPS.
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 20
 
     steps:
@@ -166,6 +167,11 @@ jobs:
           fi
           echo "deploy ok: $DEPLOYED_SHA"
           REMOTE
+
+      # A self-hosted runner keeps its home directory between jobs; the deploy key must not.
+      - name: Remove the deploy key from the runner
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/britelink_deploy" "$HOME/.ssh/britelink_deploy.pub" "$HOME/.ssh/known_hosts"
 
       - name: Rollback instructions on failure
         if: ${{ failure() }}
