@@ -14,6 +14,7 @@ import {
   planDayMove,
   printableDays,
   unfinishedLessons,
+  weeklyStory,
   WEEKDAY_LABELS,
   withDayOff,
   withoutDayOff,
@@ -24,6 +25,7 @@ import { AuthenticatedServicePrivacy } from "./AuthenticatedServicePrivacy.jsx";
 import { EducatorWorkspace } from "./EducatorWorkspace.jsx";
 import { MessageAttachments } from "./MessageAttachments.jsx";
 import { LearningCaptures } from "./LearningCaptures.jsx";
+import { WeeklyStory } from "./WeeklyStory.jsx";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
@@ -532,6 +534,7 @@ function ParentWorkspace({
   const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
   // Learning outside the plan (#44), lifted here so the weekly summary can include it.
   const [captures, setCaptures] = useState([]);
+  const [storyOffset, setStoryOffset] = useState(0);
   const [printScope, setPrintScope] = useState(null);
   // Render the sheet first, then open the print dialog; drop it once printing is done.
   useEffect(() => {
@@ -1573,6 +1576,21 @@ function ParentWorkspace({
             </>
           ) : null}
         </section>
+        {selectedLearner && plan ? (
+          <WeeklyStory
+            learnerName={selectedLearner.preferred_name}
+            offsetWeeks={storyOffset}
+            onOffset={setStoryOffset}
+            story={weeklyStory({
+              weeks,
+              activities: planState.activities,
+              captures,
+              schedule,
+              today,
+              offsetWeeks: storyOffset,
+            })}
+          />
+        ) : null}
         {selectedLearner ? (
           <LearningCaptures
             key={selectedLearner.id}

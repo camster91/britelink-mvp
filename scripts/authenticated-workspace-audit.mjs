@@ -112,6 +112,16 @@ try{
   await captureCard.getByRole("button",{name:"Save to the record"}).click();
   await captureCard.getByText("Saved to Maya’s learning record.").waitFor();
   await captureCard.getByRole("list",{name:"Recent learning notes"}).getByText("Pond walk: counted frogs and sketched cattails.").waitFor();
+  // Weekly story (#43): today's note shows up in "This week", told plainly; the week can be paged.
+  const story=page.locator("section.weekly-story");
+  await story.getByText("1 note from outside the plan, across Science.").waitFor();
+  await story.getByText("Pond walk: counted frogs and sketched cattails.",{exact:false}).waitFor();
+  if(!await story.getByRole("button",{name:"Next week"}).isDisabled())throw new Error("the story must not page into the future");
+  await story.getByRole("button",{name:"Previous week"}).click();
+  await story.getByRole("heading",{name:"Last week"}).waitFor();
+  await story.getByText("Nothing recorded for this week yet.").waitFor();
+  await story.getByRole("button",{name:"Next week"}).click();
+  await story.getByRole("heading",{name:"This week"}).waitFor();
   await captureCard.getByRole("button",{name:/Remove the note from/}).click();
   await captureCard.getByText("Removed from the learning record.").waitFor();
   await captureCard.getByText("Nothing recorded yet.").waitFor();

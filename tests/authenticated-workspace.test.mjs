@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove, printableDays } from "../src/authenticated-workspace.js";
+import { activityMap, caseForLearner, dayMovedTo, latestPublishedPlan, lessonFit, lessonFitSummary, localDateString, messageIsUnread, planDayDates, withDayOff, withoutDayOff, nextLessonForToday, orderedPlanWeeks, planDayMove, printableDays, weekBounds, weeklyStory } from "../src/authenticated-workspace.js";
 
 test("latest plan selection ignores drafts and chooses the newest published version",()=>{
   const plan=latestPublishedPlan([{id:"draft",version:4,status:"draft"},{id:"v1",version:1,status:"published"},{id:"v3",version:3,status:"published"}]);
@@ -131,4 +131,23 @@ test("a printed week or day carries dates, steps, and what is already done",()=>
   assert.deepEqual([week[0].lessons[0].done,week[0].lessons[0].fit,week[1].lessons[0].movedTo,week[1].lessons[0].materials],["completed","About 15 min","2026-10-09",[]]);
   assert.deepEqual(printableDays(weeks,{scope:"day",weekIndex:0,dayIndex:1}).map(day=>day.id),["d2"]);
   assert.deepEqual(printableDays(weeks,{scope:"week",weekIndex:5}),[]);
+});
+
+test("the weekly story counts what happened in the family's Monday-to-Sunday week, without judgement",()=>{
+  assert.deepEqual(weekBounds("2026-10-07"),{start:"2026-10-05",end:"2026-10-11"},"a Wednesday belongs to the week starting Monday");
+  assert.deepEqual(weekBounds("2026-10-11"),{start:"2026-10-05",end:"2026-10-11"},"Sunday closes the week");
+  assert.deepEqual(weekBounds("2026-10-07",-1),{start:"2026-09-28",end:"2026-10-04"});
+  const weeks=[{plan_days:[{lessons:[{id:"a",title:"Count",subject:"Math"},{id:"b",title:"Read",subject:"Language"},{id:"c",title:"Old",subject:"Arts"}]}]}];
+  const local=(iso)=>iso.slice(0,10);
+  const story=weeklyStory({weeks,today:"2026-10-07",toLocalDate:local,
+    activities:[{lesson_id:"a",status:"completed",updated_at:"2026-10-06T15:00:00Z"},{lesson_id:"c",status:"completed",updated_at:"2026-09-30T15:00:00Z"},{lesson_id:"b",status:"not_started",scheduled_for:"2026-10-09",updated_at:"2026-10-06T15:00:00Z"}],
+    captures:[{captured_on:"2026-10-05",subjects:["Science","Math"]},{captured_on:"2026-10-12",subjects:["Arts"]}],
+    schedule:{days_off:["2026-10-08","2026-09-01"]}});
+  assert.deepEqual(story.completed.map(item=>item.id),["a"],"only work finished this week");
+  assert.equal(story.notes.length,1);
+  assert.deepEqual(story.subjects,["Math","Science"]);
+  assert.deepEqual(story.daysOff,["2026-10-08"]);
+  assert.equal(story.moved,1);
+  assert.equal(story.isEmpty,false);
+  assert.equal(weeklyStory({weeks,today:"2026-10-07",offsetWeeks:3,toLocalDate:local}).isEmpty,true);
 });

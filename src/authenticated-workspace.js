@@ -204,3 +204,28 @@ export function printableDays(weeks = [], { scope = "week", weekIndex = 0, dayIn
     })),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// Weekly story (#43): evidence that learning happened, without school-style judgement -- no
+// percentages, no red/green, no "behind". Weeks run Monday to Sunday in the family's own calendar.
+export function weekBounds(date, offsetWeeks = 0) {
+  const ms = toUtc(date) + offsetWeeks * 7 * DAY_MS;
+  const start = ms - (isoWeekday(ms) - 1) * DAY_MS;
+  return { start: fromUtc(start), end: fromUtc(start + 6 * DAY_MS) };
+}
+
+export function weeklyStory({ weeks = [], activities = [], captures = [], schedule = null, today, offsetWeeks = 0, toLocalDate = (iso) => localDateString(new Date(iso)) } = {}) {
+  const { start, end } = weekBounds(today, offsetWeeks);
+  const inWeek = (date) => Boolean(date) && date >= start && date <= end;
+  const lessons = new Map(weeks.flatMap((week) => (week.plan_days ?? []).flatMap((day) => day.lessons ?? [])).map((lesson) => [lesson.id, lesson]));
+  const completed = activities
+    .filter((activity) => activity.status === "completed" && inWeek(toLocalDate(activity.updated_at)))
+    .map((activity) => lessons.get(activity.lesson_id))
+    .filter(Boolean)
+    .map((lesson) => ({ id: lesson.id, title: lesson.title, subject: lesson.subject }));
+  const notes = captures.filter((capture) => inWeek(capture.captured_on));
+  const subjects = [...new Set([...completed.map((item) => item.subject), ...notes.flatMap((item) => item.subjects ?? [])])].sort();
+  const daysOff = (schedule?.days_off ?? []).filter(inWeek);
+  const moved = activities.filter((activity) => activity.scheduled_for && inWeek(activity.scheduled_for) && activity.status !== "completed" && activity.status !== "skipped").length;
+  return { start, end, completed, notes, subjects, daysOff, moved, isEmpty: !completed.length && !notes.length };
+}
