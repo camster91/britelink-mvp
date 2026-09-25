@@ -161,16 +161,27 @@ try{
   await story.getByText("Nothing recorded for this week yet.").waitFor();
   await story.getByRole("button",{name:"Next week"}).click();
   await story.getByRole("heading",{name:"This week"}).waitFor();
+  // Learning report (#50): count, a real CSV download with the disclaimer, and a printed table.
+  await story.getByText("Make a learning report").click();
+  await story.getByText("1 entry across Science.").waitFor();
+  const [reportDownload]=await Promise.all([page.waitForEvent("download"),story.getByRole("button",{name:"Download CSV"}).click()]);
+  const csv=await (await reportDownload.createReadStream()).toArray().then(chunks=>Buffer.concat(chunks).toString("utf8"));
+  if(!csv.includes("not an Ontario credit, transcript, or OSSD record")||!csv.includes("Pond walk: counted frogs and sketched cattails.")||!/\.csv$/.test(reportDownload.suggestedFilename()))throw new Error(`learning report CSV is wrong: ${reportDownload.suggestedFilename()} ${csv.slice(0,200)}`);
+  await story.getByRole("button",{name:"Print report"}).click();
+  await page.locator("body > section.print-sheet").getByRole("heading",{name:/Maya’s learning,/,includeHidden:true}).waitFor({state:"attached"});
+  await page.evaluate(()=>window.dispatchEvent(new Event("afterprint")));
+  await page.locator("body > section.print-sheet").waitFor({state:"detached"});
   await captureCard.getByRole("button",{name:/Remove the note from/}).click();
   await captureCard.getByText("Removed from the learning record.").waitFor();
   await captureCard.getByText("Nothing recorded yet.").waitFor();
   const captureState=await page.evaluate(()=>globalThis.qaState.captures);
   if(captureState?.[0]?.kind!=="outing"||JSON.stringify(captureState?.[0]?.subjects)!=='["Science"]'||!captureState?.[0]?.removed_at)throw new Error(`capture did not round-trip: ${JSON.stringify(captureState)}`);
   // Printable week and day (#48): a paper sheet in <body>, the only thing visible in print media.
+  const printsBefore=await page.evaluate(()=>globalThis.qaPrintCalls);
   await page.getByRole("button",{name:"Print this week"}).click();
   const sheet=page.locator("body > section.print-sheet");
   await sheet.getByRole("heading",{name:"Maya’s week",includeHidden:true}).waitFor({state:"attached"});
-  if(await page.evaluate(()=>globalThis.qaPrintCalls)!==1)throw new Error("Print this week did not open the print dialog once");
+  if(await page.evaluate(()=>globalThis.qaPrintCalls)!==printsBefore+1)throw new Error("Print this week did not open the print dialog once");
   for(const title of ["Build a sound map","Count a collection"])if(!(await sheet.textContent()).includes(title))throw new Error(`printed week is missing ${title}`);
   await page.emulateMedia({media:"print"});
   if(await page.locator("#root").isVisible()||!await sheet.isVisible())throw new Error("print media must show only the sheet");

@@ -29,6 +29,7 @@ import { MessageAttachments } from "./MessageAttachments.jsx";
 import { LearningCaptures } from "./LearningCaptures.jsx";
 import { WeeklyStory } from "./WeeklyStory.jsx";
 import { StudentView } from "./StudentView.jsx";
+import { LearningReport } from "./LearningReport.jsx";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
@@ -1708,6 +1709,15 @@ function ParentWorkspace({
               today,
               offsetWeeks: storyOffset,
             })}
+            report={
+              <LearningReport
+                learnerName={selectedLearner.preferred_name}
+                weeks={weeks}
+                activities={planState.activities}
+                captures={captures}
+                today={today}
+              />
+            }
           />
         ) : null}
         {selectedLearner ? (

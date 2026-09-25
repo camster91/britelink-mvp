@@ -6,7 +6,7 @@ const list = (items) =>
 
 // The weekly story (#43): what happened this week, told plainly. Evidence without judgement --
 // no percentages, no red/green, no "behind" -- per BUILD-PRIORITIES' "never use anxiety as retention".
-export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset }) {
+export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, report = null }) {
   const headingId = useId();
   const title =
     offsetWeeks === 0 ? "This week" : offsetWeeks === -1 ? "Last week" : `Week of ${story.start}`;
@@ -84,6 +84,7 @@ export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset }) {
             .join(" ")}
         </p>
       ) : null}
+      {report}
     </section>
   );
 }
