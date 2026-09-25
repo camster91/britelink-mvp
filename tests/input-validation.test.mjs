@@ -109,3 +109,15 @@ test("a learning capture is bounded to known kinds and subjects, with a required
   assert.throws(() => validateLearningCapture({ ...base, note: "x".repeat(1001) }), /What happened/);
   assert.throws(() => validateLearningCapture({ ...base, capturedOn: "yesterday" }), /Date/);
 });
+
+test("weekly notes and shared activities are validated before any request", async () => {
+  const { validateWeeklyNote, validateSharedActivity } = await import("../src/input-validation.js");
+  assert.equal(validateWeeklyNote({ householdId: "h", learnerId: "l", weekStart: "2026-09-21", note: " ok " }).note, "ok");
+  assert.throws(() => validateWeeklyNote({ householdId: "h", learnerId: "l", weekStart: "2026-09-20", note: "Sunday" }), /Monday/);
+  assert.throws(() => validateWeeklyNote({ householdId: "h", learnerId: "l", weekStart: "2026-09-21", note: "x".repeat(1001) }), /Note for the week/);
+  const valid = validateSharedActivity({ householdId: "h", title: "Bake", subjects: ["Math"], outcomes: [{ learnerId: "a", outcome: "Measure" }, { learnerId: "b", outcome: "Stir" }] });
+  assert.deepEqual([valid.date, valid.description, valid.outcomes.length], [null, null, 2]);
+  assert.throws(() => validateSharedActivity({ householdId: "h", title: "Bake", subjects: ["Cooking"], outcomes: [{ learnerId: "a", outcome: "x" }, { learnerId: "b", outcome: "y" }] }), /valid subjects/);
+  assert.throws(() => validateSharedActivity({ householdId: "h", title: "Bake", outcomes: [{ learnerId: "a", outcome: "x" }, { learnerId: "b", outcome: " " }] }), /Expected outcome/);
+  assert.throws(() => validateSharedActivity({ householdId: "h", title: " ", outcomes: [{ learnerId: "a", outcome: "x" }, { learnerId: "b", outcome: "y" }] }), /Activity title/);
+});

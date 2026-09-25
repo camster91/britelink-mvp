@@ -6,10 +6,11 @@ const list = (items) =>
 
 // The weekly story (#43): what happened this week, told plainly. Evidence without judgement --
 // no percentages, no red/green, no "behind" -- per BUILD-PRIORITIES' "never use anxiety as retention".
-export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, report = null }) {
+export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, notes = [], report = null }) {
   const headingId = useId();
   const title =
     offsetWeeks === 0 ? "This week" : offsetWeeks === -1 ? "Last week" : `Week of ${story.start}`;
+  const educatorNote = notes.find((item) => item.week_start === story.start)?.note ?? "";
   const parts = [];
   if (story.completed.length) parts.push(`${plural(story.completed.length, "lesson")} done`);
   if (story.notes.length) parts.push(`${plural(story.notes.length, "note")} from outside the plan`);
@@ -50,6 +51,12 @@ export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, report 
           {story.subjects.length ? `, across ${list(story.subjects)}.` : "."}
         </p>
       )}
+      {educatorNote ? (
+        <blockquote className="weekly-educator-note">
+          <h3>A note from your educator</h3>
+          <p>{educatorNote}</p>
+        </blockquote>
+      ) : null}
       {story.completed.length ? (
         <>
           <h3>Lessons done</h3>

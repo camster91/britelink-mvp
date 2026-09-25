@@ -46,6 +46,17 @@
 | Supabase's image grants ALL on every public table and function to `anon` and `authenticated` by default; the migrations only revoked from `public`, which leaves those direct grants. On a real project that exposed `admin_list_pending_scan_attachments` (lists every household's pending attachments) and `admin_reconcile_attachment_objects` (rewrites any household's observed objects) to the anon key, gave `authenticated` insert/update/delete on every table despite 014, and left the hosted D2 probe `insert.case_messages` inconclusive (the rate-limit trigger answered P0001 before RLS) | High (security) | Fixed in 042: anon holds nothing in public, authenticated keeps SELECT plus 014's two allowlisted write grants, service-only functions are revoked from clients, and the defaults are closed for future migrations. The full-chain test now applies Supabase's real default grants, so this class cannot regress unnoticed. |
 | Migration 034 rebuilt `submit_guardian_intake` (to advance the case) and silently dropped every check 004 made on the planning context: allowed keys, required fields, subject/device/budget options, length limits, and the soft-deleted-learner check. Since 034 the RPC stored any JSON as a child's profile, e.g. a diagnosis, IEP text, or a 100 kB blob, contrary to the no-health-data rule; the browser form was the only guard | High (privacy) | Fixed in 045: 004's checks restored around 034's case advance, guardian-only again, plus the optional `planningStructure` key (#46). Safe to apply to production on its own: signature unchanged and the new key optional, so the live client keeps working. |
 
+| `icsText` in `src/calendar-export.js` wrote `"\;"`, which JavaScript reads as a plain `;`, so semicolons in lesson titles were never escaped (RFC 5545 3.3.11). Its test had the same typo, so it passed anyway | Low (a title with ";" could break the calendar entry) | Fixed. The test now asserts `\;`, and the SQL feed (050) is checked byte-for-byte against this function |
+
+## Built after PR #58 (weekly note, shared activities, calendar feed)
+
+- **048 `weekly_notes`:** the educator's optional note for a learner's week (#43). Educators and admins write it through `staff_set_weekly_note` / `staff_clear_weekly_note`, and it shows inside that week's story.
+- **049 `shared_activities` + `shared_activity_learners`:** one activity for 2–12 children, each with their own outcome (#45). Composite foreign keys make a cross-household row impossible even for a definer bug; this is tested by a superuser insert. Guardians move an activity for everyone or split one child off, and mark completion per child.
+- **050 `calendar_feeds` + `calendar_feed(token)`:** a revocable subscription link (#47). Only a SHA-256 of the token is stored. Rotation, revocation and consent withdrawal each close the feed. This is the one anon-executable definer function, allowlisted in the full-chain test. Its events are byte-identical to the family's own `.ics` download (a parity test with a negative control). nginx serves `/feed/<token>.ics`, tested in a real nginx against a fake PostgREST (`tests/nginx-calendar-feed.test.mjs`).
+- **Hosted verifier corrected:** the D1 sweep listed three tables it could never pass on: two have no `household_id`, and none is client-readable. They are now "sealed" tables that must refuse or return nothing (31 + 3 tables, 134 checks), and a catalog test keeps the lists honest. D2 gained the 12 RPCs from 043–050 (36 probes).
+- **051 beta funnel (#53, #13):** `lesson_activities.first_completed_at` is stamped by a trigger on the first completion and never cleared or client-set. `service_beta_funnel()` (service role only) returns milestone timestamps per household, with no names or content. `npm run report:beta-funnel` prints the success measure: families that reached their first completed lesson without messaging first.
+- **CI runner:** chosen by the `CI_RUNS_ON` variable (#33). The support runbook and the "plan is wrong" tabletop exercise are drafted in `docs/SUPPORT_RUNBOOK.md` (#55).
+
 ## Verified clean
 
 - Responsive: no horizontal overflow and no undersized targets at 375 / 430 / 768 / 1024 / 1440px across all four demo views.
@@ -57,7 +68,7 @@
 
 | Blocker | Why it blocks | Exact action needed | Who | Then |
 |---|---|---|---|---|
-| GitHub Actions runner never assigned (run 35631840165, queued 20+ min, 0 jobs) | The deploy workflow cannot start; deployments must be run directly on the VPS | Clear the runner queue / investigate the account-level Actions issue in `ashbi-local-ci/docs/CI_AUDIT_2026-09-03.md` | GitHub/Cameron | Deploy via the workflow again |
+| GitHub Actions runner never assigned (run 35631840165, queued 20+ min, 0 jobs) | The deploy workflow cannot start; deployments must be run directly on the VPS | Choose a non-production runner host and set the `CI_RUNS_ON` repository variable. Every job reads it, so no code change is needed: steps in `docs/CI_RUNNER.md` | Cameron | Deploy via the workflow again |
 | Hosted Supabase project | Isolation, durability, journey gates need real auth + hosting | Approve and provision staging | Cameron | Run verifier, close gate |
 | Counsel approval | Real family data cannot be collected | Send packet, receive memo | Cameron + counsel | Set notice version |
 | Credentialed educator | Plans cannot be delivered | Engage reviewer | Cameron | Quality gate |
@@ -72,7 +83,7 @@
 ## Future improvements (not required for completion)
 
 - Flexible week, day-aware next action, weekly progress narrative (`BUILD-PRIORITIES.md` P0/P1)
-- Calendar sync, printing, reports (P2)
+- ~~Calendar sync, printing, reports (P2)~~: built. Printing and reports shipped in PR #58. The live calendar feed is migration 050 plus the nginx `/feed/` route. Email reminders and the digest still need SMTP (#38) and counsel (#10).
 - Mutation-denial matrix build-out
 
 ## Test count

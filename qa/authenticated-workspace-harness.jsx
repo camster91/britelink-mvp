@@ -2,9 +2,14 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { Workspace } from "/src/AuthenticatedApp.jsx";
 import "/src/styles.css";
+import { localDateString, weekBounds } from "/src/authenticated-workspace.js";
 
 const now="2026-08-28T15:00:00Z";
 const qaState={calls:[],activities:[],profiles:[],consents:[],cases:[{id:"case-a",learner_id:"learner-a",package_code:"complete",status:"delivered"}],deliveries:[{id:"delivery-a",case_id:"case-a",plan_id:"plan-a",plan_version:2,channel:"secure_portal",status:"sent",attempt_count:1,sent_at:now,acknowledged_at:null,created_at:now}],revisions:[],privacyRequests:[],messages:[{id:"message-educator",sender_user_id:"educator-a",kind:"general",body:"I reviewed the reading activity and added a phonics prompt.",created_at:now,case_message_reads:[]}]};
+const qaToday=localDateString();
+qaState.weeklyNotes=[{id:"note-a",learner_id:"learner-a",week_start:weekBounds(qaToday).start,note:"Maya explained her sound map to me with real confidence. Keep the five-word warm-up.",updated_at:now}];
+qaState.sharedActivities=[{id:"shared-a",title:"Pond study walk",description:"Walk to the pond and look closely at what grows there.",subjects:["Science"],scheduled_for:qaToday,created_at:now,shared_activity_learners:[{learner_id:"learner-a",outcome:"Sketch and label three plants",scheduled_for:null,completed_at:null},{learner_id:"learner-b",outcome:"Point out five green things",scheduled_for:null,completed_at:null}]}];
+qaState.feed=null;
 globalThis.qaState=qaState;
 function failPrivacyRefresh(){if((globalThis.qaFailPrivacyReads??0)>0){globalThis.qaFailPrivacyReads-=1;throw new Error("Synthetic privacy refresh outage")}}
 
@@ -33,6 +38,13 @@ const repository={
   async requestFreshSignIn(email,redirectTo){qaState.calls.push(["requestFreshSignIn",email,redirectTo]);return{}},
   async listPrivacyRequests(householdId){qaState.calls.push(["listPrivacyRequests",householdId]);failPrivacyRefresh();return qaState.privacyRequests},
   async requestDeletion(input){qaState.calls.push(["requestDeletion",input.householdId]);const existing=qaState.privacyRequests.find(item=>["pending","verified","scheduled"].includes(item.status));if(existing)return{request_id:existing.id,request_status:existing.status,created_at:existing.created_at};const item={id:"privacy-a",kind:"deletion",status:"pending",reason:input.reason,created_at:now};qaState.privacyRequests.push(item);return{request_id:item.id,request_status:item.status,created_at:item.created_at}},
+  async listWeeklyNotes(householdId,learnerId){qaState.calls.push(["listWeeklyNotes",householdId,learnerId]);return qaState.weeklyNotes.filter(item=>item.learner_id===learnerId)},
+  async listSharedActivities(householdId){qaState.calls.push(["listSharedActivities",householdId]);return JSON.parse(JSON.stringify(qaState.sharedActivities))},
+  async setSharedActivityDone(input){qaState.calls.push(["setSharedActivityDone",input.householdId,input.activityId,input.learnerId,input.done]);const row=qaState.sharedActivities.find(item=>item.id===input.activityId).shared_activity_learners.find(item=>item.learner_id===input.learnerId);row.completed_at=input.done?now:null;return row.completed_at},
+  async moveSharedActivity(input){qaState.calls.push(["moveSharedActivity",input.householdId,input.activityId,input.date,input.learnerId]);const activity=qaState.sharedActivities.find(item=>item.id===input.activityId);if(input.learnerId){activity.shared_activity_learners.find(item=>item.learner_id===input.learnerId).scheduled_for=input.date}else{activity.scheduled_for=input.date;activity.shared_activity_learners.forEach(item=>{item.scheduled_for=null})}return{activity_id:activity.id}},
+  async getCalendarFeed(householdId,learnerId){qaState.calls.push(["getCalendarFeed",householdId,learnerId]);return qaState.feed},
+  async createCalendarFeed(input){qaState.calls.push(["createCalendarFeed",input.householdId,input.learnerId,input.includeTitles]);qaState.feed={id:"feed-a",include_titles:input.includeTitles,created_at:now};return{feed_id:"feed-a",token:"c".repeat(64),created_at:now}},
+  async revokeCalendarFeed(input){qaState.calls.push(["revokeCalendarFeed",input.householdId,input.learnerId]);qaState.feed=null;return 1},
   async signOut(){qaState.calls.push(["signOut"])}
 };
 

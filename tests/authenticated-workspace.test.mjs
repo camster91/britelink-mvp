@@ -193,3 +193,24 @@ test("the family day shows each child's list and the subjects they could share",
   assert.equal(day.byLearner.length,3);
   assert.deepEqual(familyDay([{learner:{preferred_name:"Solo"},lessons:[{subject:"Math"}]}]).shared,[]);
 });
+
+test("shared activities show each child's own outcome and date; finished ones are only counted", async () => {
+  const { sharedActivitiesView, recentMondays } = await import("../src/authenticated-workspace.js");
+  const learners = [{ id: "l1", preferred_name: "Zoe" }, { id: "l2", preferred_name: "Ari" }];
+  const view = sharedActivitiesView([
+    { id: "late", title: "Museum", scheduled_for: null, shared_activity_learners: [{ learner_id: "l1", outcome: "Sketch", scheduled_for: null, completed_at: null }] },
+    { id: "soon", title: "Pond", scheduled_for: "2026-10-01", subjects: ["Science"], shared_activity_learners: [
+      { learner_id: "l1", outcome: "Label plants", scheduled_for: null, completed_at: "2026-10-01T10:00:00Z" },
+      { learner_id: "l2", outcome: "Find green", scheduled_for: "2026-10-03", completed_at: null },
+    ] },
+    { id: "done", title: "Bake", scheduled_for: "2026-09-01", shared_activity_learners: [{ learner_id: "l1", outcome: "Measure", completed_at: "2026-09-01T10:00:00Z" }] },
+  ], learners);
+  assert.deepEqual(view.open.map((item) => item.id), ["soon", "late"], "dated first, undated last");
+  assert.equal(view.doneCount, 1);
+  assert.deepEqual(view.open[0].learners.map((row) => [row.name, row.date, row.split, row.done]), [
+    ["Ari", "2026-10-03", true, false],
+    ["Zoe", "2026-10-01", false, true],
+  ]);
+  assert.deepEqual(sharedActivitiesView([], learners), { open: [], doneCount: 0 });
+  assert.deepEqual(recentMondays("2026-09-24", 3), ["2026-09-21", "2026-09-14", "2026-09-07"]);
+});

@@ -31,6 +31,10 @@
 # restricts substitution to variables beginning with BRITELINK_, which is why no other $name in
 # this file needs escaping.
 
+# Calendar subscription feed (#47): one bucket per feed URL, so a misbehaving calendar client polling
+# one link cannot hammer the API. Guessing a link is not the threat -- tokens carry 244 random bits.
+limit_req_zone $uri zone=calendar_feed:2m rate=20r/m;
+
 server {
     listen 80;
     server_name localhost;
@@ -63,6 +67,58 @@ server {
 
     location / {
         try_files $uri $uri/ /index.html;
+    }
+
+    # Calendar subscription feed (#47, migration 050). Calendar apps cannot sign in, so this proxies
+    # /feed/<64-hex token>.ics to the one anon-executable RPC, public.calendar_feed(token), asking
+    # PostgREST for text/plain and answering text/calendar. Anything the RPC refuses (revoked,
+    # rotated, consent withdrawn, unknown) becomes a plain 404 with no detail.
+    #
+    # The upstream is a variable so an unconfigured (demo) build still starts: BRITELINK_API_ORIGIN
+    # is empty there and the route answers 404. A variable proxy_pass needs a resolver; 127.0.0.11
+    # is Docker's embedded DNS, which every compose container has.
+    #
+    # BRITELINK_API_ANON_KEY is the public anon key the bundle already ships to every browser; the
+    # Dockerfile derives it from the same build arg and keeps it defined (empty) for the demo.
+    #
+    # add_header here replaces the server-level headers for this location (nginx does not merge
+    # them), so the ones that matter for a non-HTML response are repeated. access_log is off because
+    # the path is the credential.
+    location ~ "^/feed/(?<feed_token>[0-9a-f]{64})\.ics$" {
+        access_log off;
+        limit_req zone=calendar_feed burst=10 nodelay;
+        limit_req_status 429;
+        set $feed_api "${BRITELINK_API_ORIGIN}";
+        if ($feed_api = "") {
+            return 404;
+        }
+        resolver 127.0.0.11 valid=300s ipv6=off;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header apikey "${BRITELINK_API_ANON_KEY}";
+        proxy_set_header Authorization "Bearer ${BRITELINK_API_ANON_KEY}";
+        proxy_set_header Accept "text/plain";
+        proxy_set_header Cookie "";
+        proxy_pass_request_body off;
+        proxy_intercept_errors on;
+        error_page 400 401 403 404 406 = @calendar_feed_gone;
+        proxy_hide_header Content-Type;
+        proxy_hide_header Set-Cookie;
+        add_header Content-Type "text/calendar; charset=utf-8" always;
+        add_header Cache-Control "private, max-age=900" always;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Referrer-Policy no-referrer always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        proxy_pass $feed_api/rest/v1/rpc/calendar_feed?token=$feed_token;
+    }
+
+    location @calendar_feed_gone {
+        access_log off;
+        add_header X-Content-Type-Options nosniff always;
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        return 404;
     }
 
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|otf)$ {

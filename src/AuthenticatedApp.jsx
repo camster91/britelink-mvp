@@ -32,6 +32,8 @@ import { WeeklyStory } from "./WeeklyStory.jsx";
 import { StudentView } from "./StudentView.jsx";
 import { LearningReport } from "./LearningReport.jsx";
 import { FamilyDay } from "./FamilyDay.jsx";
+import { SharedActivities } from "./SharedActivities.jsx";
+import { CalendarFeed } from "./CalendarFeed.jsx";
 import { planCalendarIcs } from "./calendar-export.js";
 import { downloadTextFile } from "./browser-download.js";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
@@ -560,6 +562,8 @@ function ParentWorkspace({
   const [pauseOpen, setPauseOpen] = useState(false);
   // Learning outside the plan (#44), lifted here so the weekly summary can include it.
   const [captures, setCaptures] = useState([]);
+  // The educator's optional note for each week (048), shown inside the weekly story.
+  const [weeklyNotes, setWeeklyNotes] = useState([]);
   const [storyOffset, setStoryOffset] = useState(0);
   const [studentView, setStudentView] = useState(false);
   const [printScope, setPrintScope] = useState(null);
@@ -602,6 +606,19 @@ function ParentWorkspace({
   const selectedLearner =
     learners.find((item) => item.id === learnerId) ?? learners[0];
   const selectedCase = caseForLearner(cases, selectedLearner?.id);
+  useEffect(() => {
+    let current = true;
+    setWeeklyNotes([]);
+    if (!selectedLearner || !repository.listWeeklyNotes) return undefined;
+    // Optional context: if it cannot load, the story still renders without it.
+    repository
+      .listWeeklyNotes(household.household_id, selectedLearner.id)
+      .then((items) => current && setWeeklyNotes(items ?? []))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [household.household_id, repository, selectedLearner?.id]);
 
   const loadPlan = useCallback(async () => {
     if (!selectedLearner) return;
@@ -1175,6 +1192,14 @@ function ParentWorkspace({
           learners={learners}
           today={localDateString()}
         />
+        {repository.listSharedActivities ? (
+          <SharedActivities
+            repository={repository}
+            householdId={household.household_id}
+            learners={learners}
+            today={localDateString()}
+          />
+        ) : null}
       </section>
       <AuthenticatedIntake
         householdId={household.household_id}
@@ -1335,6 +1360,14 @@ function ParentWorkspace({
                 onSave={saveCalendar}
                 onExport={exportCalendar}
               />
+              {schedule?.start_date && repository.getCalendarFeed ? (
+                <CalendarFeed
+                  key={selectedLearner.id}
+                  repository={repository}
+                  householdId={household.household_id}
+                  learner={selectedLearner}
+                />
+              ) : null}
               <details
                 className="pause-subjects"
                 open={pauseOpen}
@@ -1757,6 +1790,7 @@ function ParentWorkspace({
         {selectedLearner && plan ? (
           <WeeklyStory
             learnerName={selectedLearner.preferred_name}
+            notes={weeklyNotes}
             offsetWeeks={storyOffset}
             onOffset={setStoryOffset}
             story={weeklyStory({

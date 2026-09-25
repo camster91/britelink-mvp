@@ -24,20 +24,17 @@ const PRIVATE_TABLES = [
   "deliveries",
   "revision_requests",
   "privacy_requests",
-  // Added 2026-09-21. These three carry household-scoped data and had RLS enabled
-  // in the database, but were not in this sweep -- so the isolation gate did not
-  // actually prove cross-household denial on them. A live count of RLS-enabled
-  // tables in public returned 31 against this list's 25, and these were three of
-  // the six missing. The other three (households, package_entitlements,
-  // retention_execution_controls, retention_execution_ledger) are deliberately
-  // excluded below.
-  "attachment_object_observations",
-  "attachment_object_deletions",
-  "retention_execution_ledger",
   // Added with migration 043: the family's calendar for a plan.
   "plan_schedules",
   // Added with migration 046: learning captured outside the plan.
   "learning_captures",
+  // Added with migration 048: the educator's optional weekly note.
+  "weekly_notes",
+  // Added with migration 049: shared activities and each learner's outcome.
+  "shared_activities",
+  "shared_activity_learners",
+  // Added with migration 050: calendar feeds (guardian/admin-readable; never the token).
+  "calendar_feeds",
 ];
 
 // Tables with RLS enabled that are intentionally NOT swept here, with the reason.
@@ -50,6 +47,19 @@ const PRIVATE_TABLES = [
 //   memberships                -- swept (above).
 //   package_entitlements       -- no household_id column; scoped by package code.
 //   retention_execution_controls -- a singleton boolean gate, no tenant data.
+// Tables that carry household data but have NO client read path at all: no grant, or RLS with
+// no policy. They were added to PRIVATE_TABLES on 2026-09-21, where the sweep could never have
+// passed -- it reads `household_id` and requires an own-household sentinel, and two of these have
+// no household_id column (they keep an opaque household_ref) while none of them returns a row to
+// any client. A sealed table is probed for exactly what it promises instead: every client read,
+// own household or not, returns nothing or is refused. Any row at all fails the gate.
+// tests/postgres-rls-full-chain.test.mjs holds both lists to the catalog.
+export const SEALED_TABLES = [
+  "attachment_object_observations", // written by the service-role reconciler (023); RLS, no policy
+  "attachment_object_deletions", // service-role deletion queue (027); no client grant
+  "retention_execution_ledger", // executor ledger (022); RLS, no policy; opaque household_ref
+];
+
 const INTENTIONALLY_UNSWEPT = [
   "households",
   "package_entitlements",
@@ -92,7 +102,7 @@ function headers(apiKey, token) {
   return { apikey: apiKey, authorization: `Bearer ${token}` };
 }
 
-export { PRIVATE_TABLES };
+export { INTENTIONALLY_UNSWEPT, PRIVATE_TABLES };
 
 export async function verifyHostedIsolation({
   environment,
@@ -162,6 +172,31 @@ export async function verifyHostedIsolation({
     }
   }
 
+  // Sealed tables: nothing comes back to either actor. A refusal (401/403) and an empty result
+  // (RLS with no policy) both prove it; any other failure means the probe itself is broken.
+  for (const table of SEALED_TABLES) {
+    for (const [actor, token] of [
+      ["A", jwtA],
+      ["B", jwtB],
+    ]) {
+      const url = new URL(`/rest/v1/${table}`, origin);
+      url.searchParams.set("select", "*");
+      url.searchParams.set("limit", "1");
+      const result = await fetchImpl(url, {
+        headers: headers(key, token),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (result.status === 401 || result.status === 403) {
+        checks.push({ surface: `sealed:${table}`, actor, sealed: "refused" });
+        continue;
+      }
+      const rows = await json(result, `${table} sealed-table read for actor ${actor}`);
+      if (rows.length)
+        throw new Error(`${table} is meant to be sealed but returned rows to actor ${actor}`);
+      checks.push({ surface: `sealed:${table}`, actor, sealed: "empty" });
+    }
+  }
+
   for (const [actor, token, ownHousehold, foreignHousehold] of [
     ["A", jwtA, a, b],
     ["B", jwtB, b, a],
@@ -207,6 +242,7 @@ export async function verifyHostedIsolation({
   return {
     status: "passed",
     tableCount: PRIVATE_TABLES.length,
+    sealedTableCount: SEALED_TABLES.length,
     checkCount: checks.length,
     storageBucket: bucketName,
     checks,
@@ -519,6 +555,127 @@ export const MUTATION_RPC_CONTRACTS = [
       target_educator: ctx.educator.userId,
     }),
   },
+  // Family calendar, pause, learning captures (043, 046, 047).
+  {
+    id: "guardian.set_plan_schedule",
+    actor: "guardian",
+    requirement: "a guardian cannot set another household's plan calendar",
+    args: ["target_household", "target_plan", "schedule_start", "schedule_school_days", "schedule_days_off"],
+    values: (ctx) => ({
+      target_household: ctx.b,
+      target_plan: ctx.foreign.planId,
+      schedule_start: null,
+      schedule_school_days: [1, 2, 3, 4, 5],
+      schedule_days_off: [],
+    }),
+  },
+  {
+    id: "guardian.set_paused_subjects",
+    actor: "guardian",
+    requirement: "a guardian cannot pause subjects in another household's plan",
+    args: ["target_household", "target_plan", "subjects"],
+    values: (ctx) => ({ target_household: ctx.b, target_plan: ctx.foreign.planId, subjects: [] }),
+  },
+  {
+    id: "guardian.record_learning_capture",
+    actor: "guardian",
+    requirement: "a guardian cannot write a learning note into another household",
+    args: ["target_household", "target_learner", "capture_date", "capture_kind", "capture_subjects", "capture_note"],
+    values: (ctx) => ({
+      target_household: ctx.b,
+      target_learner: ctx.foreign.learnerId,
+      capture_date: new Date().toISOString().slice(0, 10),
+      capture_kind: "note",
+      capture_subjects: [],
+      capture_note: PROBE_NOTE,
+    }),
+  },
+  {
+    id: "guardian.remove_learning_capture",
+    actor: "guardian",
+    requirement: "a guardian cannot remove another household's learning note",
+    args: ["target_household", "target_capture"],
+    values: (ctx) => ({ target_household: ctx.b, target_capture: ctx.foreign.captureId }),
+  },
+  // Weekly note (048), shared activities (049), calendar feeds (050).
+  {
+    id: "educator.set_weekly_note",
+    actor: "educator",
+    requirement: "an educator cannot write a weekly note for another household's learner",
+    args: ["target_household", "target_learner", "target_week", "note_body"],
+    values: (ctx) => ({
+      target_household: ctx.b,
+      target_learner: ctx.foreign.learnerId,
+      target_week: "2026-09-07",
+      note_body: PROBE_NOTE,
+    }),
+  },
+  {
+    id: "educator.clear_weekly_note",
+    actor: "educator",
+    requirement: "an educator cannot remove another household's weekly note",
+    args: ["target_household", "target_learner", "target_week"],
+    values: (ctx) => ({ target_household: ctx.b, target_learner: ctx.foreign.learnerId, target_week: "2026-09-07" }),
+  },
+  {
+    id: "educator.create_shared_activity",
+    actor: "educator",
+    requirement: "an educator cannot create a shared activity in another household",
+    args: ["target_household", "activity_title", "activity_description", "activity_subjects", "activity_date", "learner_outcomes"],
+    values: (ctx) => ({
+      target_household: ctx.b,
+      activity_title: PROBE_NOTE,
+      activity_description: null,
+      activity_subjects: [],
+      activity_date: null,
+      learner_outcomes: [],
+    }),
+  },
+  {
+    id: "educator.remove_shared_activity",
+    actor: "educator",
+    requirement: "an educator cannot remove another household's shared activity",
+    args: ["target_household", "target_shared_activity"],
+    values: (ctx) => ({ target_household: ctx.b, target_shared_activity: ctx.foreign.sharedActivityId }),
+  },
+  {
+    id: "guardian.move_shared_activity",
+    actor: "guardian",
+    requirement: "a guardian cannot move another household's shared activity",
+    args: ["target_household", "target_shared_activity", "new_date", "target_learner"],
+    values: (ctx) => ({
+      target_household: ctx.b,
+      target_shared_activity: ctx.foreign.sharedActivityId,
+      new_date: null,
+      target_learner: ctx.foreign.learnerId,
+    }),
+  },
+  {
+    id: "guardian.set_shared_activity_done",
+    actor: "guardian",
+    requirement: "a guardian cannot mark another household's shared activity done",
+    args: ["target_household", "target_shared_activity", "target_learner", "done"],
+    values: (ctx) => ({
+      target_household: ctx.b,
+      target_shared_activity: ctx.foreign.sharedActivityId,
+      target_learner: ctx.foreign.learnerId,
+      done: true,
+    }),
+  },
+  {
+    id: "guardian.create_calendar_feed",
+    actor: "guardian",
+    requirement: "a guardian cannot open a calendar feed on another household's learner",
+    args: ["target_household", "target_learner", "include_titles"],
+    values: (ctx) => ({ target_household: ctx.b, target_learner: ctx.foreign.learnerId, include_titles: false }),
+  },
+  {
+    id: "guardian.revoke_calendar_feed",
+    actor: "guardian",
+    requirement: "a guardian cannot turn off another household's calendar feed",
+    args: ["target_household", "target_learner"],
+    values: (ctx) => ({ target_household: ctx.b, target_learner: ctx.foreign.learnerId }),
+  },
 ];
 
 // The RPC each contract calls. A contract's id is `actor.label` for reporting, and the label is
@@ -546,6 +703,18 @@ export const MUTATION_RPC_BY_ID = {
   "educator.message_case": "send_case_message",
   "educator.decide_revision": "staff_decide_revision",
   "admin.assign_case": "staff_assign_case",
+  "guardian.set_plan_schedule": "set_plan_schedule",
+  "guardian.set_paused_subjects": "set_paused_subjects",
+  "guardian.record_learning_capture": "record_learning_capture",
+  "guardian.remove_learning_capture": "remove_learning_capture",
+  "educator.set_weekly_note": "staff_set_weekly_note",
+  "educator.clear_weekly_note": "staff_clear_weekly_note",
+  "educator.create_shared_activity": "staff_create_shared_activity",
+  "educator.remove_shared_activity": "staff_remove_shared_activity",
+  "guardian.move_shared_activity": "move_shared_activity",
+  "guardian.set_shared_activity_done": "set_shared_activity_done",
+  "guardian.create_calendar_feed": "create_calendar_feed",
+  "guardian.revoke_calendar_feed": "revoke_calendar_feed",
 };
 
 const PROBE_NOTE = "isolation probe - no client content";
@@ -719,6 +888,8 @@ export async function verifyHostedMutationDenial({
     attachmentId: "attachment",
     consentId: "consent",
     learnerId: "learner",
+    captureId: "learning capture",
+    sharedActivityId: "shared activity",
   };
   for (const [field, label] of Object.entries(ids))
     householdId(foreign[field], `Household B ${label} ID`);

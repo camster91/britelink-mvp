@@ -5,6 +5,7 @@ import {
   MUTATION_RPC_BY_ID,
   MUTATION_RPC_CONTRACTS,
   PRIVATE_TABLES,
+  SEALED_TABLES,
   verifyHostedIsolation,
   verifyHostedMutationDenial,
 } from "../src/hosted-isolation.js";
@@ -35,6 +36,8 @@ test("hosted isolation checks every private table in both directions and the buc
       requests.push({ url: String(url), options });
       const actorA = options.headers.authorization === "Bearer jwt-a";
       const ownHousehold = actorA ? config.householdA : config.householdB;
+      if (!String(url).includes("/storage/") && !new URL(url).searchParams.get("household_id"))
+        return response([]);
       const target = String(url).includes("/storage/")
         ? JSON.parse(options.body).prefix.slice(0, -1)
         : new URL(url).searchParams.get("household_id").slice(3);
@@ -46,15 +49,20 @@ test("hosted isolation checks every private table in both directions and the buc
   // which let three RLS-enabled household tables sit outside the isolation proof while
   // this test stayed green. A count that cannot drift from its source is the fix.
   assert.equal(report.tableCount, PRIVATE_TABLES.length);
-  assert.equal(PRIVATE_TABLES.length, 30);
+  assert.equal(PRIVATE_TABLES.length, 31);
+  assert.equal(report.sealedTableCount, SEALED_TABLES.length);
+  assert.equal(SEALED_TABLES.length, 3);
   // checkCount = four table checks per table, plus four bucket checks (two actors x
   // own-prefix visible / foreign-prefix denied). The bucket contribution is additive and
   // was previously folded into a hardcoded 104, which hid the arithmetic.
   const TABLE_CHECKS_PER_TABLE = 4;
   const BUCKET_CHECKS = 4;
+  const SEALED_CHECKS_PER_TABLE = 2; // one read per actor
   assert.equal(
     report.checkCount,
-    PRIVATE_TABLES.length * TABLE_CHECKS_PER_TABLE + BUCKET_CHECKS,
+    PRIVATE_TABLES.length * TABLE_CHECKS_PER_TABLE +
+      SEALED_TABLES.length * SEALED_CHECKS_PER_TABLE +
+      BUCKET_CHECKS,
   );
   // The /rest/v1/ count is NOT purely the table sweep: the D2 mutation matrix adds
   // membership role-control reads, RPC probes, forged-attribution inserts, and one update.
@@ -111,6 +119,28 @@ test("hosted isolation fails closed on leaked rows and HTTP errors", async () =>
       }),
     /HTTP 401/,
   );
+});
+
+test("a sealed table passes only when refused or empty, and fails on any row or a broken probe", async () => {
+  const run = (sealedResponse) =>
+    verifyHostedIsolation({
+      ...config,
+      fetchImpl: async (url, options = {}) => {
+        const parsed = new URL(url);
+        if (!String(url).includes("/storage/") && !parsed.searchParams.get("household_id"))
+          return sealedResponse(parsed.pathname);
+        const own = options.headers.authorization === "Bearer jwt-a" ? config.householdA : config.householdB;
+        const target = String(url).includes("/storage/")
+          ? JSON.parse(options.body).prefix.slice(0, -1)
+          : parsed.searchParams.get("household_id").slice(3);
+        return response(target === own ? [{}] : []);
+      },
+    });
+  const refused = await run(() => response({ code: "42501" }, 403));
+  assert.ok(refused.checks.filter((item) => item.sealed === "refused").length === SEALED_TABLES.length * 2);
+  await assert.rejects(() => run(() => response([{ household_ref: "x" }])), /meant to be sealed but returned rows/);
+  // A 400 (e.g. a renamed table or column) is a broken probe, not a denial.
+  await assert.rejects(() => run(() => response({ code: "42703" }, 400)), /HTTP 400/);
 });
 
 test("hosted isolation rejects unsafe or ambiguous configuration before network calls", async () => {
@@ -187,6 +217,8 @@ const mutationConfig = {
     attachmentId: "40000000-0000-4000-8000-000000000008",
     consentId: "40000000-0000-4000-8000-000000000009",
     learnerId: "40000000-0000-4000-8000-00000000000b",
+    captureId: "40000000-0000-4000-8000-00000000000c",
+    sharedActivityId: "40000000-0000-4000-8000-00000000000d",
     objectPath:
       "20000000-0000-4000-8000-000000000002/40000000-0000-4000-8000-000000000005/40000000-0000-4000-8000-000000000008.pdf",
   },
@@ -219,6 +251,18 @@ const GATE_BY_RPC = {
   staff_record_delivery: "staff access required",
   staff_decide_revision: "staff access required",
   staff_assign_case: "admin access required",
+  set_plan_schedule: "guardian access required",
+  set_paused_subjects: "guardian access required",
+  record_learning_capture: "guardian access required",
+  remove_learning_capture: "guardian access required",
+  staff_set_weekly_note: "staff access required",
+  staff_clear_weekly_note: "staff access required",
+  staff_create_shared_activity: "staff access required",
+  staff_remove_shared_activity: "staff access required",
+  move_shared_activity: "guardian access required",
+  set_shared_activity_done: "guardian access required",
+  create_calendar_feed: "guardian access required",
+  revoke_calendar_feed: "guardian access required",
 };
 
 const stagingResponse = (body, status = 200) => ({
@@ -354,10 +398,10 @@ test("the mutation matrix denies every cross-household write and reports each on
   const report = await verifyHostedMutationDenial({ ...mutationConfig, fetchImpl });
 
   assert.equal(report.status, "passed");
-  assert.equal(report.probeCount, 24);
-  assert.equal(report.deniedCount, 24);
+  assert.equal(report.probeCount, 36);
+  assert.equal(report.deniedCount, 36);
   assert.equal(report.controlCount, 4);
-  assert.equal(new Set(report.probes.map((entry) => entry.id)).size, 24);
+  assert.equal(new Set(report.probes.map((entry) => entry.id)).size, 36);
   assert.ok(report.probes.every((entry) => entry.outcome === "denied"));
   assert.ok(
     report.probes.every((entry) => entry.requirement && entry.surface),

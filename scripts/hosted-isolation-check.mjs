@@ -40,6 +40,8 @@ const MUTATION_ENV = {
   attachmentId: "BRITELINK_TEST_HOUSEHOLD_B_ATTACHMENT_ID",
   consentId: "BRITELINK_TEST_HOUSEHOLD_B_CONSENT_ID",
   learnerId: "BRITELINK_TEST_HOUSEHOLD_B_LEARNER_ID",
+  captureId: "BRITELINK_TEST_HOUSEHOLD_B_CAPTURE_ID",
+  sharedActivityId: "BRITELINK_TEST_HOUSEHOLD_B_SHARED_ACTIVITY_ID",
   objectPath: "BRITELINK_TEST_HOUSEHOLD_B_OBJECT_PATH",
 };
 
@@ -125,6 +127,8 @@ async function main() {
         attachmentId: env[MUTATION_ENV.attachmentId],
         consentId: env[MUTATION_ENV.consentId],
         learnerId: env[MUTATION_ENV.learnerId],
+        captureId: env[MUTATION_ENV.captureId],
+        sharedActivityId: env[MUTATION_ENV.sharedActivityId],
         objectPath: env[MUTATION_ENV.objectPath],
       },
     });

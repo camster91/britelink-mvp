@@ -310,3 +310,40 @@ export function familyDay(entries = []) {
     .sort((a, b) => b.learners.length - a.learners.length || a.subject.localeCompare(b.subject));
   return { byLearner, shared };
 }
+
+// Shared activities (#45, migration 049) as a family sees them: each activity once, with every
+// learner's own outcome, date (their split date, or the shared one) and whether they did it.
+// Open activities first by date (undated last); finished ones are counted, not listed.
+export function sharedActivitiesView(activities = [], learners = []) {
+  const names = new Map(learners.map((learner) => [learner.id, learner.preferred_name]));
+  const items = activities.map((activity) => {
+    const rows = (activity.shared_activity_learners ?? [])
+      .map((row) => ({
+        learnerId: row.learner_id,
+        name: names.get(row.learner_id) ?? "Learner",
+        outcome: row.outcome,
+        date: row.scheduled_for ?? activity.scheduled_for ?? null,
+        split: Boolean(row.scheduled_for),
+        done: Boolean(row.completed_at),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      id: activity.id,
+      title: activity.title,
+      description: activity.description ?? "",
+      subjects: activity.subjects ?? [],
+      date: activity.scheduled_for ?? null,
+      learners: rows,
+      done: rows.length > 0 && rows.every((row) => row.done),
+    };
+  });
+  const open = items
+    .filter((item) => !item.done)
+    .sort((a, b) => (a.date ?? "9999-12-31").localeCompare(b.date ?? "9999-12-31") || a.title.localeCompare(b.title));
+  return { open, doneCount: items.length - open.length };
+}
+
+// The Mondays an educator can write a weekly note for (048): this week and the few before it.
+export function recentMondays(today, count = 6) {
+  return Array.from({ length: count }, (_, index) => weekBounds(today, -index).start);
+}

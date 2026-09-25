@@ -66,6 +66,7 @@ const FOREIGN_ARGUMENT = {
   target_request: `select id from public.privacy_requests where household_id='${houseB}' limit 1`,
   target_educator: `select '${users.adminB}'::uuid as id`,
   target_capture: `select id from public.learning_captures where household_id='${houseB}' limit 1`,
+  target_shared_activity: `select id from public.shared_activities where household_id='${houseB}' limit 1`,
 };
 // Plausible values for every other parameter type, so a call reaches its authorization check.
 const PLACEHOLDER = {
@@ -81,6 +82,10 @@ const PLACEHOLDER = {
   "smallint[]": "array[1,3,5]::smallint[]",
   "date[]": "array[current_date]::date[]",
 };
+// The only definer functions anon may execute, each with a reason and its own test below.
+const ANON_RPCS = new Map([
+  ["calendar_feed", "a calendar app cannot sign in; answers only for an active token's own learner (050)"],
+]);
 const DENIED = /access required|membership required|not found|permission denied|row-level security|response owner or admin required/i;
 
 // Apply the psql seed without psql: evaluate its \if guards as "variable set and true" (we pass
@@ -194,14 +199,16 @@ test("the full migration chain applies in order, including the 041 signup fix", 
   } finally { await db.close(); }
 });
 
-test("anon can execute no SECURITY DEFINER function in public", async () => {
+test("anon can execute no SECURITY DEFINER function in public except the allowlisted calendar feed", async () => {
   const { db } = await database();
   try {
     const exposed = (await db.query(`
       select p.proname from pg_proc p join pg_namespace n on n.oid=p.pronamespace
        where n.nspname='public' and p.prosecdef and has_function_privilege('anon', p.oid, 'EXECUTE')
          and not exists (select 1 from pg_depend d where d.objid=p.oid and d.deptype='e')`)).rows.map((r) => r.proname);
-    assert.deepEqual(exposed, [], `definer functions an unauthenticated caller can run: ${exposed.join(", ")}`);
+    const unexpected = exposed.filter((name) => !ANON_RPCS.has(name));
+    assert.deepEqual(unexpected, [], `definer functions an unauthenticated caller can run: ${unexpected.join(", ")}`);
+    for (const name of ANON_RPCS.keys()) assert.ok(exposed.includes(name), `ANON_RPCS names ${name}, which anon cannot execute; remove it`);
   } finally { await db.close(); }
 });
 
@@ -551,5 +558,253 @@ test("a guardian pauses and resumes a plan subject; unknown subjects and staff a
     await as(db, "authenticated", users.guardianA, () => db.query(`select * from public.set_plan_schedule($1, $2, current_date, array[1,2,3]::smallint[], array[]::date[])`, [houseA, planA]));
     const chosen = (await db.query(`select calendar_set, paused_subjects from public.plan_schedules where plan_id=$1`, [planA])).rows[0];
     assert.deepEqual(chosen, { calendar_set: true, paused_subjects: [subject] });
+  } finally { await db.close(); }
+});
+
+test("educators write one weekly note per learner per week; guardians read it; bad weeks are refused; the export carries it", async () => {
+  const { db } = await database();
+  try {
+    const learnerA = "5eed0000-0000-4000-8000-000000000a10";
+    const monday = (await db.query(`select (date_trunc('week', current_date))::date::text as d`)).rows[0].d;
+    const setNote = (who, week, body) => as(db, "authenticated", who, () => db.query(
+      `select * from public.staff_set_weekly_note($1, $2, $3::date, $4)`, [houseA, learnerA, week, body]));
+    const first = (await setNote(users.educatorA, monday, "  Lovely focus on fractions this week.  ")).rows[0];
+    const again = (await setNote(users.educatorA, monday, "Updated: lovely focus on fractions.")).rows[0];
+    assert.equal(again.note_id, first.note_id, "a second save updates the week's note rather than adding one");
+    await assert.rejects(() => setNote(users.guardianA, monday, "Guardian cannot write this"), /staff access required/);
+    const tuesday = (await db.query(`select ($1::date + 1)::text as d`, [monday])).rows[0].d;
+    await assert.rejects(() => setNote(users.educatorA, tuesday, "Not a Monday"), /week must be a Monday/);
+    await assert.rejects(() => setNote(users.educatorA, monday, "   "), /weekly note is required/);
+    await assert.rejects(() => setNote(users.educatorA, monday, "x".repeat(1001)), /weekly note is required/);
+
+    const seen = (await as(db, "authenticated", users.guardianA, () => db.query(`select note from public.weekly_notes where learner_id=$1 and week_start=$2`, [learnerA, monday]))).rows;
+    assert.deepEqual(seen, [{ note: "Updated: lovely focus on fractions." }]);
+
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    assert.ok(exported.manifest.included.includes("weeklyNotes"));
+    assert.ok(exported.weeklyNotes.some((row) => row.id === first.note_id));
+    assert.ok(Array.isArray(exported.learningCaptures) && Array.isArray(exported.planSchedules), "earlier additions are kept");
+
+    const cleared = (await as(db, "authenticated", users.educatorA, () => db.query(`select public.staff_clear_weekly_note($1, $2, $3::date) as ok`, [houseA, learnerA, monday]))).rows[0].ok;
+    assert.equal(cleared, true);
+    await assert.rejects(() => as(db, "authenticated", users.educatorA, () => db.query(`select public.staff_clear_weekly_note($1, $2, $3::date)`, [houseA, learnerA, monday])), /weekly note not found/);
+  } finally { await db.close(); }
+});
+
+test("a shared activity spans several learners of ONE household; guardians move, split and complete it per learner", async () => {
+  const { db } = await database();
+  try {
+    const learnerA = "5eed0000-0000-4000-8000-000000000a10";
+    const siblingA = "5eed0000-0000-4000-8000-000000000a11";
+    const learnerB = "5eed0000-0000-4000-8000-000000000b10";
+    await db.query(`insert into public.learners (id, household_id, preferred_name, grade_label, jurisdiction) values ($1, $2, 'SYNTHETIC Sibling A', '1', 'Ontario')`, [siblingA, houseA]);
+    const outcomes = (items) => JSON.stringify(items.map(([learnerId, outcome]) => ({ learnerId, outcome })));
+    const create = (who, items, date = "current_date") => as(db, "authenticated", who, () => db.query(
+      `select * from public.staff_create_shared_activity($1, 'Pond study', 'Walk to the pond and look closely', array['Science','Science']::text[], ${date}, $2::jsonb)`,
+      [houseA, outcomes(items)]));
+
+    const made = (await create(users.educatorA, [[learnerA, "Sketch and label three plants"], [siblingA, "Point out something green"]])).rows[0];
+    assert.equal(made.learner_count, 2);
+    const stored = (await db.query(`select learner_id, outcome from public.shared_activity_learners where activity_id=$1 order by outcome`, [made.activity_id])).rows;
+    assert.deepEqual(stored.map((row) => row.outcome), ["Point out something green", "Sketch and label three plants"], "each learner keeps their own outcome");
+
+    await assert.rejects(() => create(users.guardianA, [[learnerA, "a"], [siblingA, "b"]]), /staff access required/);
+    await assert.rejects(() => create(users.educatorA, [[learnerA, "only one"]]), /between 2 and 12 learners/);
+    await assert.rejects(() => create(users.educatorA, [[learnerA, "a"], [learnerA, "b"]]), /each learner can appear once/);
+    await assert.rejects(() => create(users.educatorA, [[learnerA, "a"], [learnerB, "b"]]), /learner not found in household/);
+    await assert.rejects(() => create(users.educatorA, [[learnerA, "a"], [siblingA, "  "]]), /expected outcome/);
+    await assert.rejects(() => create(users.educatorA, [[learnerA, "a"], [siblingA, "b"]], "current_date + 400"), /out of range/);
+
+    // The constraint, not only the function: even the superuser cannot join household B's learner to A's activity.
+    await assert.rejects(() => db.query(`insert into public.shared_activity_learners (activity_id, household_id, learner_id, outcome) values ($1, $2, $3, 'x')`, [made.activity_id, houseA, learnerB]), /foreign key/);
+    await assert.rejects(() => db.query(`insert into public.shared_activity_learners (activity_id, household_id, learner_id, outcome) values ($1, $2, $3, 'x')`, [made.activity_id, houseB, learnerB]), /foreign key/);
+
+    const move = (who, date, learner = null) => as(db, "authenticated", who, () => db.query(
+      `select * from public.move_shared_activity($1, $2, ${date}, $3::uuid)`, [houseA, made.activity_id, learner]));
+    await move(users.guardianA, "current_date + 3", siblingA);
+    assert.equal((await move(users.guardianA, "current_date + 3", siblingA)).rows[0].split_learners, 1, "moving one learner splits them off");
+    const together = (await move(users.guardianA, "current_date + 1")).rows[0];
+    assert.equal(together.split_learners, 0, "moving for everyone brings split learners back together");
+    await assert.rejects(() => move(users.educatorA, "current_date"), /guardian access required/);
+    await assert.rejects(() => move(users.guardianA, "current_date", learnerB), /learner not found in household/);
+
+    const done = (who, learner, flag) => as(db, "authenticated", who, () => db.query(
+      `select public.set_shared_activity_done($1, $2, $3, $4) as at`, [houseA, made.activity_id, learner, flag]));
+    assert.ok((await done(users.guardianA, learnerA, true)).rows[0].at);
+    const state = (await db.query(`select learner_id, completed_at is not null as done from public.shared_activity_learners where activity_id=$1 order by learner_id`, [made.activity_id])).rows;
+    assert.deepEqual(state, [{ learner_id: learnerA, done: true }, { learner_id: siblingA, done: false }], "completion is per learner");
+    assert.equal((await done(users.guardianA, learnerA, false)).rows[0].at, null, "and can be undone");
+    await assert.rejects(() => done(users.educatorA, learnerA, true), /guardian access required/);
+
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    const mine = exported.sharedActivities.find((row) => row.id === made.activity_id);
+    assert.equal(mine?.learners.length, 2);
+
+    await as(db, "authenticated", users.educatorA, () => db.query(`select public.staff_remove_shared_activity($1, $2)`, [houseA, made.activity_id]));
+    await assert.rejects(() => move(users.guardianA, "current_date"), /shared activity not found/);
+  } finally { await db.close(); }
+});
+
+// Rebuild the plan tree the way the app loads it, so the SQL feed can be compared with the JS export.
+async function planTree(db, planId) {
+  const rows = (await db.query(`
+    select w.id as week_id, w.week_number, d.id as day_id, d.day_number, d.planned_date::text as planned_date,
+           l.id as lesson_id, l.position, l.subject, l.title
+      from public.plan_weeks w join public.plan_days d on d.week_id = w.id
+      left join public.lessons l on l.day_id = d.id
+     where w.plan_id = $1`, [planId])).rows;
+  const weeks = new Map();
+  for (const row of rows) {
+    if (!weeks.has(row.week_id)) weeks.set(row.week_id, { id: row.week_id, week_number: row.week_number, plan_days: new Map() });
+    const days = weeks.get(row.week_id).plan_days;
+    if (!days.has(row.day_id)) days.set(row.day_id, { id: row.day_id, day_number: row.day_number, planned_date: row.planned_date, lessons: [] });
+    if (row.lesson_id) days.get(row.day_id).lessons.push({ id: row.lesson_id, position: row.position, subject: row.subject, title: row.title });
+  }
+  return { plan_weeks: [...weeks.values()].map((week) => ({ ...week, plan_days: [...week.plan_days.values()] })) };
+}
+
+const vevents = (ics) => (ics.match(/BEGIN:VEVENT[\s\S]*?END:VEVENT/g) ?? []).map((event) => event.replace(/DTSTAMP:\d{8}T\d{6}Z/, "DTSTAMP:x"));
+
+test("the calendar feed answers only an active token, matches the family's own .ics, and never crosses households", async () => {
+  const { db } = await database();
+  const { orderedPlanWeeks, planDayDates, activityMap } = await import("../src/authenticated-workspace.js");
+  const { planCalendarIcs } = await import("../src/calendar-export.js");
+  try {
+    const learnerA = "5eed0000-0000-4000-8000-000000000a10";
+    const planA = "5eed0000-0000-4000-8000-000000000a30";
+    const planB = "5eed0000-0000-4000-8000-000000000b30";
+    // A richer week than the seed: escaping, a fold-length title, a paused subject, a done and a moved lesson.
+    const day = (await db.query(`select d.id from public.plan_days d join public.plan_weeks w on w.id=d.week_id where w.plan_id=$1 order by w.week_number, d.day_number limit 1`, [planA])).rows[0].id;
+    const week = (await db.query(`select id from public.plan_weeks where plan_id=$1 order by week_number limit 1`, [planA])).rows[0].id;
+    const day2 = (await db.query(`insert into public.plan_days (household_id, week_id, day_number) values ($1, $2, 6) returning id`, [houseA, week])).rows[0].id;
+    const lessonsAdded = [
+      [day, 10, "Math", "Fractions; halves, quarters \\ and a backslash"],
+      [day, 11, "Arts", "Paint"],
+      [day2, 1, "Language", "A very long lesson title that will need folding because it goes well past seventy-five octets – with an en dash"],
+      [day2, 2, "Math", "Done already"],
+    ];
+    const ids = [];
+    for (const [d, position, subject, title] of lessonsAdded) {
+      ids.push((await db.query(`insert into public.lessons (household_id, day_id, position, subject, title, objective, instructions) values ($1, $2, $3, $4, $5, 'o', '[]') returning id`, [houseA, d, position, subject, title])).rows[0].id);
+    }
+    await db.query(`insert into public.lesson_activities (household_id, learner_id, lesson_id, status, updated_by) values ($1, $2, $3, 'completed', $4)`, [houseA, learnerA, ids[3], users.guardianA]);
+    await db.query(`insert into public.lesson_activities (household_id, learner_id, lesson_id, status, schedule_reason, scheduled_for, updated_by) values ($1, $2, $3, 'not_started', 'catch_up', current_date + 20, $4)`, [houseA, learnerA, ids[0], users.guardianA]);
+    await db.query(`update public.plan_schedules set start_date = current_date - 3, school_days = array[1,2,3,4,5]::smallint[], days_off = array[current_date]::date[], paused_subjects = array['Arts'] where plan_id=$1`, [planA]);
+
+    const create = (who, titles) => as(db, "authenticated", who, () => db.query(`select * from public.create_calendar_feed($1, $2, $3)`, [houseA, learnerA, titles]));
+    await assert.rejects(() => create(users.educatorA, false), /guardian access required/);
+    const first = (await create(users.guardianA, true)).rows[0];
+    assert.match(first.token, /^[0-9a-f]{64}$/);
+    const stored = (await db.query(`select token_hash, include_titles from public.calendar_feeds where id=$1`, [first.feed_id])).rows[0];
+    assert.ok(!Buffer.from(stored.token_hash).toString("hex").includes(first.token), "only a hash is stored");
+
+    const feed = (token) => as(db, "anon", null, () => db.query(`select public.calendar_feed($1) as ics`, [token]));
+    const ics = (await feed(first.token)).rows[0].ics;
+    assert.match(ics, /^BEGIN:VCALENDAR\r\n[\s\S]*END:VCALENDAR\r\n$/);
+    assert.doesNotMatch(ics, /SYNTHETIC Learner A/, "the child's name never appears");
+
+    // Byte-for-byte the same events as the guardian's own download (src/calendar-export.js).
+    const plan = await planTree(db, planA);
+    const weeks = orderedPlanWeeks(plan);
+    const schedule = (await db.query(`select start_date::text, school_days, array(select d::text from unnest(days_off) d) as days_off, paused_subjects from public.plan_schedules where plan_id=$1`, [planA])).rows[0];
+    const activities = (await db.query(`select lesson_id, status::text, scheduled_for::text from public.lesson_activities where learner_id=$1`, [learnerA])).rows;
+    const expected = planCalendarIcs({ planId: planA, weeks, dayDates: planDayDates(weeks, schedule), activitiesByLessonId: activityMap(activities), paused: schedule.paused_subjects, includeTitles: true });
+    assert.ok(expected.count >= 2, "the fixture produces several events");
+    assert.deepEqual(vevents(ics), vevents(expected.contents));
+    assert.match(ics.replace(/\r\n /g, ""), /Fractions\\; halves\\, quarters \\\\ and a backslash/, "RFC 5545 escaping");
+    assert.doesNotMatch(ics, /Paint|Done already/, "paused and finished lessons stay out");
+    assert.ok(ics.split("\r\n").every((line) => Buffer.byteLength(line) <= 75), "lines are folded at 75 octets");
+    assert.doesNotMatch(ics, new RegExp(planB), "household B's plan never appears");
+
+    // Titles off: the private default.
+    const privateFeed = (await create(users.guardianA, false)).rows[0];
+    assert.doesNotMatch((await feed(privateFeed.token)).rows[0].ics, /Fractions/);
+    // Creating a new feed rotated the old token out; revoking stops the new one.
+    await assert.rejects(() => feed(first.token), /calendar feed not found/);
+    const revoked = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.revoke_calendar_feed($1, $2) as n`, [houseA, learnerA]))).rows[0].n;
+    assert.equal(revoked, 1);
+    await assert.rejects(() => feed(privateFeed.token), /calendar feed not found/);
+
+    // Consent withdrawal also closes the feed, and malformed or guessed tokens are refused.
+    const third = (await create(users.guardianA, false)).rows[0];
+    await db.query(`update public.guardian_consents set withdrawn_at = now() where learner_id=$1`, [learnerA]);
+    await assert.rejects(() => feed(third.token), /calendar feed not found/);
+    for (const bad of [null, "", "x".repeat(64), "0".repeat(64), `${third.token}'`]) await assert.rejects(() => feed(bad), /calendar feed not found/);
+
+    // Signed-in clients do not get the anon entry point.
+    await assert.rejects(() => as(db, "authenticated", users.guardianA, () => db.query(`select public.calendar_feed($1)`, [third.token])), /permission denied/);
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    assert.ok(exported.calendarFeeds.length >= 3 && exported.calendarFeeds.every((row) => !("token_hash" in row)), "the export lists feeds but never their token hash");
+    const columns = (await as(db, "authenticated", users.guardianA, () => db.query(`select * from public.calendar_feeds`)).catch((error) => error));
+    assert.match(String(columns.message), /permission denied/, "the token hash column is not readable by clients");
+  } finally { await db.close(); }
+});
+
+// The hosted verifier's table lists (src/hosted-isolation.js) held to the catalog. Three tables sat
+// in PRIVATE_TABLES from 2026-09-21 although the sweep could never pass on them: no household_id
+// column, or no client read path. This fails when a list and the schema disagree.
+test("the hosted sweep's table lists match what clients can actually read", async () => {
+  const { db } = await database();
+  const { PRIVATE_TABLES, SEALED_TABLES, INTENTIONALLY_UNSWEPT } = await import("../src/hosted-isolation.js");
+  try {
+    const rows = (await db.query(`
+      select c.relname as name,
+             exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attname='household_id' and not a.attisdropped) as has_household,
+             exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attname in ('household_id','household_ref') and not a.attisdropped) as household_data,
+             has_table_privilege('authenticated', c.oid, 'SELECT')
+               or exists(select 1 from pg_attribute a where a.attrelid=c.oid and a.attnum>0 and not a.attisdropped
+                          and has_column_privilege('authenticated', c.oid, a.attnum, 'SELECT')) as readable,
+             exists(select 1 from pg_policy p where p.polrelid=c.oid and p.polcmd in ('r','*')) as select_policy
+        from pg_class c join pg_namespace n on n.oid=c.relnamespace
+       where n.nspname='public' and c.relkind='r' order by 1`)).rows;
+    const byName = new Map(rows.map((row) => [row.name, row]));
+    const problems = [];
+    const listed = [...PRIVATE_TABLES, ...SEALED_TABLES, ...INTENTIONALLY_UNSWEPT];
+    for (const name of listed) if (!byName.has(name)) problems.push(`${name} is listed but does not exist`);
+    for (const row of rows)
+      if (row.household_data && !listed.includes(row.name))
+        problems.push(`${row.name} holds household data but is in no hosted-sweep list`);
+    for (const name of PRIVATE_TABLES) {
+      const row = byName.get(name);
+      if (!row) continue;
+      if (!row.has_household) problems.push(`${name}: swept by household_id but has no such column`);
+      if (!row.readable) problems.push(`${name}: swept, but clients hold no SELECT on it`);
+      if (!row.select_policy) problems.push(`${name}: swept, but no policy can ever return an own-household sentinel`);
+    }
+    for (const name of SEALED_TABLES) {
+      const row = byName.get(name);
+      if (row && row.readable && row.select_policy) problems.push(`${name}: listed as sealed but clients can read it through a policy`);
+    }
+    assert.deepEqual(problems, []);
+  } finally { await db.close(); }
+});
+
+test("first completion is server-stamped once and the beta funnel is service-role only", async () => {
+  const { db } = await database();
+  try {
+    const activityA = "5eed0000-0000-4000-8000-000000000a51";
+    const write = (sql) => as(db, "authenticated", users.guardianA, () => db.query(sql, [activityA]));
+    // A client cannot plant its own first-completion time.
+    await write(`update public.lesson_activities set status='in_progress', first_completed_at='2020-01-01', updated_by='${users.guardianA}' where id=$1`);
+    assert.equal((await db.query(`select first_completed_at from public.lesson_activities where id=$1`, [activityA])).rows[0].first_completed_at, null);
+    await write(`update public.lesson_activities set status='completed', updated_by='${users.guardianA}' where id=$1`);
+    const first = (await db.query(`select first_completed_at from public.lesson_activities where id=$1`, [activityA])).rows[0].first_completed_at;
+    assert.ok(first && first.getFullYear() >= 2026, "stamped by the server on first completion");
+    // Undo and redo keep the original moment.
+    await write(`update public.lesson_activities set status='not_started', first_completed_at=null, updated_by='${users.guardianA}' where id=$1`);
+    await write(`update public.lesson_activities set status='completed', updated_by='${users.guardianA}' where id=$1`);
+    const again = (await db.query(`select first_completed_at from public.lesson_activities where id=$1`, [activityA])).rows[0].first_completed_at;
+    assert.equal(again.getTime(), first.getTime());
+
+    for (const role of ["anon", "authenticated"]) {
+      const who = role === "anon" ? null : users.adminA;
+      await assert.rejects(() => as(db, role, who, () => db.query(`select * from public.service_beta_funnel()`)), /permission denied/);
+    }
+    assert.equal((await db.query(`select has_function_privilege('service_role', 'public.service_beta_funnel()', 'EXECUTE') as ok`)).rows[0].ok, true);
+    const rows = (await db.query(`select * from public.service_beta_funnel()`)).rows;
+    const a = rows.find((r) => r.household_id === houseA);
+    assert.ok(a.synthetic, "seed households are flagged synthetic");
+    assert.equal(a.first_completed_at.getTime(), first.getTime());
+    assert.deepEqual(Object.keys(a).sort(), ["created_at", "delivery_acknowledged_at", "first_completed_at", "guardian_messages_before_first_completion", "household_id", "intake_submitted_at", "plan_published_at", "synthetic"], "milestones only: no names or content");
   } finally { await db.close(); }
 });

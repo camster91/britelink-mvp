@@ -3,7 +3,7 @@ import test from "node:test";
 import { foldIcsLine, icsText, planCalendarIcs } from "../src/calendar-export.js";
 
 test("iCalendar text is escaped and long lines are folded to 75 octets", () => {
-  assert.equal(icsText("a,b;c\\d\ne"), "a\\,b\;c\\\\d\\ne");
+  assert.equal(icsText("a,b;c\\d\ne"), "a\\,b\\;c\\\\d\\ne");
   const folded = foldIcsLine(`DESCRIPTION:${"é".repeat(60)}`);
   for (const line of folded.split("\r\n")) assert.ok(new TextEncoder().encode(line).length <= 75, line);
   assert.equal(folded.split("\r\n").slice(1).every((line) => line.startsWith(" ")), true);
@@ -27,4 +27,10 @@ test("the plan export has one all-day event per date with work left, follows mov
   const titled = planCalendarIcs({ planId: "p1", weeks, dayDates, now, includeTitles: true }).contents;
   assert.match(titled, /Math: Count\\, then sort/);
   assert.ok(contents.endsWith("END:VCALENDAR\r\n"));
+});
+
+test("a calendar feed URL is built only from a well-formed token", async () => {
+  const { calendarFeedUrl } = await import("../src/calendar-export.js");
+  assert.equal(calendarFeedUrl("a".repeat(64), "https://britelink.ashbi.ca"), `https://britelink.ashbi.ca/feed/${"a".repeat(64)}.ics`);
+  for (const bad of [undefined, "", "A".repeat(64), "a".repeat(63), "../../etc"]) assert.throws(() => calendarFeedUrl(bad, "https://x"), /token is invalid/);
 });

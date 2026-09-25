@@ -59,7 +59,7 @@ try {
   await page.getByLabel("Theme").fill("Curiosity and confidence");
   await page.getByLabel("Planned date").fill("2026-09-01");
   await page.getByLabel("Subject").fill("Language");
-  await page.getByLabel("Title").fill("Build a sound map");
+  await page.getByLabel("Title", { exact: true }).fill("Build a sound map");
   await page.getByLabel("Objective").fill("Connect sounds to familiar words.");
   await page
     .getByLabel(/Instructions/)
@@ -73,7 +73,7 @@ try {
   await page.getByLabel("Needs a screen").selectOption("false");
   await page.getByRole("button", { name: "Add lesson" }).click();
   await page.getByLabel("Subject").nth(1).fill("Math");
-  await page.getByLabel("Title").nth(1).fill("Count a collection");
+  await page.getByLabel("Title", { exact: true }).nth(1).fill("Count a collection");
   await page
     .getByLabel("Objective")
     .nth(1)
@@ -95,7 +95,7 @@ try {
   const dayTwo = page.getByRole("group", { name: "Day 2" });
   await dayTwo.getByLabel("Planned date").fill("2026-09-02");
   await dayTwo.getByLabel("Subject").fill("Science");
-  await dayTwo.getByLabel("Title").fill("Observe a local habitat");
+  await dayTwo.getByLabel("Title", { exact: true }).fill("Observe a local habitat");
   await dayTwo
     .getByLabel("Objective")
     .fill("Record two observations about a nearby habitat.");
@@ -107,7 +107,7 @@ try {
   await weekTwo.getByLabel("Theme").fill("Everyday patterns");
   await weekTwo.getByLabel("Planned date").fill("2026-09-08");
   await weekTwo.getByLabel("Subject").fill("Language");
-  await weekTwo.getByLabel("Title").fill("Describe a daily pattern");
+  await weekTwo.getByLabel("Title", { exact: true }).fill("Describe a daily pattern");
   await weekTwo
     .getByLabel("Objective")
     .fill("Describe a familiar sequence in order.");
@@ -125,7 +125,7 @@ try {
   const resourceForm = page
     .getByRole("heading", { name: "Add governed resource" })
     .locator("..");
-  await resourceForm.getByLabel("Title").fill("Free sound cards");
+  await resourceForm.getByLabel("Title", { exact: true }).fill("Free sound cards");
   await resourceForm.getByLabel(/HTTPS URL/).fill("https://example.test/cards");
   await resourceForm.getByLabel("Requirement").selectOption("substitute");
   await resourceForm
@@ -138,7 +138,7 @@ try {
     .getByRole("button", { name: "Add reviewed resource" })
     .click();
   await page.getByText("Resource completed and audited.").waitFor();
-  await resourceForm.getByLabel("Title").fill("Required sound workbook");
+  await resourceForm.getByLabel("Title", { exact: true }).fill("Required sound workbook");
   await resourceForm
     .getByLabel(/HTTPS URL/)
     .fill("https://example.test/workbook");
@@ -180,7 +180,7 @@ try {
   await page.getByText("Revision acceptance completed and audited.").waitFor();
   await page.getByLabel("Theme").fill("Lighter reading week");
   await page.getByLabel("Subject").fill("Language");
-  await page.getByLabel("Title").fill("Listen and retell");
+  await page.getByLabel("Title", { exact: true }).fill("Listen and retell");
   await page
     .getByLabel("Objective")
     .fill("Retell a short passage using oral language.");
@@ -296,6 +296,51 @@ try {
     throw new Error(
       "Rendered authoring, messaging, revision, resource, delivery, or retry did not persist in the repository harness",
     );
+  // Note for the week (#43, 048): validation names the field and focuses it; save; update; remove.
+  const weeklyNote = page.getByRole("region", { name: "Note for the week" });
+  await weeklyNote.getByRole("button", { name: "Save note" }).click();
+  await weeklyNote.getByRole("alert").getByText("Write the note for the week before saving.").waitFor();
+  if (!(await weeklyNote.getByLabel("Note").evaluate((el) => el === document.activeElement)))
+    throw new Error("focus did not move to the empty weekly note");
+  if ((await weeklyNote.getByLabel("Note").getAttribute("aria-invalid")) !== "true")
+    throw new Error("the empty weekly note is not marked aria-invalid");
+  await weeklyNote.getByLabel("Note").fill("Great focus on the sound map this week.");
+  await weeklyNote.getByRole("button", { name: "Save note" }).click();
+  await weeklyNote.getByText("family sees it in the week’s story", { exact: false }).waitFor();
+  await weeklyNote.getByRole("button", { name: "Update note" }).waitFor();
+  const noteWeek = await weeklyNote.getByLabel("Week starting").inputValue();
+  if (new Date(`${noteWeek}T00:00:00Z`).getUTCDay() !== 1)
+    throw new Error(`weekly note week is not a Monday: ${noteWeek}`);
+  await weeklyNote.getByRole("button", { name: "Remove note" }).click();
+  await weeklyNote.getByText("Note removed.").waitFor();
+  await weeklyNote.getByRole("button", { name: "Save note" }).waitFor();
+  // Whole-family activity (#45, 049): at least two children, each with their own outcome.
+  const sharedForm = page.getByRole("region", { name: "Whole-family activity" });
+  await sharedForm.getByLabel("Activity title").fill("Pond study walk");
+  await sharedForm.getByRole("checkbox", { name: "Maya" }).check();
+  await sharedForm.getByRole("button", { name: "Save shared activity" }).click();
+  await sharedForm.getByRole("alert").getByText("at least two children", { exact: false }).waitFor();
+  await sharedForm.getByRole("alert").getByText("what Maya should get out of it", { exact: false }).waitFor();
+  await sharedForm.getByRole("checkbox", { name: "Noah" }).check();
+  await sharedForm.getByLabel("What Maya should get out of it").fill("Sketch and label three plants");
+  await sharedForm.getByRole("button", { name: "Save shared activity" }).click();
+  await sharedForm.getByRole("alert").getByText("what Noah should get out of it", { exact: false }).waitFor();
+  if (!(await sharedForm.getByLabel("What Noah should get out of it").evaluate((el) => el === document.activeElement)))
+    throw new Error("focus did not move to Noah's missing outcome");
+  await sharedForm.getByLabel("What Noah should get out of it").fill("Point out five green things");
+  await sharedForm.getByRole("checkbox", { name: "Science" }).check();
+  await sharedForm.getByRole("button", { name: "Save shared activity" }).click();
+  await sharedForm.getByText("Shared activity saved.", { exact: false }).waitFor();
+  await sharedForm.getByRole("list", { name: "Shared activities" }).getByText("Pond study walk").waitFor();
+  const sharedRow = await page.evaluate(() => globalThis.staffQaState.sharedActivities?.[0]);
+  if (
+    sharedRow?.shared_activity_learners?.length !== 2 ||
+    sharedRow.shared_activity_learners[1].outcome !== "Point out five green things" ||
+    JSON.stringify(sharedRow.subjects) !== '["Science"]'
+  )
+    throw new Error(`shared activity did not reach the repository: ${JSON.stringify(sharedRow)}`);
+  await sharedForm.getByRole("button", { name: "Remove Pond study walk" }).click();
+  await sharedForm.getByText("Removed “Pond study walk”.").waitFor();
   const audit = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();
