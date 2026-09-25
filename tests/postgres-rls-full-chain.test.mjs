@@ -65,6 +65,7 @@ const FOREIGN_ARGUMENT = {
   target_job: `select id from public.deletion_jobs where household_id='${houseB}' limit 1`,
   target_request: `select id from public.privacy_requests where household_id='${houseB}' limit 1`,
   target_educator: `select '${users.adminB}'::uuid as id`,
+  target_capture: `select id from public.learning_captures where household_id='${houseB}' limit 1`,
 };
 // Plausible values for every other parameter type, so a call reaches its authorization check.
 const PLACEHOLDER = {
@@ -495,5 +496,36 @@ test("guardian intake refuses unsupported or oversized context and still advance
 
     await db.query(`update public.learners set deleted_at=now() where id=$1`, [learnerA]);
     await assert.rejects(() => submit(context), /learner not found in household/);
+  } finally { await db.close(); }
+});
+
+test("a guardian records and removes learning outside the plan; bad input and staff are refused; the export carries it", async () => {
+  const { db } = await database();
+  try {
+    const learnerA = "5eed0000-0000-4000-8000-000000000a10";
+    const record = (who, { date = "current_date", kind = "'book'", subjects = "array['Language','Language']::text[]", note = "'Read a chapter book together'" } = {}) =>
+      as(db, "authenticated", who, () => db.query(`select * from public.record_learning_capture('${houseA}', '${learnerA}', ${date}, ${kind}, ${subjects}, ${note})`));
+    const saved = (await record(users.guardianA)).rows[0];
+    const row = (await db.query(`select kind, subjects, note from public.learning_captures where id=$1`, [saved.capture_id])).rows[0];
+    assert.deepEqual(row, { kind: "book", subjects: ["Language"], note: "Read a chapter book together" });
+    await assert.rejects(() => record(users.educatorA), /guardian access required/);
+    for (const [bad, message] of [
+      [{ date: "current_date + 30" }, /capture date is out of range/],
+      [{ kind: "'therapy'" }, /capture kind is invalid/],
+      [{ subjects: "array['Diagnosis']::text[]" }, /subject is invalid/],
+      [{ note: "'   '" }, /capture note is required/],
+      [{ note: `'${"x".repeat(1001)}'` }, /capture note is required/],
+    ]) await assert.rejects(() => record(users.guardianA, bad), message);
+
+    const removedAt = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.remove_learning_capture($1, $2) as at`, [houseA, saved.capture_id]))).rows[0].at;
+    assert.ok(removedAt);
+    await assert.rejects(() => as(db, "authenticated", users.guardianA, () => db.query(`select public.remove_learning_capture($1, $2)`, [houseA, saved.capture_id])), /capture not found/);
+
+    const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    assert.ok(exported.manifest.included.includes("learningCaptures"));
+    const mine = exported.learningCaptures.find((item) => item.id === saved.capture_id);
+    assert.ok(mine?.removed_at, "a removed capture is still accounted for in the export");
+    assert.ok(exported.learningCaptures.every((item) => item.learner_id === learnerA), "only household A's captures are exported");
+    assert.ok(exported.manifest.included.includes("planSchedules") && Array.isArray(exported.planSchedules), "043's addition is kept");
   } finally { await db.close(); }
 });

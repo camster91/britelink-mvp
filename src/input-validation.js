@@ -108,6 +108,15 @@ export function validateGuardianIntake(input) {
   };
 }
 
+// Learning outside the plan (#44). Mirrors migration 046.
+export const CAPTURE_KINDS=["book","outing","activity","co_op","tutor","note"];
+export function validateLearningCapture(input){
+  if(!input||typeof input!=="object")throw new TypeError("Learning capture is required");
+  const subjects=Array.isArray(input.subjects)?[...new Set(input.subjects)]:[];
+  if(subjects.some(subject=>!INTAKE_SUBJECTS.includes(subject)))throw new TypeError("Choose valid subjects");
+  return{householdId:requireIdentifier(input.householdId,"Household ID"),learnerId:requireIdentifier(input.learnerId,"Learner ID"),capturedOn:requireDate(input.capturedOn,"Date"),kind:requireEnum(input.kind,CAPTURE_KINDS,"What kind of learning"),subjects,note:requireText(input.note,"What happened",{max:1000})};
+}
+
 export function validateRevisionRequest(input){
   if(!input||typeof input!=="object")throw new TypeError("Revision request is required");
   return{householdId:requireIdentifier(input.householdId,"Household ID"),caseId:requireIdentifier(input.caseId,"Case ID"),reason:requireText(input.reason,"Revision reason",{max:2000})};

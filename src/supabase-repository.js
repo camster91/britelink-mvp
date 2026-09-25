@@ -1,4 +1,4 @@
-import { requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
+import { validateLearningCapture, requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
 
 function unwrap(result, operation) {
   if (result.error) {
@@ -57,6 +57,20 @@ export class SupabaseBriteLinkRepository {
   async listLessonActivities(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
     return unwrap(await this.client.from("lesson_activities").select("id, lesson_id, status, caregiver_note, schedule_reason, scheduled_for, updated_at").eq("household_id", householdId).eq("learner_id", learnerId).order("updated_at", { ascending: false }), "Load lesson activity");
+  }
+  // Learning outside the plan (migration 046). Removed captures are soft-deleted and hidden here.
+  async listLearningCaptures(householdId, learnerId) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
+    return unwrap(await this.client.from("learning_captures").select("id, captured_on, kind, subjects, note, created_at").eq("household_id", householdId).eq("learner_id", learnerId).is("removed_at", null).order("captured_on", { ascending: false }).order("created_at", { ascending: false }).limit(100), "Load learning notes");
+  }
+  async recordLearningCapture(input) {
+    const valid = validateLearningCapture(input);
+    const rows = unwrap(await this.client.rpc("record_learning_capture", { target_household: valid.householdId, target_learner: valid.learnerId, capture_date: valid.capturedOn, capture_kind: valid.kind, capture_subjects: valid.subjects, capture_note: valid.note }), "Save learning note");
+    return rows?.[0] ?? null;
+  }
+  async removeLearningCapture({ householdId, captureId }) {
+    requireIdentifier(householdId, "Household ID"); requireIdentifier(captureId, "Capture ID");
+    return unwrap(await this.client.rpc("remove_learning_capture", { target_household: householdId, target_capture: captureId }), "Remove learning note");
   }
   // The family calendar for a published plan (migration 043). startDate null = own pace.
   async setPlanSchedule({ householdId, planId, startDate = null, schoolDays, daysOff = [] }) {

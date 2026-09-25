@@ -23,6 +23,7 @@ import { AuthenticatedIntake } from "./AuthenticatedIntake.jsx";
 import { AuthenticatedServicePrivacy } from "./AuthenticatedServicePrivacy.jsx";
 import { EducatorWorkspace } from "./EducatorWorkspace.jsx";
 import { MessageAttachments } from "./MessageAttachments.jsx";
+import { LearningCaptures } from "./LearningCaptures.jsx";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
@@ -529,6 +530,8 @@ function ParentWorkspace({
     offline: false,
   });
   const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
+  // Learning outside the plan (#44), lifted here so the weekly summary can include it.
+  const [captures, setCaptures] = useState([]);
   const [printScope, setPrintScope] = useState(null);
   // Render the sheet first, then open the print dialog; drop it once printing is done.
   useEffect(() => {
@@ -1570,6 +1573,16 @@ function ParentWorkspace({
             </>
           ) : null}
         </section>
+        {selectedLearner ? (
+          <LearningCaptures
+            key={selectedLearner.id}
+            repository={repository}
+            householdId={household.household_id}
+            learner={selectedLearner}
+            today={today}
+            onChange={setCaptures}
+          />
+        ) : null}
         <section className="live-messages" aria-labelledby="messages-heading">
           <header>
             <span className="eyebrow">Secure case messages</span>

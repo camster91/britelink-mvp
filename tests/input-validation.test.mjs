@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { requireDate, requireEmail, requireHttpUrl, requireIdentifier, requireIsoTimestamp, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "../src/input-validation.js";
+import { requireDate, requireEmail, requireHttpUrl, requireIdentifier, requireIsoTimestamp, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLearningCapture, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "../src/input-validation.js";
 
 test("identifiers reject empty, control, path, and oversized values",()=>{
   for(const value of ["","../house","house a","house\nadmin","a".repeat(129)]) assert.throws(()=>requireIdentifier(value),/invalid/);
@@ -97,4 +97,15 @@ test("lesson fit tags are optional, bounded, and never guessed", () => {
   assert.throws(() => first({ estimatedMinutes: 12.5 }), /5 to 240/);
   assert.throws(() => first({ helpLevel: "mostly" }), /Help level/);
   assert.throws(() => first({ needsScreen: "maybe" }), /screen/);
+});
+
+test("a learning capture is bounded to known kinds and subjects, with a required short note", () => {
+  const base = { householdId: "house-a", learnerId: "learner-a", capturedOn: "2026-09-20", kind: "outing", subjects: ["Science", "Science"], note: " Pond walk " };
+  const valid = validateLearningCapture(base);
+  assert.deepEqual([valid.kind, valid.subjects, valid.note], ["outing", ["Science"], "Pond walk"]);
+  assert.throws(() => validateLearningCapture({ ...base, kind: "therapy" }), /What kind of learning/);
+  assert.throws(() => validateLearningCapture({ ...base, subjects: ["Diagnosis"] }), /valid subjects/);
+  assert.throws(() => validateLearningCapture({ ...base, note: "" }), /What happened/);
+  assert.throws(() => validateLearningCapture({ ...base, note: "x".repeat(1001) }), /What happened/);
+  assert.throws(() => validateLearningCapture({ ...base, capturedOn: "yesterday" }), /Date/);
 });

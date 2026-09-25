@@ -31,7 +31,7 @@ try{
   await nextUp0.getByRole("heading",{name:"Build a sound map"}).waitFor();
   await page.getByRole("heading",{name:"Instructions"}).waitFor();await page.getByText("Choose five familiar words.").waitFor();await page.getByText("Paper",{exact:true}).waitFor();await page.getByText("Read each instruction aloud.").waitFor();await page.getByText("Adult help:",{exact:false}).waitFor();await page.getByText("Printable sound cards").waitFor();
   await page.getByRole("button",{name:/Count a collection/}).click();await page.getByText("Choose a small collection.").waitFor();await page.getByText("Household objects").waitFor();await page.getByText("No external resources are required.").waitFor();await page.getByRole("button",{name:/Build a sound map/}).click();
-  await page.getByRole("checkbox",{name:"Language",exact:true}).check();
+  await page.locator("section.live-intake").getByRole("checkbox",{name:"Language",exact:true}).check();
   await page.getByRole("radio",{name:/Weekly goals/}).check();
   await page.getByLabel("Current learning starting point").fill("Reads short paragraphs and counts to 100.");
   await page.getByLabel("Strengths and interests").fill("Enjoys machines, drawing, and practical projects.");
@@ -99,6 +99,24 @@ try{
   await page.getByRole("button",{name:"Mark as read"}).click();
   await page.getByText("Message marked as read.").waitFor();
   await page.getByRole("checkbox",{name:/I understand this pauses active service/}).check();await page.getByRole("button",{name:"Withdraw my active consent"}).click();await page.getByText("Consent withdrawn",{exact:false}).waitFor();
+  // Learning outside the plan (#44): validation names both fields and focuses the first; save; list; remove.
+  const captureCard=page.locator("section.learning-captures");
+  await captureCard.getByRole("heading",{name:"What else did Maya learn?"}).waitFor();
+  await captureCard.getByRole("button",{name:"Save to the record"}).click();
+  await captureCard.getByRole("alert").getByText("what kind of learning it was and a short note about what happened",{exact:false}).waitFor();
+  if(!await captureCard.getByLabel("What kind").evaluate(el=>el===document.activeElement))throw new Error("focus did not move to the first invalid capture field");
+  if(await captureCard.getByLabel("What happened").getAttribute("aria-invalid")!=="true")throw new Error("missing note is not marked aria-invalid");
+  await captureCard.getByLabel("What kind").selectOption("outing");
+  await captureCard.getByRole("checkbox",{name:"Science"}).check();
+  await captureCard.getByLabel("What happened").fill("Pond walk: counted frogs and sketched cattails.");
+  await captureCard.getByRole("button",{name:"Save to the record"}).click();
+  await captureCard.getByText("Saved to Maya’s learning record.").waitFor();
+  await captureCard.getByRole("list",{name:"Recent learning notes"}).getByText("Pond walk: counted frogs and sketched cattails.").waitFor();
+  await captureCard.getByRole("button",{name:/Remove the note from/}).click();
+  await captureCard.getByText("Removed from the learning record.").waitFor();
+  await captureCard.getByText("Nothing recorded yet.").waitFor();
+  const captureState=await page.evaluate(()=>globalThis.qaState.captures);
+  if(captureState?.[0]?.kind!=="outing"||JSON.stringify(captureState?.[0]?.subjects)!=='["Science"]'||!captureState?.[0]?.removed_at)throw new Error(`capture did not round-trip: ${JSON.stringify(captureState)}`);
   // Printable week and day (#48): a paper sheet in <body>, the only thing visible in print media.
   await page.getByRole("button",{name:"Print this week"}).click();
   const sheet=page.locator("body > section.print-sheet");

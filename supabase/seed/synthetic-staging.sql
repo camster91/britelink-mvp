@@ -253,6 +253,16 @@ insert into public.lesson_activities
    '5eed0000-0000-4000-8000-000000000b10', '5eed0000-0000-4000-8000-000000000b50',
    'not_started', :'admin_b'::uuid);
 
+-- One capture of outside learning per household (046), so the isolation sweep has a sentinel on both sides.
+insert into public.learning_captures
+  (id, household_id, learner_id, captured_on, kind, subjects, note, created_by) values
+  ('5eed0000-0000-4000-8000-000000000a91', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a10', '2026-09-10', 'outing', array['Science']::text[],
+   'SYNTHETIC nature walk A', :'guardian_a'::uuid),
+  ('5eed0000-0000-4000-8000-000000000b91', '5eed0000-0000-4000-8000-0000000000b1',
+   '5eed0000-0000-4000-8000-000000000b10', '2026-09-10', 'book', array['Language']::text[],
+   'SYNTHETIC library book B', :'admin_b'::uuid);
+
 -- One family calendar per household (043), so the isolation sweep has a sentinel on both sides.
 insert into public.plan_schedules
   (plan_id, household_id, start_date, school_days, days_off, updated_by) values
