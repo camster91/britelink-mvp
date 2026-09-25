@@ -54,7 +54,8 @@ Service-role keys never enter Vite or browser env.
 
 `npm run test:staging-journeys` drives the deployed staging app with the seed's guardian and educator
 accounts, signed in through real magic links minted with the staging service key. It proves a
-learning note survives a reload and is visible on a second device (then removes it), that a
+learning note and a lesson completion each survive a reload and are visible on a second device (then
+cleans both up), that a
 calendar link serves a signed-out client and stops when turned off, and that the educator lands in
 the workbench. It writes `qa/staging/journey-report.json`.
 

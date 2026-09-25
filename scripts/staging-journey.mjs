@@ -4,7 +4,7 @@
 // the synthetic staging seed's own accounts (supabase/seed/synthetic-staging.sql), signed in through
 // real magic links minted with the staging service key -- the same path a family uses, without an
 // inbox. It proves what the harness cannot: that a write survives a reload and is visible from a
-// second device, that a calendar link works for a signed-out calendar app and dies when turned off,
+// second device (and so does a completed lesson), that a calendar link works for a signed-out calendar app and dies when turned off,
 // and that staff land in their workbench.
 //
 // It writes only synthetic rows and cleans up after itself. stagingJourneyConfig refuses to run
@@ -74,6 +74,19 @@ try {
     await deviceOne.page.reload({ waitUntil: "networkidle" });
     await deviceOne.page.locator("section.learning-captures").getByText(marker).waitFor({ timeout: 20000 });
   });
+  // #42: completing a lesson is durable. The seed's one lesson for learner A starts not_started;
+  // the second device resets it, so the journey leaves the fixture as it found it.
+  await step("guardian completes a lesson and gets the calm confirmation", async () => {
+    await deviceOne.page.getByLabel("Status").selectOption("completed");
+    await deviceOne.page.getByRole("button", { name: "Save lesson activity" }).click();
+    await deviceOne.page.locator(".lesson-complete").getByText("is done.", { exact: false }).waitFor();
+  });
+  await step("the completion survives a reload", async () => {
+    await deviceOne.page.reload({ waitUntil: "networkidle" });
+    const status = deviceOne.page.getByLabel("Status");
+    await status.waitFor({ timeout: 20000 });
+    if ((await status.inputValue()) !== "completed") throw new Error(`after reload the lesson reads ${await status.inputValue()}`);
+  });
   await step("a calendar link serves the family calendar to a signed-out client, and stops when turned off", async () => {
     const panel = deviceOne.page.locator("details.calendar-feed");
     await panel.getByText("Keep my calendar app up to date").click();
@@ -90,6 +103,14 @@ try {
     if (gone.status !== 404) throw new Error(`a turned-off feed still answers ${gone.status}`);
   });
   const deviceTwo = await signedInPage(browser, config.guardianUserId);
+  await step("a second device sees the completed lesson, then resets it (cleanup)", async () => {
+    const status = deviceTwo.page.getByLabel("Status");
+    await status.waitFor({ timeout: 20000 });
+    if ((await status.inputValue()) !== "completed") throw new Error(`the second device reads ${await status.inputValue()}`);
+    await status.selectOption("not_started");
+    await deviceTwo.page.getByRole("button", { name: "Save lesson activity" }).click();
+    await deviceTwo.page.getByText("Lesson activity saved securely.").waitFor();
+  });
   await step("a second device sees the same note, then removes it (cleanup)", async () => {
     const card = deviceTwo.page.locator("section.learning-captures");
     await card.getByText(marker).waitFor({ timeout: 20000 });
