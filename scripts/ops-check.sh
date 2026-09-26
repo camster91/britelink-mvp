@@ -51,16 +51,32 @@ label_of() { docker inspect "$1" --format "{{index .Config.Labels \"$2\"}}" 2>/d
 # 401 means the key is rejected; 400/403/404 means it was accepted. The key goes in a 0600
 # header file, never argv.
 rest_probe() {
-  local url hdr code
+  local url hdr body code
   url="$(env_file_val "$WEB_ENV" VITE_SUPABASE_URL)"
   [ -n "$url" ] && [ -n "$1" ] || { echo "skipped"; return; }
-  hdr="$(mktemp)"; chmod 600 "$hdr"
+  hdr="$(mktemp)"; body="$(mktemp)"; chmod 600 "$hdr" "$body"
   printf 'apikey: %s\nAuthorization: Bearer %s\n' "$1" "$1" >"$hdr"
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H @"$hdr" -H 'Accept: text/calendar' "$url/rest/v1/rpc/calendar_feed?token=$(printf '0%.0s' $(seq 64))" || true)"
-  rm -f "$hdr"
-  case "$code" in 401) echo "HTTP 401 (key rejected)";; 400|403|404) echo "HTTP $code (key accepted)";; *) echo "HTTP ${code:-none}";; esac
+  code="$(curl -s -o "$body" -w '%{http_code}' --max-time 10 -H @"$hdr" -H 'Accept: text/calendar' "$url/rest/v1/rpc/calendar_feed?token=$(printf '0%.0s' $(seq 64))" || true)"
+  # The status alone is ambiguous: the RPC refuses an unknown token with 42501, which PostgREST
+  # answers as 401 for an anonymous caller. Only a JWT error code (PGRST301/302) means the key
+  # itself was rejected. The body is error JSON and holds no secret; only its code is printed.
+  err="$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("code",""))
+except Exception: print("")' "$body")"
+  rm -f "$hdr" "$body"
+  case "$err" in
+    PGRST30*) echo "HTTP $code $err (key rejected)";;
+    "") echo "HTTP ${code:-none} (no error code)";;
+    *) echo "HTTP $code $err (key accepted; the RPC refused the dummy token as expected)";;
+  esac
 }
-env_of() { docker exec "$1" printenv "$2" 2>/dev/null || true; }
+env_of() { docker inspect "$1" --format '{{json .Config.Env}}' 2>/dev/null | NAME="$2" python3 -c '
+import json, os, sys
+try: env = json.load(sys.stdin) or []
+except Exception: sys.exit(0)
+p = os.environ["NAME"] + "="
+for e in env:
+    if e.startswith(p): print(e[len(p):]); break' || true; }
 yn() { if "$@"; then echo yes; else echo no; fi; }
 
 web_key="$(grep -E '^VITE_SUPABASE_ANON_KEY=' "$WEB_ENV" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"' \r" || true)"
