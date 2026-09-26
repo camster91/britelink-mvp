@@ -92,3 +92,9 @@ The 2026-09-25 live probe found the web key rejected (`JWSInvalidSignature`). Th
 different secrets, so the fix is **reconcile-stack**, not fix-anon-key. The same run showed Traefik
 writes an access log (`/var/log/traefik/access.log`), so calendar feed paths are logged unless the
 `/feed/` route opts out.
+
+The second check (after #63) narrowed it further: the `.env` `ANON_KEY` does **not** verify under the
+`.env` `JWT_SECRET` (it was minted 2026-09-18 15:06, with the storage container, which is the only
+service not recreated on 2026-09-19), so reconcile-stack correctly refuses. `check` now also reports
+which running secret signs the `.env` anon and service keys, whether `.env` defines `JWT_SECRET` more
+than once, and whether the compose-rendered secrets match the running ones. The fix follows from that.

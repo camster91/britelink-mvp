@@ -98,6 +98,18 @@ echo ".env ANON_KEY == running stack's:   $(same "$env_anon" "$stack_key")"
 echo ".env ANON_KEY == web .env key:      $(same "$env_anon" "$web_key")"
 [ -n "$env_secret" ] && [ -n "$env_anon" ] && echo ".env ANON_KEY verifies under .env:  $(jwt_verifies "$env_anon" "$env_secret")"
 [ -n "$auth_secret" ] && [ -n "$web_key" ] && echo "web key verifies under GoTrue:      $(jwt_verifies "$web_key" "$auth_secret")"
+env_service="$(env_file_val "$stack_env" SERVICE_KEY)"
+echo ".env JWT_SECRET / ANON_KEY lines:   $(grep -cE '^JWT_SECRET=' "$stack_env" 2>/dev/null || echo 0) / $(grep -cE '^ANON_KEY=' "$stack_env" 2>/dev/null || echo 0)"
+echo ".env modified:                      $(date -u -r "$stack_env" +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo unknown)"
+echo "PostgREST secret == storage's:      $(same "$rest_secret" "$storage_secret")"
+# Which running secret signed the keys? (yes/no per secret; the secrets themselves are never printed)
+for pair in "anon:$env_anon" "service:$env_service"; do
+  name="${pair%%:*}"; key="${pair#*:}"
+  [ -n "$key" ] || continue
+  printf '.env %-7s key verifies under: GoTrue %s, PostgREST %s, storage %s\n' "$name" \
+    "$(jwt_verifies "$key" "$auth_secret")" "$(jwt_verifies "$key" "$rest_secret")" "$(jwt_verifies "$key" "$storage_secret")"
+done
+if [ -n "$env_service" ]; then echo ".env SERVICE_KEY claims:            $(jwt_claims "$env_service")"; fi
 for c in "$AUTH_CONTAINER" "$REST_CONTAINER" "$STORAGE_CONTAINER"; do
   echo "created $c: $(docker inspect "$c" --format '{{.Created}}' 2>/dev/null | cut -c1-19 || true)"
 done
@@ -107,6 +119,18 @@ if [ -n "$stack_project" ] && [ -n "$stack_dir" ] && [ -n "$stack_files" ]; then
   IFS=, read -r -a compose_files <<<"$stack_files"
   for f in "${compose_files[@]}"; do compose_args+=(-f "$f"); done
   hashes="$(docker compose "${compose_args[@]}" config --hash='*' 2>/dev/null || true)"
+  # What the compose files + .env would give each service now, compared without printing anything.
+  docker compose "${compose_args[@]}" config --format json 2>/dev/null | ENV_SECRET="$env_secret" REST_S="$rest_secret" AUTH_S="$auth_secret" python3 -c '
+import json, os, sys
+try: svcs = json.load(sys.stdin)["services"]
+except Exception: print("compose-rendered secrets:           unreadable"); sys.exit(0)
+yn = lambda b: "yes" if b else "no"
+r = (svcs.get("rest", {}).get("environment") or {}).get("PGRST_JWT_SECRET", "")
+a = (svcs.get("auth", {}).get("environment") or {}).get("GOTRUE_JWT_SECRET", "")
+e = os.environ["ENV_SECRET"]
+print("compose renders rest == auth secret:", yn(r and r == a))
+print("compose rest secret == running rest:", yn(r and r == os.environ["REST_S"]), "| == .env:", yn(r and r == e))
+print("compose auth secret == running auth:", yn(a and a == os.environ["AUTH_S"]), "| == .env:", yn(a and a == e))' || true
   for svc in auth rest storage; do
     want="$(printf '%s\n' "$hashes" | awk -v s="$svc" '$1 == s {print $2}')"
     have="$(label_of "${stack_project}-${svc}-1" com.docker.compose.config-hash)"
