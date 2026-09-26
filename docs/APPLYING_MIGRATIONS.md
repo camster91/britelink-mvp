@@ -98,3 +98,14 @@ The second check (after #63) narrowed it further: the `.env` `ANON_KEY` does **n
 service not recreated on 2026-09-19), so reconcile-stack correctly refuses. `check` now also reports
 which running secret signs the `.env` anon and service keys, whether `.env` defines `JWT_SECRET` more
 than once, and whether the compose-rendered secrets match the running ones. The fix follows from that.
+
+The third check settled it: the `.env` `ANON_KEY` **and** `SERVICE_KEY` (both minted 2026-09-18) verify
+only under the storage container's secret, the original. The `.env` `JWT_SECRET` was changed on
+2026-09-19 18:00 without re-minting the keys; GoTrue took the new value, PostgREST runs a third one,
+and Docker considers `rest` current, so a plain `up -d` would not recreate it.
+
+- **restore-secret** is the fix. It puts that original, key-signing secret back as the `.env`
+  `JWT_SECRET` (after a `0600` backup beside the file; exactly one line changes), then
+  `up -d --no-deps --force-recreate auth rest storage`. It refuses, changing nothing, unless both keys
+  verify under that secret and the `.env` has exactly one `JWT_SECRET` line. The web key is unchanged,
+  so there is no web rebuild. Existing sign-in sessions end.

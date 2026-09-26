@@ -10,6 +10,11 @@
 #                 files and .env (docker compose up -d --no-deps; the db is untouched), so every
 #                 service uses the .env JWT_SECRET that signed ANON_KEY. Refuses unless that key
 #                 verifies under it and is role=anon. Signs out existing sessions.
+#   restore-secret
+#                 puts the secret that actually signed the stack's ANON_KEY and SERVICE_KEY (the one
+#                 the storage container still runs with) back into the stack .env as JWT_SECRET,
+#                 after a backup, then force-recreates auth/rest/storage so all three use it. Refuses
+#                 unless both keys verify under that secret. No web rebuild: the web key is unchanged.
 #   fix-anon-key  copies the production stack's own ANON_KEY into the web .env (after a backup),
 #                 only if it verifies under PostgREST's secret and is role=anon. No rebuild: run
 #                 Deploy afterwards.
@@ -19,7 +24,7 @@
 set -euo pipefail
 set +x
 MODE="${1:-check}"
-case "$MODE" in check|fix-anon-key|reconcile-stack) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack]" >&2; exit 2 ;; esac
+case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret]" >&2; exit 2 ;; esac
 WEB_ENV="${WEB_ENV:-/docker/britelink-web/.env}"
 WEB_ORIGIN="${WEB_ORIGIN:-http://127.0.0.1:8088}"
 REST_CONTAINER="${REST_CONTAINER:-britelink-production-rest-1}"
@@ -197,4 +202,39 @@ if [ "$MODE" = "reconcile-stack" ]; then
   sleep 5
   echo "anon REST probe (public API):       $(rest_probe "$web_key")"
   [ "$now_rest" = "$env_secret" ] && [ "$now_auth" = "$env_secret" ] || { echo "FAIL: services did not converge on the .env secret" >&2; exit 1; }
+fi
+
+if [ "$MODE" = "restore-secret" ]; then
+  echo "== restore-secret =="
+  refuse() { echo "FAIL: $*; nothing changed" >&2; exit 1; }
+  [ "${#compose_args[@]}" -gt 0 ] || refuse "could not read the stack's compose project from $REST_CONTAINER labels"
+  [ -f "$stack_env" ] || refuse "no stack .env at $stack_env"
+  [ -n "$storage_secret" ] && [ -n "$env_anon" ] && [ -n "$env_service" ] || refuse "storage secret or .env keys unavailable"
+  [ "$(jwt_verifies "$env_anon" "$storage_secret")" = yes ] || refuse "the .env ANON_KEY does not verify under storage's secret"
+  [ "$(jwt_verifies "$env_service" "$storage_secret")" = yes ] || refuse "the .env SERVICE_KEY does not verify under storage's secret"
+  jwt_claims "$env_anon" | grep -q '"role": "anon"' || refuse "the .env ANON_KEY is not role=anon"
+  [ "$(grep -cE '^JWT_SECRET=' "$stack_env")" = 1 ] || refuse "the stack .env does not have exactly one JWT_SECRET line"
+  backup="$stack_env.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$stack_env" "$backup"; chmod 600 "$backup"
+  tmp="$(mktemp)"
+  NEW_SECRET="$storage_secret" awk '/^JWT_SECRET=/ { print "JWT_SECRET=" ENVIRON["NEW_SECRET"]; next } { print }' "$backup" > "$tmp"
+  cat "$tmp" > "$stack_env"; rm -f "$tmp"
+  if [ "$(env_file_val "$stack_env" JWT_SECRET)" != "$storage_secret" ] || [ "$(grep -cvE '^JWT_SECRET=' "$stack_env")" != "$(grep -cvE '^JWT_SECRET=' "$backup")" ]; then
+    cp -p "$backup" "$stack_env"; echo "FAIL: the .env write did not verify; restored the backup; nothing recreated" >&2; exit 1
+  fi
+  echo "updated $stack_env JWT_SECRET (backup: $backup); every other line unchanged"
+  docker compose "${compose_args[@]}" up -d --no-deps --force-recreate auth rest storage
+  now_rest=""; now_auth=""; now_storage=""
+  for _ in $(seq 30); do
+    now_rest="$(env_of "$REST_CONTAINER" PGRST_JWT_SECRET)"; now_auth="$(env_of "$AUTH_CONTAINER" GOTRUE_JWT_SECRET)"; now_storage="$(env_of "$STORAGE_CONTAINER" PGRST_JWT_SECRET)"
+    [ "$now_rest" = "$storage_secret" ] && [ "$now_auth" = "$storage_secret" ] && [ "$now_storage" = "$storage_secret" ] && break
+    sleep 2
+  done
+  echo "PostgREST uses the key-signing secret: $(same "$storage_secret" "$now_rest")"
+  echo "GoTrue uses the key-signing secret:    $(same "$storage_secret" "$now_auth")"
+  echo "storage uses the key-signing secret:   $(same "$storage_secret" "$now_storage")"
+  echo "web key verifies under PostgREST:      $(jwt_verifies "$web_key" "$now_rest")"
+  sleep 5
+  echo "anon REST probe (public API):          $(rest_probe "$web_key")"
+  [ "$now_rest" = "$storage_secret" ] && [ "$now_auth" = "$storage_secret" ] && [ "$now_storage" = "$storage_secret" ] || { echo "FAIL: services did not converge; the .env backup is $backup" >&2; exit 1; }
 fi
