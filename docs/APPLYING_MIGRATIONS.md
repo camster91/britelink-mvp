@@ -109,3 +109,10 @@ and Docker considers `rest` current, so a plain `up -d` would not recreate it.
   `up -d --no-deps --force-recreate auth rest storage`. It refuses, changing nothing, unless both keys
   verify under that secret and the `.env` has exactly one `JWT_SECRET` line. The web key is unchanged,
   so there is no web rebuild. Existing sign-in sessions end.
+
+The first restore-secret run (2026-09-26 02:37) rewrote the `.env` and recreated all three services;
+GoTrue and storage then reported the key-signing secret. It still exited non-zero because of two
+reporting bugs, now fixed: the PostgREST image has no `printenv`, so `docker exec printenv` never read
+its secret (the environment is now read with `docker inspect`); and the probe treated any 401 as a
+rejected key, although the dummy-token RPC call answers 401/42501 to an accepted anonymous key (only
+`PGRST301`/`PGRST302` mean the key was rejected). Re-run **check** to confirm.
