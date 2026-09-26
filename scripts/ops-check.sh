@@ -5,6 +5,11 @@
 #   check         the web build's anon key vs the production stack's (same key? does each verify
 #                 under the secret PostgREST actually uses? do GoTrue and PostgREST share one? does
 #                 the served bundle carry the .env key?), and whether Traefik writes an access log.
+#   reconcile-stack
+#                 recreates the production stack's auth/rest/storage containers from its own compose
+#                 files and .env (docker compose up -d --no-deps; the db is untouched), so every
+#                 service uses the .env JWT_SECRET that signed ANON_KEY. Refuses unless that key
+#                 verifies under it and is role=anon. Signs out existing sessions.
 #   fix-anon-key  copies the production stack's own ANON_KEY into the web .env (after a backup),
 #                 only if it verifies under PostgREST's secret and is role=anon. No rebuild: run
 #                 Deploy afterwards.
@@ -14,13 +19,14 @@
 set -euo pipefail
 set +x
 MODE="${1:-check}"
-case "$MODE" in check|fix-anon-key) ;; *) echo "usage: $0 [check|fix-anon-key]" >&2; exit 2 ;; esac
+case "$MODE" in check|fix-anon-key|reconcile-stack) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack]" >&2; exit 2 ;; esac
 WEB_ENV="${WEB_ENV:-/docker/britelink-web/.env}"
 WEB_ORIGIN="${WEB_ORIGIN:-http://127.0.0.1:8088}"
 REST_CONTAINER="${REST_CONTAINER:-britelink-production-rest-1}"
 AUTH_CONTAINER="${AUTH_CONTAINER:-britelink-production-auth-1}"
 STORAGE_CONTAINER="${STORAGE_CONTAINER:-britelink-production-storage-1}"
 TRAEFIK_CONTAINER="${TRAEFIK_CONTAINER:-traefik}"
+TRAEFIK_DYNAMIC="${TRAEFIK_DYNAMIC:-/opt/traefik/dynamic/britelink.yml}"
 TRAEFIK_CONFIGS="${TRAEFIK_CONFIGS:-/etc/traefik/traefik.yml /etc/traefik/traefik.yaml /etc/traefik/traefik.toml /opt/traefik/traefik.yml /opt/traefik/traefik.yaml /opt/traefik/traefik.toml}"
 
 # Secrets travel through the environment, never argv, so they do not appear in the process list.
@@ -34,6 +40,21 @@ import os, hmac, hashlib, base64
 h, p, s = os.environ["JWT"].split(".")
 mac = hmac.new(os.environ["SECRET"].encode(), f"{h}.{p}".encode(), hashlib.sha256).digest()
 print("yes" if hmac.compare_digest(base64.urlsafe_b64encode(mac).rstrip(b"=").decode(), s) else "no")'; }
+env_file_val() { grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"' \r" || true; }
+label_of() { docker inspect "$1" --format "{{index .Config.Labels \"$2\"}}" 2>/dev/null || true; }
+# Anonymous REST call through the public API origin with an all-zero (never valid) feed token:
+# 401 means the key is rejected; 400/403/404 means it was accepted. The key goes in a 0600
+# header file, never argv.
+rest_probe() {
+  local url hdr code
+  url="$(env_file_val "$WEB_ENV" VITE_SUPABASE_URL)"
+  [ -n "$url" ] && [ -n "$1" ] || { echo "skipped"; return; }
+  hdr="$(mktemp)"; chmod 600 "$hdr"
+  printf 'apikey: %s\nAuthorization: Bearer %s\n' "$1" "$1" >"$hdr"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H @"$hdr" -H 'Accept: text/calendar' "$url/rest/v1/rpc/calendar_feed?token=$(printf '0%.0s' $(seq 64))" || true)"
+  rm -f "$hdr"
+  case "$code" in 401) echo "HTTP 401 (key rejected)";; 400|403|404) echo "HTTP $code (key accepted)";; *) echo "HTTP ${code:-none}";; esac
+}
 env_of() { docker exec "$1" printenv "$2" 2>/dev/null || true; }
 yn() { if "$@"; then echo yes; else echo no; fi; }
 
@@ -58,12 +79,54 @@ for js in $(curl -s --max-time 10 "$WEB_ORIGIN/" | grep -o 'assets/[^"]*\.js' ||
 done
 echo "served bundle carries the .env key: $bundle_has"
 
+echo "== production stack secrets =="
+stack_dir="$(label_of "$REST_CONTAINER" com.docker.compose.project.working_dir)"
+stack_project="$(label_of "$REST_CONTAINER" com.docker.compose.project)"
+stack_files="$(label_of "$REST_CONTAINER" com.docker.compose.project.config_files)"
+stack_env="${STACK_ENV:-${stack_dir:+$stack_dir/.env}}"
+env_secret="$(env_file_val "$stack_env" JWT_SECRET)"
+env_anon="$(env_file_val "$stack_env" ANON_KEY)"
+storage_secret="$(env_of "$STORAGE_CONTAINER" PGRST_JWT_SECRET)"
+same() { yn test -n "$1" -a "$1" = "$2"; }
+echo "compose project / dir:              ${stack_project:-unknown} / ${stack_dir:-unknown}"
+echo "compose files:                      ${stack_files:-unknown}"
+echo "stack .env has JWT_SECRET:          $(yn test -n "$env_secret")"
+echo ".env JWT_SECRET == PostgREST's:     $(same "$env_secret" "$rest_secret")"
+echo ".env JWT_SECRET == GoTrue's:        $(same "$env_secret" "$auth_secret")"
+echo ".env JWT_SECRET == storage's:       $(same "$env_secret" "$storage_secret")"
+echo ".env ANON_KEY == running stack's:   $(same "$env_anon" "$stack_key")"
+echo ".env ANON_KEY == web .env key:      $(same "$env_anon" "$web_key")"
+[ -n "$env_secret" ] && [ -n "$env_anon" ] && echo ".env ANON_KEY verifies under .env:  $(jwt_verifies "$env_anon" "$env_secret")"
+[ -n "$auth_secret" ] && [ -n "$web_key" ] && echo "web key verifies under GoTrue:      $(jwt_verifies "$web_key" "$auth_secret")"
+for c in "$AUTH_CONTAINER" "$REST_CONTAINER" "$STORAGE_CONTAINER"; do
+  echo "created $c: $(docker inspect "$c" --format '{{.Created}}' 2>/dev/null | cut -c1-19 || true)"
+done
+compose_args=()
+if [ -n "$stack_project" ] && [ -n "$stack_dir" ] && [ -n "$stack_files" ]; then
+  compose_args=(-p "$stack_project" --project-directory "$stack_dir")
+  IFS=, read -r -a compose_files <<<"$stack_files"
+  for f in "${compose_files[@]}"; do compose_args+=(-f "$f"); done
+  hashes="$(docker compose "${compose_args[@]}" config --hash='*' 2>/dev/null || true)"
+  for svc in auth rest storage; do
+    want="$(printf '%s\n' "$hashes" | awk -v s="$svc" '$1 == s {print $2}')"
+    have="$(label_of "${stack_project}-${svc}-1" com.docker.compose.config-hash)"
+    if [ -z "$want" ]; then state="unknown"; elif [ "$want" = "$have" ]; then state="matches compose files + .env"; else state="STALE (differs from compose files + .env)"; fi
+    printf 'container %-8s                   %s\n' "$svc:" "$state"
+  done
+fi
+echo "anon REST probe (public API):       $(rest_probe "$web_key")"
+
 echo "== traefik access log =="
 args="$(docker inspect "$TRAEFIK_CONTAINER" --format '{{join .Args " "}}' 2>/dev/null || true)"
 if printf '%s' "$args" | grep -qi accesslog; then
   echo "container args: $(printf '%s' "$args" | tr ' ' '\n' | grep -i accesslog | tr '\n' ' ')"
 else
   echo "container args: no accesslog flag"
+fi
+echo "traefik image: $(docker inspect "$TRAEFIK_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo unknown)"
+if [ -f "$TRAEFIK_DYNAMIC" ]; then
+  echo "dynamic route $TRAEFIK_DYNAMIC:"
+  grep -vE '^[[:space:]]*(#|$)' "$TRAEFIK_DYNAMIC" | grep -viE 'password|secret|token|users|key' | sed 's/^/  /' || true
 fi
 for f in $TRAEFIK_CONFIGS; do
   [ -f "$f" ] || continue
@@ -88,4 +151,26 @@ if [ "$MODE" = "fix-anon-key" ]; then
   else
     cp -p "$backup" "$WEB_ENV"; echo "FAIL: the write did not verify; restored the backup" >&2; exit 1
   fi
+fi
+
+if [ "$MODE" = "reconcile-stack" ]; then
+  echo "== reconcile-stack =="
+  refuse() { echo "FAIL: $*; nothing changed" >&2; exit 1; }
+  [ "${#compose_args[@]}" -gt 0 ] || refuse "could not read the stack's compose project from $REST_CONTAINER labels"
+  [ -n "$env_secret" ] && [ -n "$env_anon" ] || refuse "the stack .env has no JWT_SECRET or ANON_KEY"
+  [ "$(jwt_verifies "$env_anon" "$env_secret")" = yes ] || refuse "the .env ANON_KEY does not verify under the .env JWT_SECRET"
+  jwt_claims "$env_anon" | grep -q '"role": "anon"' || refuse "the .env ANON_KEY is not role=anon"
+  docker compose "${compose_args[@]}" up -d --no-deps auth rest storage
+  now_rest=""; now_auth=""
+  for _ in $(seq 30); do
+    now_rest="$(env_of "$REST_CONTAINER" PGRST_JWT_SECRET)"; now_auth="$(env_of "$AUTH_CONTAINER" GOTRUE_JWT_SECRET)"
+    [ "$now_rest" = "$env_secret" ] && [ "$now_auth" = "$env_secret" ] && break
+    sleep 2
+  done
+  echo "PostgREST now uses .env secret:     $(same "$env_secret" "$now_rest")"
+  echo "GoTrue now uses .env secret:        $(same "$env_secret" "$now_auth")"
+  echo "web key verifies under PostgREST:   $(jwt_verifies "$web_key" "$now_rest")"
+  sleep 5
+  echo "anon REST probe (public API):       $(rest_probe "$web_key")"
+  [ "$now_rest" = "$env_secret" ] && [ "$now_auth" = "$env_secret" ] || { echo "FAIL: services did not converge on the .env secret" >&2; exit 1; }
 fi
