@@ -66,3 +66,20 @@ If you have already run them, the script still applies the rest of 042 correctly
 - The same holds when the anon revokes were run by hand first.
 - It refuses an out-of-order database and a database older than 038.
 - A second run applies nothing, and the backup is a valid `pg_dump` archive.
+
+## Ops check (anon key, Traefik access log)
+
+Actions → **Ops check** → Run workflow on `main`.
+
+- **check** is read-only and prints facts only, never a key or secret. It reports:
+  - whether the web build's `VITE_SUPABASE_ANON_KEY` verifies under the secret PostgREST uses;
+  - whether it matches the production stack's own `ANON_KEY`;
+  - whether GoTrue and PostgREST share a secret;
+  - whether the served bundle carries the `.env` key;
+  - whether Traefik writes an access log.
+- **fix-anon-key** copies the stack's own `ANON_KEY` into `/docker/britelink-web/.env`, after a
+  backup. It only does this if that key verifies and is `role=anon`. Afterwards, run **Deploy** so
+  the bundle is rebuilt with the new key.
+
+The 2026-09-25 live probe found the web key rejected (`JWSInvalidSignature`), which is what this
+mode fixes.
