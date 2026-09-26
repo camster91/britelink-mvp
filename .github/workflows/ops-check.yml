@@ -1,0 +1,70 @@
+name: Ops check
+
+# Production diagnostics over the deploy SSH path, running scripts/ops-check.sh from the dispatched
+# commit. "check" (default) is read-only and prints facts only, never a key or secret: whether the
+# web build's anon key verifies under the secret PostgREST uses, and whether Traefik writes an
+# access log. "fix-anon-key" copies the production stack's own ANON_KEY into the web .env after a
+# backup; run Deploy afterwards so the bundle is rebuilt with it.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check (read-only) or fix-anon-key"
+        required: true
+        default: check
+        type: choice
+        options: [check, fix-anon-key]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-britelink-web
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 187.77.26.99
+  VPS_USER: root
+
+jobs:
+  ops:
+    name: ops (${{ inputs.mode }})
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 10
+    steps:
+      - name: Install SSH key and pin host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/britelink_deploy"
+          chmod 600 "$HOME/.ssh/britelink_deploy"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Run scripts/ops-check.sh on the VPS
+        env:
+          MODE: ${{ inputs.mode }}
+          OPS_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in check|fix-anon-key) ;; *) echo "::error::bad mode"; exit 1 ;; esac
+          ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 "${VPS_USER}@${VPS_HOST}" "bash -s -- '$MODE' '$OPS_SHA'" <<'REMOTE'
+          set -euo pipefail
+          MODE="$1"; SHA="$2"
+          work="$(mktemp -d /root/bl-ops.XXXXXX)"
+          trap 'rm -rf "$work"' EXIT
+          cd /docker/britelink-web
+          git fetch --depth=1 origin "$SHA"
+          git archive "$SHA" scripts/ops-check.sh | tar -x -C "$work"
+          bash "$work/scripts/ops-check.sh" "$MODE"
+          REMOTE
+
+      - name: Remove the deploy key from the runner
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/britelink_deploy" "$HOME/.ssh/known_hosts"
