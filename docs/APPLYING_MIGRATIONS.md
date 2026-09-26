@@ -81,5 +81,14 @@ Actions → **Ops check** → Run workflow on `main`.
   backup. It only does this if that key verifies and is `role=anon`. Afterwards, run **Deploy** so
   the bundle is rebuilt with the new key.
 
-The 2026-09-25 live probe found the web key rejected (`JWSInvalidSignature`), which is what this
-mode fixes.
+- **reconcile-stack** recreates the production stack's `auth`, `rest` and `storage` containers from
+  the stack's own compose files and `.env` (`docker compose up -d --no-deps`; the database is not
+  touched), so all three use the `JWT_SECRET` that signed `ANON_KEY`. It refuses, changing nothing,
+  unless that key verifies under that secret and is `role=anon`. Recreating GoTrue signs out every
+  existing session. No web rebuild is needed when the web key already equals the stack's.
+
+The 2026-09-25 live probe found the web key rejected (`JWSInvalidSignature`). The first Ops check
+(2026-09-26) showed why: the web key *is* the stack's key, but PostgREST and GoTrue run with
+different secrets, so the fix is **reconcile-stack**, not fix-anon-key. The same run showed Traefik
+writes an access log (`/var/log/traefik/access.log`), so calendar feed paths are logged unless the
+`/feed/` route opts out.
