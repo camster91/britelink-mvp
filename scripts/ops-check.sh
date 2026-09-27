@@ -15,6 +15,11 @@
 #                 the storage container still runs with) back into the stack .env as JWT_SECRET,
 #                 after a backup, then force-recreates auth/rest/storage so all three use it. Refuses
 #                 unless both keys verify under that secret. No web rebuild: the web key is unchanged.
+#   feed-route    adds a Traefik router for britelink.ashbi.ca/feed/ with access logging off (router
+#                 observability, Traefik >= 3.1), so calendar feed tokens never reach the access log.
+#                 Backs up the dynamic file first, proves the result with a real request (the feed
+#                 path must be absent from the log, a control request present, the site still up),
+#                 and restores the backup on any failure.
 #   fix-anon-key  copies the production stack's own ANON_KEY into the web .env (after a backup),
 #                 only if it verifies under PostgREST's secret and is role=anon. No rebuild: run
 #                 Deploy afterwards.
@@ -24,7 +29,7 @@
 set -euo pipefail
 set +x
 MODE="${1:-check}"
-case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret]" >&2; exit 2 ;; esac
+case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret|feed-route]" >&2; exit 2 ;; esac
 WEB_ENV="${WEB_ENV:-/docker/britelink-web/.env}"
 WEB_ORIGIN="${WEB_ORIGIN:-http://127.0.0.1:8088}"
 REST_CONTAINER="${REST_CONTAINER:-britelink-production-rest-1}"
@@ -32,6 +37,9 @@ AUTH_CONTAINER="${AUTH_CONTAINER:-britelink-production-auth-1}"
 STORAGE_CONTAINER="${STORAGE_CONTAINER:-britelink-production-storage-1}"
 TRAEFIK_CONTAINER="${TRAEFIK_CONTAINER:-traefik}"
 TRAEFIK_DYNAMIC="${TRAEFIK_DYNAMIC:-/opt/traefik/dynamic/britelink.yml}"
+TRAEFIK_ACCESS_LOG="${TRAEFIK_ACCESS_LOG:-/var/log/traefik/access.log}"
+SITE_HOST="${SITE_HOST:-britelink.ashbi.ca}"
+BACKUP_DIR="${BACKUP_DIR:-/root/britelink-backups}"
 TRAEFIK_CONFIGS="${TRAEFIK_CONFIGS:-/etc/traefik/traefik.yml /etc/traefik/traefik.yaml /etc/traefik/traefik.toml /opt/traefik/traefik.yml /opt/traefik/traefik.yaml /opt/traefik/traefik.toml}"
 
 # Secrets travel through the environment, never argv, so they do not appear in the process list.
@@ -169,6 +177,9 @@ else
   echo "container args: no accesslog flag"
 fi
 echo "traefik image: $(docker inspect "$TRAEFIK_CONTAINER" --format '{{.Config.Image}}' 2>/dev/null || echo unknown)"
+traefik_version="$(docker exec "$TRAEFIK_CONTAINER" traefik version 2>/dev/null | awk '/^Version:/ {print $2}' || true)"
+echo "traefik version: ${traefik_version:-unknown}"
+if [ -f "$TRAEFIK_DYNAMIC" ] && grep -q 'britelink-feed:' "$TRAEFIK_DYNAMIC"; then echo "feed route (no access log):         present"; else echo "feed route (no access log):         absent"; fi
 if [ -f "$TRAEFIK_DYNAMIC" ]; then
   echo "dynamic route $TRAEFIK_DYNAMIC:"
   grep -vE '^[[:space:]]*(#|$)' "$TRAEFIK_DYNAMIC" | grep -viE 'password|secret|token|users|key' | sed 's/^/  /' || true
@@ -253,4 +264,64 @@ if [ "$MODE" = "restore-secret" ]; then
   sleep 5
   echo "anon REST probe (public API):          $(rest_probe "$web_key")"
   [ "$now_rest" = "$storage_secret" ] && [ "$now_auth" = "$storage_secret" ] && [ "$now_storage" = "$storage_secret" ] || { echo "FAIL: services did not converge; the .env backup is $backup" >&2; exit 1; }
+fi
+
+if [ "$MODE" = "feed-route" ]; then
+  echo "== feed-route =="
+  refuse() { echo "FAIL: $*; nothing changed" >&2; exit 1; }
+  [ -f "$TRAEFIK_DYNAMIC" ] || refuse "no dynamic route file at $TRAEFIK_DYNAMIC"
+  if grep -q 'britelink-feed:' "$TRAEFIK_DYNAMIC"; then echo "already present; nothing changed"; exit 0; fi
+  grep -qF "Host(\`$SITE_HOST\`)" "$TRAEFIK_DYNAMIC" || refuse "the route file has no Host(\`$SITE_HOST\`) router"
+  [ "$(grep -cE '^[[:space:]]*routers:[[:space:]]*$' "$TRAEFIK_DYNAMIC")" = 1 ] || refuse "the route file does not have exactly one 'routers:' line"
+  major="${traefik_version%%.*}"; rest="${traefik_version#*.}"; minor="${rest%%.*}"
+  case "$major.$minor" in *[!0-9.]*|.|"") refuse "could not read the Traefik version";; esac
+  { [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 1 ]; }; } || refuse "Traefik $traefik_version has no per-router access-log switch (needs 3.1+)"
+  docker exec "$TRAEFIK_CONTAINER" test -f "$TRAEFIK_ACCESS_LOG" || refuse "cannot read $TRAEFIK_ACCESS_LOG inside $TRAEFIK_CONTAINER, so the result could not be proven"
+
+  mkdir -p "$BACKUP_DIR"
+  backup="$BACKUP_DIR/traefik-britelink.yml.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$TRAEFIK_DYNAMIC" "$backup"
+  # Temp file in the same directory (atomic rename) but without a .yml/.yaml/.toml extension, so the
+  # file provider never loads a half-written copy.
+  tmp="$(dirname "$TRAEFIK_DYNAMIC")/.britelink-feed.tmp"
+  # The router block follows the file's own indentation: two spaces deeper than "routers:".
+  SITE_HOST="$SITE_HOST" awk '
+    { print }
+    /^[[:space:]]*routers:[[:space:]]*$/ && !done {
+      match($0, /^[[:space:]]*/); base = substr($0, 1, RLENGTH); a = base "  "; b = a "  "; c = b "  "
+      print a "# Calendar feed URLs carry a private token in the path: keep them out of the access log."
+      print a "britelink-feed:"
+      print b "rule: \"Host(`" ENVIRON["SITE_HOST"] "`) && PathPrefix(`/feed/`)\""
+      print b "priority: 1000"
+      print b "entryPoints:"
+      print c "- websecure"
+      print b "service: britelink-web"
+      print b "tls:"
+      print c "certResolver: letsencrypt"
+      print b "observability:"
+      print c "accessLogs: false"
+      done = 1
+    }' "$backup" > "$tmp"
+  chmod --reference="$backup" "$tmp" 2>/dev/null || true
+  mv "$tmp" "$TRAEFIK_DYNAMIC"
+  echo "added the britelink-feed router (backup: $backup)"
+
+  restore() { cp -p "$backup" "$TRAEFIK_DYNAMIC"; echo "FAIL: $*; restored the previous route file" >&2; exit 1; }
+  sleep 5
+  nonce="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+  control="$(python3 -c 'import secrets; print(secrets.token_hex(8))')"
+  site_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$SITE_HOST/?opscheck=$control" || true)"
+  feed_code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 "https://$SITE_HOST/feed/$nonce.ics" || true)"
+  sleep 3
+  in_log() { docker exec "$TRAEFIK_CONTAINER" grep -c "$1" "$TRAEFIK_ACCESS_LOG" 2>/dev/null || true; }
+  control_hits="$(in_log "opscheck=$control")"; feed_hits="$(in_log "$nonce")"
+  echo "site responds:                      HTTP $site_code"
+  echo "feed path served through Traefik:   HTTP $feed_code"
+  echo "control request in access log:      ${control_hits:-0}"
+  echo "feed request in access log:         ${feed_hits:-0}"
+  [ "$site_code" = 200 ] || restore "the site answered HTTP $site_code after the change"
+  case "$feed_code" in 000|502|503|504) restore "the feed path answered HTTP $feed_code through the new router";; esac
+  [ "${control_hits:-0}" -ge 1 ] || restore "the control request never reached the access log, so the test proves nothing"
+  [ "${feed_hits:-0}" = 0 ] || restore "the feed request was still logged"
+  echo "OK: feed paths are routed and no longer logged."
 fi
