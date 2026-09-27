@@ -116,3 +116,26 @@ reporting bugs, now fixed: the PostgREST image has no `printenv`, so `docker exe
 its secret (the environment is now read with `docker inspect`); and the probe treated any 401 as a
 rejected key, although the dummy-token RPC call answers 401/42501 to an accepted anonymous key (only
 `PGRST301`/`PGRST302` mean the key was rejected). Re-run **check** to confirm.
+
+The follow-up check (2026-09-26 02:42) confirmed it: all three services share the key-signing
+secret, both keys verify, no container is stale, and the public probe answers `42501` (key accepted).
+
+### Keeping feed tokens out of the Traefik access log
+
+Traefik logs every request to `/var/log/traefik/access.log`, and calendar feed URLs carry their
+private token in the path. **feed-route** adds a `britelink-feed` router to
+`/opt/traefik/dynamic/britelink.yml` (`Host(britelink.ashbi.ca) && PathPrefix(/feed/)`, same service
+and TLS, `observability.accessLogs: false`). Before it changes anything it checks:
+
+- Traefik is 3.1 or newer;
+- the route file has exactly one `routers:` block;
+- the access log is readable.
+
+It backs up the route file to `/root/britelink-backups` and writes it atomically. It then proves the
+result with real requests:
+
+- a control request must appear in the log;
+- a dummy feed path must not;
+- the site must still answer 200.
+
+On any failure it restores the backup. Re-running it is a no-op.

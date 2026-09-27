@@ -11,11 +11,11 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "check (read-only), restore-secret, reconcile-stack, or fix-anon-key"
+        description: "check (read-only), feed-route, restore-secret, reconcile-stack, or fix-anon-key"
         required: true
         default: check
         type: choice
-        options: [check, restore-secret, reconcile-stack, fix-anon-key]
+        options: [check, feed-route, restore-secret, reconcile-stack, fix-anon-key]
 
 permissions:
   contents: read
@@ -53,7 +53,7 @@ jobs:
           OPS_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret) ;; *) echo "::error::bad mode"; exit 1 ;; esac
+          case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route) ;; *) echo "::error::bad mode"; exit 1 ;; esac
           ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
               -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
               -o ConnectTimeout=15 "${VPS_USER}@${VPS_HOST}" "bash -s -- '$MODE' '$OPS_SHA'" <<'REMOTE'
