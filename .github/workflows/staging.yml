@@ -1,0 +1,75 @@
+name: Staging
+
+# VPS staging (synthetic data only) over the deploy SSH path, running scripts/staging-ops.sh from the
+# dispatched commit. "rebuild" wipes and rebuilds the staging stack (needed once: it predates
+# migration 038); "verify" builds a staging copy of the app and runs the hosted isolation verifier
+# (D1 + D2) and the parent + educator journeys against it. Never touches production: the script
+# refuses any target that is not a staging compose project.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "verify, rebuild, or rebuild-and-verify"
+        required: true
+        default: verify
+        type: choice
+        options: [verify, rebuild, rebuild-and-verify]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-britelink-web
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 187.77.26.99
+  VPS_USER: root
+
+jobs:
+  staging:
+    name: staging (${{ inputs.mode }})
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 40
+    steps:
+      - name: Install SSH key and pin host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/britelink_deploy"
+          chmod 600 "$HOME/.ssh/britelink_deploy"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Run scripts/staging-ops.sh on the VPS
+        env:
+          MODE: ${{ inputs.mode }}
+          OPS_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$MODE" in verify|rebuild|rebuild-and-verify) ;; *) echo "::error::bad mode"; exit 1 ;; esac
+          ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 -o ServerAliveInterval=30 \
+              "${VPS_USER}@${VPS_HOST}" "bash -s -- '$MODE' '$OPS_SHA'" <<'REMOTE'
+          set -euo pipefail
+          MODE="$1"; SHA="$2"; export SHA
+          work="$(mktemp -d /root/bl-staging-src.XXXXXX)"
+          trap 'rm -rf "$work"' EXIT
+          cd /docker/britelink-web
+          git fetch --depth=1 origin "$SHA"
+          git archive "$SHA" | tar -x -C "$work"
+          case "$MODE" in
+            rebuild) bash "$work/scripts/staging-ops.sh" rebuild ;;
+            verify) bash "$work/scripts/staging-ops.sh" verify ;;
+            rebuild-and-verify) bash "$work/scripts/staging-ops.sh" rebuild && bash "$work/scripts/staging-ops.sh" verify ;;
+          esac
+          REMOTE
+
+      - name: Remove the deploy key from the runner
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/britelink_deploy" "$HOME/.ssh/known_hosts"
