@@ -181,7 +181,21 @@ api_host="${api_origin#*://}"; api_host="${api_host%%/*}"
 echo "web container networks:             $(docker inspect "$WEB_CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || echo unknown)"
 if [ -n "$api_host" ]; then
   echo "API resolves inside web container:  $(docker exec "$WEB_CONTAINER" nslookup "$api_host" 127.0.0.11 2>&1 | awk '/^Address/ && !/127.0.0.11/ {print $NF}' | tr '\n' ' ' || true)"
-  echo "API reachable from web container:   $(docker exec "$WEB_CONTAINER" wget -q -T 8 -O /dev/null -S "$api_origin/rest/v1/" 2>&1 | awk '/HTTP\// {print $2}' | tail -1 || true) (any HTTP status means reachable; empty means no connection)"
+  echo "API reachable from web container:   $(docker exec "$WEB_CONTAINER" wget -q -T 8 -O /dev/null -S "$api_origin/rest/v1/" 2>&1 | awk '/HTTP\// {print $2}' | tail -1 || true) (any HTTP status means reachable; busybox wget does not verify TLS)"
+  # What nginx's proxy_ssl_verify actually does: verify the API's served chain against the CA bundle
+  # inside the web container. Compared with the host's bundle, this separates "stale bundle" from
+  # "bad chain". Only public certificate data is involved.
+  bundle="$(mktemp)"
+  if docker cp "$WEB_CONTAINER:/etc/ssl/certs/ca-certificates.crt" "$bundle" >/dev/null 2>&1; then
+    verify_with() { echo | timeout 10 openssl s_client -connect "$api_host:443" -servername "$api_host" ${1:+-CAfile "$1"} -verify_return_error 2>/dev/null | awk -F': ' '/Verify return code/ {print $2}' | head -1; }
+    echo "API chain vs web container bundle:  $(verify_with "$bundle")"
+    echo "API chain vs host bundle:           $(verify_with "")"
+    echo "API chain top issuer:               $(echo | timeout 10 openssl s_client -connect "$api_host:443" -servername "$api_host" -showcerts 2>/dev/null | awk '/ i:/ {i=$0} END {print i}' | sed 's/^ *//')"
+    echo "web container CA bundle:            $(grep -c 'BEGIN CERTIFICATE' "$bundle") certificates, $(docker exec "$WEB_CONTAINER" sh -c 'apk info -v ca-certificates-bundle 2>/dev/null || apk info -v ca-certificates 2>/dev/null' | head -1)"
+  else
+    echo "API chain vs web container bundle:  could not copy the container's CA bundle"
+  fi
+  rm -f "$bundle"
 fi
 # Recent nginx errors for the feed route. A 64-hex feed token in a logged path is blanked.
 echo "recent feed proxy errors (tokens redacted):"

@@ -41,6 +41,11 @@ ENV BRITELINK_BUILD_COMMIT=$BRITELINK_BUILD_COMMIT
 RUN npm run build
 
 FROM nginx:1.25-alpine
+# The calendar feed route verifies the API's TLS certificate against this image's CA bundle
+# (nginx.conf.template, proxy_ssl_trusted_certificate). The base image's bundle is frozen at its
+# build date, and in production it could not verify the API's current Let's Encrypt chain ("unable
+# to get local issuer certificate", every feed 502). Refresh it at build time instead.
+RUN apk add --no-cache --upgrade ca-certificates
 COPY --from=build /app/dist/client /usr/share/nginx/html
 # Rendered to /etc/nginx/conf.d/default.conf by the image's envsubst entrypoint, so the CSP can
 # name the API origin. NGINX_ENVSUBST_FILTER is load-bearing, not tidiness -- without it envsubst
