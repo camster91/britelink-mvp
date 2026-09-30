@@ -20,6 +20,10 @@
 #                 Backs up the dynamic file first, proves the result with a real request (the feed
 #                 path must be absent from the log, a control request present, the site still up),
 #                 and restores the backup on any failure.
+#   set-notice-version VALUE
+#                 records the counsel-approved privacy notice version as VITE_PRIVACY_NOTICE_VERSION
+#                 in the web .env (after a backup), which unlocks guardian intake on the next Deploy.
+#                 Owner-confirmed approval only; VALUE is 1-80 of [A-Za-z0-9._-].
 #   fix-anon-key  copies the production stack's own ANON_KEY into the web .env (after a backup),
 #                 only if it verifies under PostgREST's secret and is role=anon. No rebuild: run
 #                 Deploy afterwards.
@@ -29,7 +33,7 @@
 set -euo pipefail
 set +x
 MODE="${1:-check}"
-case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret|feed-route]" >&2; exit 2 ;; esac
+case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version VALUE]" >&2; exit 2 ;; esac
 WEB_ENV="${WEB_ENV:-/docker/britelink-web/.env}"
 WEB_ORIGIN="${WEB_ORIGIN:-http://127.0.0.1:8088}"
 REST_CONTAINER="${REST_CONTAINER:-britelink-production-rest-1}"
@@ -107,6 +111,7 @@ for js in $(curl -s --max-time 10 "$WEB_ORIGIN/" | grep -o 'assets/[^"]*\.js' ||
   if [ -n "$web_key" ] && curl -s --max-time 10 "$WEB_ORIGIN/$js" | grep -qF "$web_key"; then bundle_has=yes; fi
 done
 echo "served bundle carries the .env key: $bundle_has"
+echo "privacy notice version (web .env):  $(env_file_val "$WEB_ENV" VITE_PRIVACY_NOTICE_VERSION | grep . || echo "unset (guardian intake locked)")"
 
 echo "== production stack secrets =="
 stack_dir="$(label_of "$REST_CONTAINER" com.docker.compose.project.working_dir)"
@@ -337,4 +342,24 @@ if [ "$MODE" = "feed-route" ]; then
   [ "${control_hits:-0}" -ge 1 ] || restore "the control request never reached the access log, so the test proves nothing"
   [ "${feed_hits:-0}" = 0 ] || restore "the feed request was still logged"
   echo "OK: feed paths are routed and no longer logged."
+fi
+
+if [ "$MODE" = "set-notice-version" ]; then
+  echo "== set-notice-version =="
+  value="${2:-}"
+  printf '%s' "$value" | grep -qE '^[A-Za-z0-9._-]{1,80}$' || { echo "FAIL: the notice version must be 1-80 of [A-Za-z0-9._-]; nothing changed" >&2; exit 1; }
+  [ -f "$WEB_ENV" ] || { echo "FAIL: no $WEB_ENV; nothing changed" >&2; exit 1; }
+  current="$(env_file_val "$WEB_ENV" VITE_PRIVACY_NOTICE_VERSION)"
+  if [ "$current" = "$value" ]; then echo "already $value; nothing changed"; exit 0; fi
+  backup="$WEB_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$WEB_ENV" "$backup"
+  tmp="$(mktemp)"
+  VALUE="$value" awk '/^VITE_PRIVACY_NOTICE_VERSION=/ { if (!done) print "VITE_PRIVACY_NOTICE_VERSION=" ENVIRON["VALUE"]; done = 1; next } { print } END { if (!done) print "VITE_PRIVACY_NOTICE_VERSION=" ENVIRON["VALUE"] }' "$backup" > "$tmp"
+  cat "$tmp" > "$WEB_ENV"; rm -f "$tmp"
+  if [ "$(env_file_val "$WEB_ENV" VITE_PRIVACY_NOTICE_VERSION)" = "$value" ] \
+     && [ "$(grep -cv '^VITE_PRIVACY_NOTICE_VERSION=' "$WEB_ENV")" = "$(grep -cv '^VITE_PRIVACY_NOTICE_VERSION=' "$backup")" ]; then
+    echo "set VITE_PRIVACY_NOTICE_VERSION=$value (was: ${current:-unset}; backup: $backup); every other line unchanged. Run Deploy to rebuild."
+  else
+    cp -p "$backup" "$WEB_ENV"; echo "FAIL: the write did not verify; restored the backup" >&2; exit 1
+  fi
 fi

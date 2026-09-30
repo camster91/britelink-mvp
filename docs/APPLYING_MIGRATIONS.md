@@ -139,3 +139,9 @@ result with real requests:
 - the site must still answer 200.
 
 On any failure it restores the backup. Re-running it is a no-op.
+
+### Unlocking guardian intake (privacy notice version)
+
+On 2026-09-30 the owner confirmed that counsel approved the privacy notice **as written in the app**, with version `2026-09-30`. To apply it, run **Ops check → set-notice-version** with value `2026-09-30`, then run **Deploy**. The first step writes `VITE_PRIVACY_NOTICE_VERSION` into `/docker/britelink-web/.env` after a backup; Deploy rebuilds the bundle with it.
+
+Every consent is recorded against this version (`guardian_consents.notice_version`). If the notice text ever changes, it needs a new approved version string, never a reuse of this one.

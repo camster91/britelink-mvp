@@ -15,7 +15,11 @@ on:
         required: true
         default: check
         type: choice
-        options: [check, feed-route, restore-secret, reconcile-stack, fix-anon-key]
+        options: [check, set-notice-version, feed-route, restore-secret, reconcile-stack, fix-anon-key]
+      value:
+        description: "set-notice-version only: the counsel-approved privacy notice version (e.g. 2026-09-30)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -50,21 +54,26 @@ jobs:
       - name: Run scripts/ops-check.sh on the VPS
         env:
           MODE: ${{ inputs.mode }}
+          VALUE: ${{ inputs.value }}
           OPS_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route) ;; *) echo "::error::bad mode"; exit 1 ;; esac
+          case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version) ;; *) echo "::error::bad mode"; exit 1 ;; esac
+          # Only a plain token may cross into the remote command line.
+          if [ -n "$VALUE" ] && ! printf '%s' "$VALUE" | grep -Eq '^[A-Za-z0-9._-]{1,80}$'; then
+            echo "::error::value may only contain letters, digits, dot, dash and underscore (1-80)"; exit 1
+          fi
           ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
               -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
-              -o ConnectTimeout=15 "${VPS_USER}@${VPS_HOST}" "bash -s -- '$MODE' '$OPS_SHA'" <<'REMOTE'
+              -o ConnectTimeout=15 "${VPS_USER}@${VPS_HOST}" "bash -s -- '$MODE' '$OPS_SHA' '$VALUE'" <<'REMOTE'
           set -euo pipefail
-          MODE="$1"; SHA="$2"
+          MODE="$1"; SHA="$2"; VALUE="${3:-}"
           work="$(mktemp -d /root/bl-ops.XXXXXX)"
           trap 'rm -rf "$work"' EXIT
           cd /docker/britelink-web
           git fetch --depth=1 origin "$SHA"
           git archive "$SHA" scripts/ops-check.sh | tar -x -C "$work"
-          bash "$work/scripts/ops-check.sh" "$MODE"
+          bash "$work/scripts/ops-check.sh" "$MODE" "$VALUE"
           REMOTE
 
       - name: Remove the deploy key from the runner
