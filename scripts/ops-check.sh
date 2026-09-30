@@ -169,6 +169,19 @@ print("compose auth secret == running auth:", yn(a and a == os.environ["AUTH_S"]
 fi
 echo "anon REST probe (public API):       $(rest_probe "$web_key")"
 
+echo "== web feed proxy =="
+WEB_CONTAINER="${WEB_CONTAINER:-britelink-web-web-1}"
+api_origin="$(env_file_val "$WEB_ENV" VITE_SUPABASE_URL)"
+api_host="${api_origin#*://}"; api_host="${api_host%%/*}"
+echo "web container networks:             $(docker inspect "$WEB_CONTAINER" --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null || echo unknown)"
+if [ -n "$api_host" ]; then
+  echo "API resolves inside web container:  $(docker exec "$WEB_CONTAINER" nslookup "$api_host" 127.0.0.11 2>&1 | awk '/^Address/ && !/127.0.0.11/ {print $NF}' | tr '\n' ' ' || true)"
+  echo "API reachable from web container:   $(docker exec "$WEB_CONTAINER" wget -q -T 8 -O /dev/null -S "$api_origin/rest/v1/" 2>&1 | awk '/HTTP\// {print $2}' | tail -1 || true) (any HTTP status means reachable; empty means no connection)"
+fi
+# Recent nginx errors for the feed route. A 64-hex feed token in a logged path is blanked.
+echo "recent feed proxy errors (tokens redacted):"
+docker logs --since 24h "$WEB_CONTAINER" 2>&1 | grep -iE 'calendar_feed|feed_api|upstream|resolver|ssl' | sed -E 's/[0-9a-f]{64}/<token>/g' | tail -8 | sed 's/^/  /' || true
+
 echo "== traefik access log =="
 args="$(docker inspect "$TRAEFIK_CONTAINER" --format '{{join .Args " "}}' 2>/dev/null || true)"
 if printf '%s' "$args" | grep -qi accesslog; then
