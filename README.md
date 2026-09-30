@@ -153,8 +153,8 @@ Honest summary, so nobody has to reverse-engineer it. **`docs/TODO.md` is the on
 - An hourly external monitor and nightly restore-verified backups are running.
 - Evidence is in `docs/PROJECT-STATUS.md`.
 
-**Not yet real:**
-- Sign-in email (SMTP) is not configured, so a family cannot yet receive a sign-in link.
+**Not yet proven or not yet real:**
+- Sign-in email is configured (Mailgun) but not yet proven with a real invited family account.
 - There is no live payment provider (webhook verification exists; the provider and prices are undecided).
 - The malware scanner is not deployed, so attachments stay quarantined.
 - Manual accessibility (VoiceOver, true browser zoom) is a human gate, not yet run.

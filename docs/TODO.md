@@ -22,15 +22,17 @@ person), **code** (can be built in this repo), or **both**.
 
 ## Before inviting the first real families (blocking)
 
-1. **Sign-in email** (#2, both). GoTrue has no SMTP, so a family never receives a sign-in link.
-   - Cameron: create an account with an email service (Postmark, Resend or Amazon SES), verify the
-     sending domain, and add its SMTP details as GitHub `production` environment secrets.
-   - Code: the workflow that applies them, turns off auto-confirm and restarts GoTrue. See
-     `docs/APPLYING_MIGRATIONS.md` once it lands.
-   - Check that the magic-link address is routed (Ops check, "sign-in readiness").
-2. **Consents under the draft notice** (Cameron + counsel). Until 2026-09-30 the live build
-   carried `2026-09-19-draft-1`. Ops check "consent records" counts consents per version. If any
-   exist, counsel decides whether those guardians must re-consent.
+1. **Prove sign-in email end to end** (#2, Cameron).
+   - Already configured (Ops check, 2026-09-30): GoTrue sends through Mailgun (`smtp.mailgun.org:587`)
+     as `BriteLink <noreply@ashbi.ca>`, with auto-confirm off and sign-up invite-only.
+   - The sign-in link address `https://britelink-api.ashbi.ca/verify` reaches GoTrue.
+   - Left: sign in once with a real invited address, from a phone and a computer. Confirm the email
+     arrives (not in spam) and the link opens the household workspace.
+2. **One consent under the draft notice** (Cameron + counsel).
+   - Until 2026-09-30 the live build carried `2026-09-19-draft-1`, and one active consent was
+     recorded under it. Production has 2 households and 4 accounts.
+   - Counsel decides whether that guardian must re-consent under `2026-09-30`.
+   - Ops check "consent records" shows the counts.
 3. **Staff accounts and the invite path** (Cameron). Create the educator/admin accounts and decide
    who sends family invites, following `PRIVATE_BETA_EDUCATOR_ONBOARDING.md`.
 4. **Educator content sign-off** (#11, Cameron). A credentialed educator reviews curriculum,
