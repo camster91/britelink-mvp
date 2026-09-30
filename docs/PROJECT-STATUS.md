@@ -1,9 +1,28 @@
 # PROJECT STATUS — BriteLink
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-30
 **Scope of this mission:** finish the application for its current scope (private-beta readiness + a product families keep using). Not a rewrite.
 
 ## Completed and verified
+
+### Production, 2026-09-30
+
+- **Automated deploy restored (#33).**
+  - A push to `main` runs CI and then Deploy with no manual step, e.g. Deploy run 8 for `9b3a651`: https://github.com/camster91/britelink-mvp/actions/runs/36679036677
+  - The deploy's `/version.json` check names the pushed commit.
+  - A `workflow_dispatch` break-glass run with an explicit SHA works: https://github.com/camster91/britelink-mvp/actions/runs/36676799496
+- **Production runs current `main`.** At the time of writing, `/version.json` reports `0375ae2` and serves HSTS, CSP and nosniff. The approved privacy notice `2026-09-30` is live, so guardian intake is open.
+- **Production database**
+  - All 52 migrations are applied.
+  - GoTrue, PostgREST and storage share the key-signing secret (`restore-secret`, #65).
+  - The public anon key is accepted.
+- **Calendar feed route live.**
+  - A dummy token answers 404.
+  - The 502 was nginx's default verify depth against a cross-signed Let's Encrypt chain (#71).
+  - Feed paths are excluded from Traefik's access log (#67).
+- **Hourly external monitor (#7)**: `monitor.yml`, first run healthy on 6 checks.
+- **Nightly verified backup (#8)**: `backup.yml`. First run: a 540K dump that restored into a same-image throwaway container with identical row counts in all 38 tables.
+
 
 - **Production is live at `5a6b865`** — deployed directly on the VPS after the GitHub runner failed to assign. Live `version.json`, the VPS HEAD, and `origin/main` all report the same commit. The deploy log records it.
 - **Repository reproduces the running product.** Clean checkout of `origin/main` = 174 pass / 0 fail / exit 0, 4/4 sites tests, build stamps `/version.json`.
