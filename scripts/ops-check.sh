@@ -218,6 +218,20 @@ case "$ext" in
 esac
 echo "GoTrue verify endpoint via gateway:  HTTP $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${ext%/auth/v1}/auth/v1/health" || true) (health at /auth/v1/health)"
 
+echo "== production stack files vs this commit =="
+# The stack runs its own copies under $stack_dir; show how they differ from the repo's. Compose
+# files hold no secrets (values come from .env), so the diff is printed.
+repo_selfhosted="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/supabase/selfhosted"
+if [ -n "${stack_dir:-}" ] && [ -d "$repo_selfhosted" ]; then
+  for f in docker-compose.yml docker-compose.production.yml gateway.conf; do
+    if [ ! -f "$stack_dir/$f" ]; then echo "  $f: missing on the VPS"; continue; fi
+    if cmp -s "$repo_selfhosted/$f" "$stack_dir/$f"; then echo "  $f: identical"
+    else echo "  $f: DIFFERS (VPS copy vs repo):"; diff -u "$stack_dir/$f" "$repo_selfhosted/$f" | sed -n '3,60p' | sed 's/^/    /'; fi
+  done
+else
+  echo "  (repo copy of supabase/selfhosted not available to this run)"
+fi
+
 echo "== consent records (counts only) =="
 PROD_DB="${PROD_DB:-britelink-production-db-1}"
 docker exec -i "$PROD_DB" psql -X -tA -U postgres -d postgres -F ' | ' -c "

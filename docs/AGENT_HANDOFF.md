@@ -1,44 +1,37 @@
-# Agent Handoff — BriteLink (`camster91/britelink-mvp`)
+# Agent handoff — BriteLink (`camster91/britelink-mvp`)
 
-**Product:** BriteLink — homeschool curriculum planning with **human educator-in-the-loop** (not unsupervised AI tutor).
-**Deploy:** Prefer Ashbi VPS / self-host where possible; staging handoff in `docs/STAGING_HANDOFF.md`. **Ship gate = real staging/VPS verify**, not GitHub Actions alone.
+**Product:** BriteLink, homeschool curriculum planning with a human educator in the loop. It is not an
+unsupervised AI tutor.
 **Owner:** Cameron (camster91)
-**Last updated:** 2026-09-10
-
-## Status
-
-- Parent + educator UX largely ready for **private beta**.
-- Most remaining work is **Cameron-gated** (Supabase, counsel, Stripe, beta families, VoiceOver sign-off).
-- Keep-shipping **paused** until Cameron asks to resume (Cursor usage / billing).
+**Last updated:** 2026-09-30
 
 ## Read first
 
-1. `docs/END_TO_END_SHIP_PLAN.md`
-2. `docs/ship-status.md`
-3. `docs/STAGING_HANDOFF.md`
-4. This file
-5. Open issues #1–#14 (beta readiness roadmap)
+1. `docs/TODO.md`: the one list of what is left, with owners.
+2. `docs/PROJECT-STATUS.md`: what is verified in production, with evidence.
+3. `docs/APPLYING_MIGRATIONS.md`: how the production database and ops workflows are run.
+4. Open GitHub issues. Epic #32 is the launch plan.
 
-## Next agent track (when Cameron resumes)
+## How production works
 
-Only ship **agent-safe** code if something unblocked remains. Otherwise prepare PRs that are ready *after* Cameron unblocks infra:
-
-1. Check open issues for anything not needing Supabase/counsel/Stripe
-2. Do **not** fake hosted Auth, counsel approval, or VoiceOver completion
-3. Prefer hardening tests/docs over inventing staging credentials
-
-## Do NOT do without Cameron
-
-- Provision Supabase / Auth secrets
-- Legal / privacy counsel approval
-- Stripe live webhook / checkout keys
-- 5–10 beta families / educator curriculum sign-off
-- Named incident/privacy contacts
-- Claiming staging is live when it is not
+- **Web:** `britelink.ashbi.ca`. The `Dockerfile` nginx image is built on the VPS in
+  `/docker/britelink-web`, behind Traefik. A merge to `main` → CI → Deploy (GitHub Actions over SSH)
+  → a `/version.json` check.
+- **Backend:** a self-hosted Supabase stack on the same VPS (`britelink-production`, files in
+  `/opt/britelink-production/supabase/selfhosted`), served at `britelink-api.ashbi.ca`.
+- **Workflows:**
+  - **Migrate** (check/apply);
+  - **Ops check** (read-only diagnostics, plus explicit fix modes);
+  - **Monitor** (hourly);
+  - **Backup** (nightly, restore-verified);
+  - **Staging** (rebuild/verify the synthetic staging stack).
 
 ## Rules
 
-- Navy + BriteLink blue + Inter; no random marketing palette
-- Honest demo: never invent live educator presence / ETA
-- Touch targets ≥44px; a11y patterns already started — don’t regress
-- World-class bar
+- Do not fake hosted Auth, counsel approval, educator sign-off or VoiceOver completion. Record
+  what is proven, with links.
+- Production changes, such as applying migrations, changing `.env` or wiping staging, need
+  Cameron's explicit go. Read-only checks do not.
+- Never print a key, secret, token or family data. The ops scripts print yes/no facts and counts.
+- Design: navy `#081326`, BriteLink blue, and Inter. Text is 13px or larger; controls are 44px or
+  taller. Form errors are accessible. No streaks, shame or "behind" labels.

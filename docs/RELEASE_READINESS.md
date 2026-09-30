@@ -30,9 +30,9 @@ GitHub execution tracking is governed by [roadmap issue #14](https://github.com/
 
 Provision development and staging Supabase projects, apply migrations, configure passwordless guardian/staff Auth, seed two synthetic households, and run deployed cross-household denial plus save/reload tests. This requires project credentials and authorization to create or configure external infrastructure.
 
-Operator handoff before that work: `docs/STAGING_HANDOFF.md` (env checklist, invited-only Auth, Sites packaging, and human-only evidence). Sequenced gate plan: `docs/GOAL_COMPLETION_PLAN.md`. Manual assistive-technology protocol: `docs/MANUAL_ACCESSIBILITY_QA.md` (not closable from automated Linux audits).
+Operator handoff before that work: `docs/STAGING_HANDOFF.md` (env checklist, invited-only Auth, Sites packaging, and human-only evidence). Sequenced gate plan: `docs/archive/GOAL_COMPLETION_PLAN.md`. Manual assistive-technology protocol: `docs/MANUAL_ACCESSIBILITY_QA.md` (not closable from automated Linux audits).
 
-See `docs/END_TO_END_SHIP_PLAN.md` for complete roadmap from current state to paid launch, including competitor parity analysis, phased implementation, and what 100% means for BriteLink vs AI tutors.
+See `docs/archive/END_TO_END_SHIP_PLAN.md` for complete roadmap from current state to paid launch, including competitor parity analysis, phased implementation, and what 100% means for BriteLink vs AI tutors.
 
 ## Approval boundaries
 

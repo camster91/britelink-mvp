@@ -31,7 +31,7 @@ So records in Ontario are for **peace of mind** and **Grades 9–12 options**, n
 | # | Capability | Why it matters | Evidence |
 |---|---|---|---|
 | 1 | **Flexible week** — skip a day, rebalance, carry forward, pause a subject | The top two parent pains are planning exhaustion and recovering when life breaks the plan. Every mature competitor leads with automatic rescheduling. | Homeschool Planet features; parent planning account |
-| 2 | **Working lesson completion** | Turns a done lesson into a record. Currently blocked by the unresolved `lesson_activities` defect. | `docs/LESSON-SAVE-DEFECT.md` |
+| 2 | **Working lesson completion** | Turns a done lesson into a record. Currently blocked by the unresolved `lesson_activities` defect. | `docs/archive/LESSON-SAVE-DEFECT.md` |
 | 3 | **Next-action that respects the day** — time available, independent-only, offline, low-energy | Today's "next lesson" is just the first incomplete item in a fixed sequence. A useful next action must reflect the actual morning. | `authenticated-workspace.js` selection logic |
 
 ### P1 — confidence and family fit
