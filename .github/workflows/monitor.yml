@@ -1,0 +1,31 @@
+name: Monitor
+
+# External production monitor (#7). Runs hourly from GitHub's runners (outside the VPS) against the
+# public site and API only; it needs no secrets. A failed run makes GitHub email the repository
+# owner, which is the alert route. See scripts/production-monitor.mjs for the checks.
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/production-monitor.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check production
+        run: node scripts/production-monitor.mjs

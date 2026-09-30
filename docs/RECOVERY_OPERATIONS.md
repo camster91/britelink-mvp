@@ -112,3 +112,18 @@ behavior, restore of Storage object bytes, cutover, network or KMS dependencies,
 2026-09-17 archive holds no data, so the "representative volume" objective is **not met** — it
 cannot be met until the live database has been migrated and populated. Timing here (0.1–0.2 s of
 restore) is a measurement of an empty database, not an RTO.
+
+## Nightly backup with a restore check (GitHub Actions)
+
+`.github/workflows/backup.yml` runs `scripts/backup-production.sh` on the VPS every night at 07:43 UTC. Each run:
+
+1. writes a full `pg_dump` (custom format; public, auth and storage) to `/root/britelink-backups/nightly-<time>.dump`, mode `0600`, after checking there is disk room;
+2. restores it into a throwaway, network-less container of the **same** image as production;
+3. requires identical row counts in every public table and in `auth.users`;
+4. keeps the newest 14 nightly dumps.
+
+A failed run makes GitHub email the owner. Restoring a dump into production is a manual, deliberate step:
+
+`docker exec -i britelink-production-db-1 pg_restore -U postgres -d postgres --clean --if-exists < /root/britelink-backups/nightly-<time>.dump`
+
+The dumps live on the VPS only. An encrypted off-site copy is still open under #8.

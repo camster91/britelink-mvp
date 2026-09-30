@@ -38,3 +38,15 @@ Exit codes are stable monitoring inputs:
 ## Deployment gate
 
 Poll every five minutes and alert if either the probe exits non-zero or no successful probe is received for ten minutes. The trusted monitor must obtain or refresh the dedicated user token before expiry; an expired or failed refresh is a probe failure, not a healthy result. Before private beta, record the monitor platform, alert route, primary and backup incident owners, token refresh/rotation/revocation procedure, one delivered test alert, one expired-token test, and one missed-heartbeat test. A local passing probe is not evidence that alerts work.
+
+## External monitor (GitHub Actions, hourly)
+
+`.github/workflows/monitor.yml` runs `scripts/production-monitor.mjs` every hour from GitHub's runners, outside the VPS. It uses only public information, so it needs no secrets. It checks:
+
+- the site answers 200 with HSTS, CSP and nosniff;
+- `/version.json` names a commit;
+- the API accepts the site's own public key;
+- a dummy calendar-feed link answers 404 (a 502 means the web container cannot reach or verify the API);
+- both TLS certificates have at least 14 days left.
+
+A failed run makes GitHub email the repository owner; that email is the alert. Run it on demand with Actions → **Monitor** → Run workflow.
