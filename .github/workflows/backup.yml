@@ -1,0 +1,61 @@
+name: Backup
+
+# Nightly production database backup with a restore check (#8), over the deploy SSH path. Runs
+# scripts/backup-production.sh from the commit on main: pg_dump to /root/britelink-backups on the
+# VPS, restore into a throwaway container of the same image, require identical row counts, keep
+# the newest 14. A failed run makes GitHub email the repository owner.
+on:
+  schedule:
+    - cron: "43 7 * * *" # 07:43 UTC, ~03:43 Toronto
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-britelink-web
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 187.77.26.99
+  VPS_USER: root
+
+jobs:
+  backup:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    environment: production
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 20
+    steps:
+      - name: Install SSH key and pin host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/britelink_deploy"
+          chmod 600 "$HOME/.ssh/britelink_deploy"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Back up and verify on the VPS
+        env:
+          OPS_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 -o ServerAliveInterval=30 "${VPS_USER}@${VPS_HOST}" "bash -s -- '$OPS_SHA'" <<'REMOTE'
+          set -euo pipefail
+          SHA="$1"
+          work="$(mktemp -d /root/bl-backup.XXXXXX)"
+          trap 'rm -rf "$work"' EXIT
+          cd /docker/britelink-web
+          git fetch --depth=1 origin "$SHA"
+          git archive "$SHA" scripts/backup-production.sh | tar -x -C "$work"
+          bash "$work/scripts/backup-production.sh"
+          REMOTE
+
+      - name: Remove the deploy key from the runner
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/britelink_deploy" "$HOME/.ssh/known_hosts"
