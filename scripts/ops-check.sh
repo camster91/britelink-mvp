@@ -204,6 +204,27 @@ fi
 echo "recent feed proxy errors (tokens redacted):"
 docker logs --since 24h "$WEB_CONTAINER" 2>&1 | grep -iE 'calendar_feed|feed_api|upstream|resolver|ssl' | sed -E 's/[0-9a-f]{64}/<token>/g' | tail -8 | sed 's/^/  /' || true
 
+echo "== sign-in readiness (GoTrue) =="
+# URLs and flags only; the SMTP password is reported as present/absent, never printed.
+for var in API_EXTERNAL_URL GOTRUE_SITE_URL GOTRUE_URI_ALLOW_LIST GOTRUE_DISABLE_SIGNUP GOTRUE_MAILER_AUTOCONFIRM GOTRUE_SMTP_HOST GOTRUE_SMTP_PORT GOTRUE_SMTP_ADMIN_EMAIL GOTRUE_SMTP_SENDER_NAME; do
+  printf '%-34s  %s\n' "$var" "$(env_of "$AUTH_CONTAINER" "$var" | grep . || echo "(unset)")"
+done
+printf '%-34s  %s\n' "GOTRUE_SMTP_USER / _PASS" "$( [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SMTP_USER)" ] && echo user-set || echo user-unset ) / $( [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SMTP_PASS)" ] && echo pass-set || echo pass-unset )"
+ext="$(env_of "$AUTH_CONTAINER" API_EXTERNAL_URL)"
+case "$ext" in
+  */auth/v1) echo "magic-link address:                 ${ext}/verify (routed by the gateway)";;
+  "") echo "magic-link address:                 unknown (API_EXTERNAL_URL unset)";;
+  *) echo "magic-link address:                 ${ext}/verify -- the gateway only routes /auth/v1/*, so links would 404 unless GoTrue adds the prefix";;
+esac
+echo "GoTrue verify endpoint via gateway:  HTTP $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${ext%/auth/v1}/auth/v1/health" || true) (health at /auth/v1/health)"
+
+echo "== consent records (counts only) =="
+PROD_DB="${PROD_DB:-britelink-production-db-1}"
+docker exec -i "$PROD_DB" psql -X -tA -U postgres -d postgres -F ' | ' -c "
+  select coalesce(notice_version,'(null)'), count(*), count(*) filter (where withdrawn_at is null)
+  from public.guardian_consents group by 1 order by 1" 2>/dev/null | sed 's/^/  notice | consents | active: /' | grep . || echo "  (no consent records)"
+echo "  households: $(docker exec -i "$PROD_DB" psql -X -tA -U postgres -d postgres -c 'select count(*) from public.households' 2>/dev/null || echo ?)   auth users: $(docker exec -i "$PROD_DB" psql -X -tA -U postgres -d postgres -c 'select count(*) from auth.users' 2>/dev/null || echo ?)"
+
 echo "== traefik access log =="
 args="$(docker inspect "$TRAEFIK_CONTAINER" --format '{{join .Args " "}}' 2>/dev/null || true)"
 if printf '%s' "$args" | grep -qi accesslog; then
