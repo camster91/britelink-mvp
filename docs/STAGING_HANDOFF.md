@@ -93,3 +93,20 @@ Do not mark these complete from this Linux environment or from automated audits 
 5. Private-beta invitations to real households
 
 Track closure in `docs/RELEASE_READINESS.md` and the sequenced plan in `docs/GOAL_COMPLETION_PLAN.md`.
+
+## Staging from GitHub Actions (no SSH needed)
+
+Actions → **Staging** → Run workflow on `main`:
+
+- **rebuild-and-verify** is for the first run, because staging predates migration 038.
+  - It wipes the staging stack's volumes; staging holds synthetic data only. It refuses if any auth user is not `@britelink.invalid`, and it refuses any compose project that is not `*staging*`.
+  - It updates the stack's compose files from the dispatched commit, keeping a backup in `.pre-rebuild-<time>/`.
+  - It re-runs `scripts/selfhosted-staging/up.sh`: all migrations, the private bucket, the synthetic seed, the staging identities and `.env.staging`.
+  - It then runs verify.
+- **verify** does the following:
+  - It builds a staging copy of the app from the production Dockerfile, pointed at the staging API.
+  - It serves the app on `127.0.0.1:8097`, and a staging-only compose override lets GoTrue send magic links there.
+  - It runs the hosted isolation verifier (D1 + D2) and the parent + educator journeys (#39) in a Playwright container.
+  - It prints both results and fails if either does.
+
+Staging keys and minted tokens stay on the VPS in `0600` files that are removed after the run. `scripts/staging-ops.sh` holds the logic.
