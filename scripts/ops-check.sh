@@ -187,7 +187,10 @@ if [ -n "$api_host" ]; then
   # "bad chain". Only public certificate data is involved.
   bundle="$(mktemp)"
   if docker cp "$WEB_CONTAINER:/etc/ssl/certs/ca-certificates.crt" "$bundle" >/dev/null 2>&1; then
-    verify_with() { echo | timeout 10 openssl s_client -connect "$api_host:443" -servername "$api_host" ${1:+-CAfile "$1"} -verify_return_error 2>/dev/null | awk -F': ' '/Verify return code/ {print $2}' | head -1; }
+    verify_with() { echo | timeout 10 openssl s_client -connect "$api_host:443" -servername "$api_host" ${1:+-CAfile "$1"} ${2:+-verify_depth "$2"} -verify_return_error 2>/dev/null | awk -F': ' '/Verify return code/ {print $2}' | head -1; }
+    echo "API chain certificates served:      $(echo | timeout 10 openssl s_client -connect "$api_host:443" -servername "$api_host" -showcerts 2>/dev/null | grep -c 'BEGIN CERTIFICATE')"
+    echo "container bundle at nginx depth 1:  $(verify_with "$bundle" 1)"
+    echo "container bundle at depth 3:        $(verify_with "$bundle" 3)"
     echo "API chain vs web container bundle:  $(verify_with "$bundle")"
     echo "API chain vs host bundle:           $(verify_with "")"
     echo "API chain top issuer:               $(echo | timeout 10 openssl s_client -connect "$api_host:443" -servername "$api_host" -showcerts 2>/dev/null | awk '/ i:/ {i=$0} END {print i}' | sed 's/^ *//')"

@@ -98,6 +98,11 @@ server {
         proxy_ssl_server_name on;
         proxy_ssl_verify on;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        # nginx follows only one link by default (depth 1). The API's Let's Encrypt chain has four:
+        # leaf -> intermediate -> newer root cross-signed by ISRG Root X1 -> ISRG Root X1. At depth 1
+        # every feed request failed with "(20:unable to get local issuer certificate)" and answered
+        # 502, while openssl (default depth 100) verified the same chain with the same bundle.
+        proxy_ssl_verify_depth 3;
         proxy_set_header apikey "${BRITELINK_API_ANON_KEY}";
         proxy_set_header Authorization "Bearer ${BRITELINK_API_ANON_KEY}";
         proxy_set_header Accept "text/calendar";

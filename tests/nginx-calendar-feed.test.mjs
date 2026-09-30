@@ -44,6 +44,9 @@ test("the feed route is narrow: 64 hex characters, no access log, errors become 
   assert.match(route, /proxy_set_header Cookie "";/);
   assert.match(route, /Strict-Transport-Security/);
   assert.match(route, /proxy_ssl_verify on;/);
+  // nginx's default depth (1) cannot verify a cross-signed Let's Encrypt chain; that was the live 502.
+  const depth = Number(route.match(/proxy_ssl_verify_depth (\d+);/)?.[1]);
+  assert.ok(depth >= 3, "proxy_ssl_verify_depth must be at least 3 for a cross-signed CA chain");
   assert.doesNotMatch(route, /service_role|SERVICE_ROLE/);
 });
 
