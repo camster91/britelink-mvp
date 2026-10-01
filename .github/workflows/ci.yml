@@ -287,6 +287,8 @@ jobs:
       - run: npm ci
       - name: Install Chromium for genuine authenticated journeys
         run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
+      - name: Prove journey transport denies outside requests and redirects
+        run: node --test .github/scripts/test_journey_network.mjs
       - uses: actions/download-artifact@v4
         with:
           name: britelink-configured-checked-image-${{ github.sha }}-attempt-${{ github.run_attempt }}

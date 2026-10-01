@@ -22,9 +22,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 import { stagingJourneyConfig } from "./staging-journey-config.mjs";
+import { configuredJourneyGuard } from "./journey-network-guard.mjs";
 
 const config = stagingJourneyConfig();
-const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+const networkGuard = configuredJourneyGuard(config);
+const journeyFetch = networkGuard ? networkGuard.fetch.bind(networkGuard) : globalThis.fetch;
+const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: journeyFetch } });
 const steps = [];
 // Diagnostics are limited to the disposable saved-image fixture. Never inspect
 // an operator's staging page, cookies, auth storage values, or application rows.
@@ -60,7 +63,8 @@ async function signInLink(userId) {
 }
 
 async function signedInPage(browser, userId) {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, ...(networkGuard ? { serviceWorkers: 'block' } : {}) });
+  if (networkGuard) await networkGuard.protectContext(context);
   const page = await context.newPage();
   if (ciDiagnostics) {
     const events=[]; diagnosticPages.push({page,events});
@@ -114,14 +118,14 @@ try {
     await panel.getByText("Keep my calendar app up to date").click();
     await panel.getByRole("button", { name: /Create calendar link|Replace link/ }).click();
     const url = await panel.getByLabel("Your calendar link").inputValue();
-    const live = await fetch(url);
+    const live = await journeyFetch(url);
     const body = await live.text();
     if (live.status !== 200 || !/^text\/calendar/.test(live.headers.get("content-type") ?? "") || !body.startsWith("BEGIN:VCALENDAR"))
       throw new Error(`feed did not serve a calendar: ${live.status} ${live.headers.get("content-type")} ${body.slice(0, 80)}`);
     if (/SYNTHETIC Learner/.test(body)) throw new Error("the feed names the child");
     await panel.getByRole("button", { name: "Turn off link" }).click();
     await panel.getByText("Calendar link turned off.", { exact: false }).waitFor();
-    const gone = await fetch(url);
+    const gone = await journeyFetch(url);
     if (gone.status !== 404) throw new Error(`a turned-off feed still answers ${gone.status}`);
   });
   const deviceTwo = await signedInPage(browser, config.guardianUserId);
@@ -147,11 +151,12 @@ try {
     await educator.page.getByRole("heading", { name: "Educator workbench" }).waitFor({ timeout: 20000 });
   });
   await educator.context.close();
+  networkGuard?.assertClean();
 } catch {
   exitCode = 1;
 } finally {
   await browser.close();
-  const report = { ranAt: new Date().toISOString(), appUrl: config.appUrl, passed: steps.every((item) => item.ok) && exitCode === 0, steps };
+  const report = { ranAt: new Date().toISOString(), appUrl: config.appUrl, passed: steps.every((item) => item.ok) && exitCode === 0, steps, ...(networkGuard ? { transport: networkGuard.proof() } : {}) };
   await mkdir(new URL("../qa/staging/", import.meta.url), { recursive: true });
   await writeFile(fileURLToPath(new URL("../qa/staging/journey-report.json", import.meta.url)), `${JSON.stringify(report, null, 2)}\n`);
   for (const item of steps) console.log(`${item.ok ? "ok  " : "FAIL"} ${item.name}${item.error ? ` -- ${item.error}` : ""}`);

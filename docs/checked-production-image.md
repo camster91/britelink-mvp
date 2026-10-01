@@ -51,6 +51,21 @@ enabled in CI, and the existing CI-to-SSH deploy owner is unchanged. Existing
 transport jobs exercise the new unit and synthetic archive tests; mocked build
 tests do not demonstrate that Docker built or served an actual production image.
 
+The disposable configured journey now restricts its Node admin/calendar fetches
+and browser HTTP requests to the exact loopback fixture origin. Node redirects
+are refused; browser redirects are checked before following. Service workers
+and WebSockets are blocked in those fresh contexts. A real two-server transport
+test requires zero requests at the forbidden HTTP/upgrade server. The imported
+image journey must also report zero blocked requests, so an attempted escape
+cannot silently turn into a passing browser receipt. These controls cover the
+test client's transport, not Docker service egress or an actual production-profile
+image. The production-profile runner still needs its own hermetic backend and
+network boundary; the public production signing secret must never be copied into
+that runner.
+
+Playwright interception requires blocking service workers; WebSockets have a
+separate routing API. See the [official BrowserContext API](https://playwright.dev/docs/api/class-browsercontext).
+
 Remaining release requirements:
 
 - Build with the reviewed real public settings on an isolated build runner.
