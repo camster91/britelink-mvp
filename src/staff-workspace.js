@@ -2,14 +2,26 @@ const PRIORITY = {
   overdue: 0,
   revision_requested: 1,
   clarification: 2,
+  // A new intake waits on staff to accept it before the package SLA starts.
+  submitted: 2.5,
   triage: 3,
   internal_review: 4,
   assigned: 5,
   drafting: 6,
   on_hold: 7,
+  // A revised plan waits on staff to re-deliver it.
+  revised: 7.5,
   published: 8,
   delivered: 9,
   acknowledged: 10,
+  // Waiting on the family to start or finish intake.
+  paid: 11,
+  intake_pending: 12,
+  // Finished cases sort after every open one, including any status added later.
+  closed: 100,
+  cancelled: 100,
+  refunded: 100,
+  chargeback: 100,
 };
 const INTAKE_FIELDS = [
   ["subjects", "Subjects"],

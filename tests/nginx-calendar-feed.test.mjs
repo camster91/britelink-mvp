@@ -131,3 +131,11 @@ test("an unconfigured (demo) build starts and answers the feed route with 404", 
     assert.equal((await fetch(`${base}/`)).status, 200, "the app itself still serves");
   });
 });
+
+test("static files keep nosniff and HSTS even though their location sets its own headers", () => {
+  const start = template.indexOf("location ~* \\.(js|css");
+  assert.ok(start > 0, "static asset location exists");
+  const block = template.slice(start, template.indexOf("}", start));
+  assert.match(block, /add_header X-Content-Type-Options nosniff always;/);
+  assert.match(block, /add_header Strict-Transport-Security "max-age=31536000" always;/);
+});

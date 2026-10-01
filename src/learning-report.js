@@ -16,7 +16,7 @@ export function learningReport({ weeks = [], activities = [], captures = [], fro
   const rows = [
     ...activities
       .filter((activity) => activity.status === "completed")
-      .map((activity) => ({ activity, lesson: lessons.get(activity.lesson_id), date: toLocalDate(activity.updated_at) }))
+      .map((activity) => ({ activity, lesson: lessons.get(activity.lesson_id), date: toLocalDate(activity.first_completed_at ?? activity.updated_at) }))
       .filter(({ lesson, date }) => lesson && inRange(date))
       .map(({ activity, lesson, date }) => ({ date, source: "Plan lesson", subjects: [lesson.subject], title: lesson.title, detail: activity.caregiver_note ?? "" })),
     ...captures

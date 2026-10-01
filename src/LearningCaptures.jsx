@@ -41,9 +41,12 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
       const items = await repository.listLearningCaptures(householdId, learner.id);
       if (current === request.current) publish(items ?? []);
     } catch (error) {
-      if (current === request.current) setState({ status: "error", items: [], error: error.message });
+      if (current === request.current) {
+        setState({ status: "error", items: [], error: error.message });
+        onChange?.([]);
+      }
     }
-  }, [householdId, learner.id, publish, repository]);
+  }, [householdId, learner.id, onChange, publish, repository]);
   useEffect(() => {
     setDraft(emptyDraft(today));
     setInvalid([]);

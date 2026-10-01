@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { calendarFeedUrl } from "./calendar-export.js";
+import { localDateString } from "./authenticated-workspace.js";
 
 // A calendar subscription link (#47, migration 050). Calendar apps poll it, so moved lessons and
 // days off show up without re-downloading a file. The token is shown once, when the link is made:
@@ -98,7 +99,7 @@ export function CalendarFeed({ repository, householdId, learner }) {
           <p className="calendar-feed-on">
             A calendar link is on for {learner.preferred_name}
             {state.feed.include_titles ? ", with lesson titles" : ", dates only"}. Created{" "}
-            {String(state.feed.created_at).slice(0, 10)}.
+            {localDateString(new Date(state.feed.created_at))}.
           </p>
         ) : null}
         {state.status === "success" ? (

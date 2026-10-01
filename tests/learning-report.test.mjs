@@ -31,3 +31,16 @@ test("CSV cells are quoted and spreadsheet formulas are neutralised", () => {
   assert.ok(csv.includes('"note, with comma"'));
   assert.ok(csv.endsWith("\r\n"));
 });
+
+test("a completed lesson is dated by its first completion, not by a later note edit", () => {
+  const report = learningReport({
+    weeks, from: "2026-09-01", to: "2026-09-30", toLocalDate: local,
+    activities: [{ lesson_id: "a", status: "completed", first_completed_at: "2026-09-03T15:00:00Z", updated_at: "2026-10-02T15:00:00Z" }],
+  });
+  assert.deepEqual(report.rows.map((row) => row.date), ["2026-09-03"]);
+  const october = learningReport({
+    weeks, from: "2026-10-01", to: "2026-10-31", toLocalDate: local,
+    activities: [{ lesson_id: "a", status: "completed", first_completed_at: "2026-09-03T15:00:00Z", updated_at: "2026-10-02T15:00:00Z" }],
+  });
+  assert.equal(october.rows.length, 0);
+});

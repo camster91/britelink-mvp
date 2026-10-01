@@ -462,7 +462,9 @@ try {
     );
   });
   await refreshPage
-    .getByRole("heading", { name: /Noah Updated · annual/ })
+    // The fallback is the top of the prioritized queue: Avery's newly submitted intake waits on
+    // staff to accept it, so it outranks Noah's on-hold case.
+    .getByRole("heading", { name: /Avery · essentials/ })
     .waitFor();
   // The heading switching to the fallback case and the draft-reset effect land in the same
   // React commit, so asserting the input immediately after waitFor() is a race: the heading

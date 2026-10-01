@@ -231,7 +231,7 @@ export function weeklyStory({ weeks = [], activities = [], captures = [], schedu
   const inWeek = (date) => Boolean(date) && date >= start && date <= end;
   const lessons = new Map(weeks.flatMap((week) => (week.plan_days ?? []).flatMap((day) => day.lessons ?? [])).map((lesson) => [lesson.id, lesson]));
   const completed = activities
-    .filter((activity) => activity.status === "completed" && inWeek(toLocalDate(activity.updated_at)))
+    .filter((activity) => activity.status === "completed" && inWeek(toLocalDate(activity.first_completed_at ?? activity.updated_at)))
     .map((activity) => lessons.get(activity.lesson_id))
     .filter(Boolean)
     .map((lesson) => ({ id: lesson.id, title: lesson.title, subject: lesson.subject }));

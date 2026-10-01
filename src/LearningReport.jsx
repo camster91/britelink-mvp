@@ -37,15 +37,15 @@ export function LearningReport({ learnerName, weeks, activities, captures, today
         <div className="capture-row">
           <label htmlFor={`${formId}-from`}>
             From
-            <input id={`${formId}-from`} type="date" value={from} max={today} onChange={(event) => setFrom(event.target.value)} />
+            <input id={`${formId}-from`} type="date" value={from} max={today} onChange={(event) => setFrom(event.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? `${formId}-error` : undefined} />
           </label>
           <label htmlFor={`${formId}-to`}>
             To
-            <input id={`${formId}-to`} type="date" value={to} max={today} onChange={(event) => setTo(event.target.value)} />
+            <input id={`${formId}-to`} type="date" value={to} max={today} onChange={(event) => setTo(event.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? `${formId}-error` : undefined} />
           </label>
         </div>
         {error ? (
-          <p role="alert" className="form-error-summary">
+          <p role="alert" className="form-error-summary" id={`${formId}-error`}>
             {error}
           </p>
         ) : (

@@ -214,3 +214,11 @@ test("shared activities show each child's own outcome and date; finished ones ar
   assert.deepEqual(sharedActivitiesView([], learners), { open: [], doneCount: 0 });
   assert.deepEqual(recentMondays("2026-09-24", 3), ["2026-09-21", "2026-09-14", "2026-09-07"]);
 });
+
+test("the weekly story credits a lesson to the week it was first completed",()=>{
+  const weeks=[{plan_days:[{lessons:[{id:"a",subject:"Math",title:"Count"}]}]}];
+  const local=(iso)=>iso.slice(0,10);
+  const activities=[{lesson_id:"a",status:"completed",first_completed_at:"2026-09-30T15:00:00Z",updated_at:"2026-10-07T15:00:00Z"}];
+  assert.equal(weeklyStory({weeks,activities,today:"2026-10-07",toLocalDate:local}).completed.length,0);
+  assert.equal(weeklyStory({weeks,activities,today:"2026-09-30",toLocalDate:local}).completed.length,1);
+});
