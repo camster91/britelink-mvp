@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -45,6 +45,9 @@ ENV BRITELINK_BUILD_COMMIT=$BRITELINK_BUILD_COMMIT
 RUN npm run build
 
 FROM nginx:1.25-alpine
+ARG BRITELINK_BUILD_COMMIT=""
+ENV RELEASE_SHA=$BRITELINK_BUILD_COMMIT
+LABEL org.opencontainers.image.revision=$BRITELINK_BUILD_COMMIT
 # The calendar feed route verifies the API's TLS certificate against this image's CA bundle
 # (nginx.conf.template, proxy_ssl_trusted_certificate). The base image's bundle is frozen at its
 # build date, and in production it could not verify the API's current Let's Encrypt chain ("unable
