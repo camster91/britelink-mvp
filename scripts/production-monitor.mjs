@@ -4,7 +4,8 @@
 // least one check failed, which fails the workflow run and makes GitHub email the repository owner.
 //
 // Checks
-//   site          https://<site>/ answers 200 with HSTS, a CSP and nosniff
+//   site          https://<site>/ answers 200 with HSTS, a CSP and nosniff, and its first script
+//                 asset keeps HSTS and nosniff
 //   version       /version.json names a 40-hex commit
 //   api-key       the bundle's anon key is accepted by the API (a dummy calendar_feed call must be
 //                 refused by the RPC itself, not rejected as a bad JWT: PGRST30x = key rejected)
@@ -88,7 +89,13 @@ await check("site", async () => {
   if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
   const missing = ["strict-transport-security", "content-security-policy", "x-content-type-options"].filter((h) => !response.headers.get(h));
   if (missing.length) throw new Error(`missing headers: ${missing.join(", ")}`);
-  return "HTTP 200 with HSTS, CSP and nosniff";
+  // Static files are served from their own nginx location, whose add_header replaces the server's.
+  const script = (await response.text()).match(/assets\/[^"']+\.js/)?.[0];
+  if (!script) throw new Error("no script asset referenced by the page");
+  const asset = await get(`https://${SITE}/${script}`);
+  const assetMissing = ["strict-transport-security", "x-content-type-options"].filter((h) => !asset.headers.get(h));
+  if (asset.status !== 200 || assetMissing.length) throw new Error(`${script}: HTTP ${asset.status}${assetMissing.length ? `, missing ${assetMissing.join(", ")}` : ""}`);
+  return "HTTP 200 with HSTS, CSP and nosniff; scripts keep HSTS and nosniff";
 });
 
 await check("version", async () => {
