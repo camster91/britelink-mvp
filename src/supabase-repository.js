@@ -25,7 +25,11 @@ export class SupabaseBriteLinkRepository {
   async signOut() { return unwrap(await this.client.auth.signOut(), "Sign out"); }
 
   async listMemberships() {
-    return unwrap(await this.client.from("memberships").select("household_id, role, households(id, display_name)").order("created_at"), "Load memberships");
+    // RLS permits reading the household roster, including other members' roles.
+    // Account workspace selection must use this authenticated user's rows only.
+    const account = unwrap(await this.client.auth.getUser(), "Read signed-in account");
+    const userId = requireIdentifier(account?.user?.id, "Signed-in user ID");
+    return unwrap(await this.client.from("memberships").select("household_id, role, households(id, display_name)").eq("user_id", userId).order("created_at"), "Load memberships");
   }
   async listLearners(householdId) {
     requireIdentifier(householdId,"Household ID");
