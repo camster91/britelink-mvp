@@ -39,9 +39,11 @@ person), **code** (can be built in this repo), or **both**.
    safeguarding and resource rights before plans reach families.
 5. **Support model** (#55, Cameron). Hours, who answers, and what happens when a plan is wrong.
    `SUPPORT_RUNBOOK.md` is the draft.
-6. **Attachments** (#4, both). There is no malware scanner, so uploads stay quarantined forever and
-   families never get them back. Either deploy the scanner (ClamAV behind
-   `scripts/attachment-scanner.mjs`) or tell families not to attach files during the beta.
+6. **Attachments** (#4, both). There is no malware scanner, so an upload would stay quarantined
+   forever. The message forms therefore hide the file picker and say attachments are not
+   available during the beta (build setting `VITE_ATTACHMENTS_ENABLED`, off unless it is exactly
+   `true`). To turn them on: deploy the scanner (ClamAV behind `scripts/attachment-scanner.mjs`),
+   then set `VITE_ATTACHMENTS_ENABLED=true` in the web `.env` and redeploy.
 
 ## Soon after (the beta can start without these)
 

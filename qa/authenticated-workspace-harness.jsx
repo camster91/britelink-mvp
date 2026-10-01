@@ -48,4 +48,4 @@ const repository={
   async signOut(){qaState.calls.push(["signOut"])}
 };
 
-createRoot(document.getElementById("root")).render(<Workspace repository={repository} session={{user:{id:"guardian-a",email:"guardian@example.ca"}}} privacyNoticeVersion="qa-notice-v1" inactivityMs={globalThis.qaInactivityMs}/>);
+createRoot(document.getElementById("root")).render(<Workspace repository={repository} session={{user:{id:"guardian-a",email:"guardian@example.ca"}}} privacyNoticeVersion="qa-notice-v1" attachmentsEnabled={globalThis.qaAttachmentsEnabled ?? true} inactivityMs={globalThis.qaInactivityMs}/>);

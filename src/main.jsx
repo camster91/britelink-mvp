@@ -54,7 +54,7 @@ async function boot(){
   if(config.configured){
     try{
       const [{AuthenticatedApp},{createBriteLinkSupabaseClient},{SupabaseBriteLinkRepository}]=await Promise.all([import("./AuthenticatedApp.jsx"),import("./supabase-client.js"),import("./supabase-repository.js")]);
-      const client=createBriteLinkSupabaseClient(config); application=<AuthenticatedApp client={client} repository={new SupabaseBriteLinkRepository(client)} privacyNoticeVersion={config.privacyNoticeVersion} />;
+      const client=createBriteLinkSupabaseClient(config); application=<AuthenticatedApp client={client} repository={new SupabaseBriteLinkRepository(client)} privacyNoticeVersion={config.privacyNoticeVersion} attachmentsEnabled={config.attachmentsEnabled} />;
     }catch(error){
       console.error("Authenticated mode failed to load:", error);
       fallbackScreen({

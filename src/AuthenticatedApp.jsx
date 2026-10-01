@@ -525,6 +525,7 @@ function ParentWorkspace({
   userId,
   userEmail,
   privacyNoticeVersion,
+  attachmentsEnabled = true,
 }) {
   const [learnerId, setLearnerId] = useState(learners[0]?.id ?? "");
   const [planState, setPlanState] = useState({
@@ -1906,23 +1907,30 @@ function ParentWorkspace({
                   />
                 </label>
                 <small>{messageBody.length}/4000 characters</small>
-                <label>
-                  Attachments <span>(optional)</span>
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
-                    multiple
-                    onChange={(event) =>
-                      setMessageFiles(
-                        Array.from(event.target.files ?? []).slice(0, 3),
-                      )
-                    }
-                  />
-                  <small>
-                    Up to 3 PDF, JPEG, PNG, or text files; 10 MB each. Files
-                    stay quarantined until scanned.
-                  </small>
-                </label>
+                {attachmentsEnabled ? (
+                  <label>
+                    Attachments <span>(optional)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
+                      multiple
+                      onChange={(event) =>
+                        setMessageFiles(
+                          Array.from(event.target.files ?? []).slice(0, 3),
+                        )
+                      }
+                    />
+                    <small>
+                      Up to 3 PDF, JPEG, PNG, or text files; 10 MB each. Files
+                      stay quarantined until scanned.
+                    </small>
+                  </label>
+                ) : (
+                  <p className="attachments-off">
+                    File attachments are not available during the beta.
+                    Describe what you need in your message, or paste a link.
+                  </p>
+                )}
                 <button
                   className="primary"
                   disabled={messageOperation.status === "loading"}
@@ -1981,6 +1989,7 @@ export function Workspace({
   repository,
   session,
   privacyNoticeVersion = null,
+  attachmentsEnabled = true,
   inactivityMs,
   staffRefreshIntervalMs,
 }) {
@@ -2159,6 +2168,7 @@ export function Workspace({
             repository={repository}
             userId={session.user.id}
             refreshIntervalMs={staffRefreshIntervalMs}
+            attachmentsEnabled={attachmentsEnabled}
           />
         ) : (
           <ParentWorkspace
@@ -2170,6 +2180,7 @@ export function Workspace({
             userId={session.user.id}
             userEmail={session.user.email}
             privacyNoticeVersion={privacyNoticeVersion}
+            attachmentsEnabled={attachmentsEnabled}
           />
         )}
         <p className="live-limit">
@@ -2185,6 +2196,7 @@ export function AuthenticatedApp({
   client,
   repository,
   privacyNoticeVersion = null,
+  attachmentsEnabled = true,
 }) {
   const [auth, setAuth] = useState({
     status: "loading",
@@ -2238,6 +2250,7 @@ export function AuthenticatedApp({
       repository={repository}
       session={auth.session}
       privacyNoticeVersion={privacyNoticeVersion}
+      attachmentsEnabled={attachmentsEnabled}
     />
   ) : (
     <SignIn repository={repository} />
