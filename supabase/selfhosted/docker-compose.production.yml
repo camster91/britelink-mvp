@@ -69,14 +69,29 @@ services:
       # Staging runs at warn to keep its noise down; production is the stack whose auth failures
       # matter, and warn would hide the sign-in problems worth seeing.
       GOTRUE_LOG_LEVEL: ${GOTRUE_LOG_LEVEL:-info}
+      # P5 IMPLEMENTED: Mailgun SMTP for production magic links.
+      #
+      # Was a placeholder; now real. Every value comes from .env, so the SMTP password
+      # never lands in this file. MAILER_AUTOCONFIRM is false in that same .env, set at the
+      # moment SMTP was configured -- the coupling the note above demanded, so the two cannot
+      # disagree and leave a stack that silently auto-confirms instead of sending.
+      #
+      # Port 587 + STARTTLS is Mailgun's submission port; the sender is the domain verified in
+      # Mailgun, so From and the sending domain agree. ${VAR:?} makes a missing value a startup
+      # error rather than a stack that boots with a broken mailer.
+      GOTRUE_MAILER_EXTERNAL_HOSTS: ${GOTRUE_MAILER_EXTERNAL_HOSTS:?set GOTRUE_MAILER_EXTERNAL_HOSTS in .env}
+      GOTRUE_SMTP_HOST: ${GOTRUE_SMTP_HOST:?set GOTRUE_SMTP_HOST in .env}
+      GOTRUE_SMTP_PORT: ${GOTRUE_SMTP_PORT:-587}
+      GOTRUE_SMTP_USER: ${GOTRUE_SMTP_USER:?set GOTRUE_SMTP_USER in .env}
+      GOTRUE_SMTP_PASS: ${GOTRUE_SMTP_PASS:?set GOTRUE_SMTP_PASS in .env}
+      GOTRUE_SMTP_ADMIN_EMAIL: ${GOTRUE_SMTP_ADMIN_EMAIL:?set GOTRUE_SMTP_ADMIN_EMAIL in .env}
+      GOTRUE_SMTP_SENDER_NAME: ${GOTRUE_SMTP_SENDER_NAME:-BriteLink}
+      GOTRUE_MAILER_OTP_EXP: ${GOTRUE_MAILER_OTP_EXP:-3600}
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: ${GOTRUE_RATE_LIMIT_EMAIL_SENT:-60}
     deploy:
       resources:
         limits:
           memory: 256m
-
-  # P5 adds an SMTP block to auth above -- GOTRUE_SMTP_HOST, GOTRUE_SMTP_PORT, GOTRUE_SMTP_USER,
-  # GOTRUE_SMTP_PASS, GOTRUE_SMTP_ADMIN_EMAIL, GOTRUE_SMTP_SENDER_NAME, GOTRUE_MAILER_OTP_EXP and
-  # GOTRUE_RATE_LIMIT_EMAIL_SENT -- sourced from .env so the API key never lands in this file.
 
   rest:
     logging: *default-logging
