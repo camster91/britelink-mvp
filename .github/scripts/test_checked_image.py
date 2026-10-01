@@ -14,7 +14,30 @@ class CheckedImage(unittest.TestCase):
   with tarfile.open(self.directory/'runtime-image.tar','w') as bundle:
    for name,data in [('manifest.json',json.dumps([{'Config':'config.json','RepoTags':[tag or module.import_tag(REVISION)],'Layers':['layer.tar']}]).encode()),('config.json',raw),('layer.tar',b'layer')]:
     entry=tarfile.TarInfo(name);entry.size=len(data);bundle.addfile(entry,io.BytesIO(data))
-  receipt={'schema':1,'repository':module.REPOSITORY,'revision':REVISION,'kind':kind,'build_mode':module.expected_mode(),'image_id':image,'archive_sha256':module.digest(self.directory/'runtime-image.tar'),'workflow_run_id':'42','workflow_run_attempt':'1'};self.write(receipt);return receipt,config
+  receipt={'schema':1,'repository':module.REPOSITORY,'revision':REVISION,'kind':kind,'build_mode':module.expected_mode(),'image_id':image,'archive_sha256':module.digest(self.directory/'runtime-image.tar'),'workflow_run_id':'42','workflow_run_attempt':'1'}
+  if module.expected_mode()=='production-configured':receipt['public_profile_sha256']=module.profile_digest(module.load_profile())
+  self.write(receipt);return receipt,config
+ def production_environment(self):
+  from test_public_build_profile import public_token
+  key=public_token();profile={'schema':1,'repository':module.REPOSITORY,'apiOrigin':'https://api.example.test','anonKeySha256':hashlib.sha256(key.encode()).hexdigest(),'privacyNoticeVersion':'reviewed-1','attachmentsEnabled':False}
+  path=self.directory/'profile.json';path.write_text(json.dumps(profile),encoding='utf-8')
+  os.environ.update(BRITELINK_CHECKED_BUILD_MODE='production-configured',BRITELINK_PUBLIC_PROFILE_FILE=str(path),BRITELINK_PUBLIC_PROFILE_SHA256=module.profile_digest(profile))
+  return ['RELEASE_SHA='+REVISION,'BRITELINK_API_ORIGIN='+profile['apiOrigin'],'BRITELINK_API_ANON_KEY='+key,'BRITELINK_PRIVACY_NOTICE_VERSION=reviewed-1','BRITELINK_ATTACHMENTS_ENABLED=','BRITELINK_PUBLIC_CONFIG_SHA256='+module.profile_digest(profile)]
+ def test_production_archive_binds_profile_receipt_and_loaded_configuration(self):
+  environment=self.production_environment();receipt,config=self.fixture(environment=environment)
+  self.assertEqual(module.verify(self.directory),receipt)
+  loaded={'Config':config['config'],'RootFS':{'Layers':config['rootfs']['diff_ids']},'Architecture':'amd64','Os':'linux'}
+  with patch.object(module.subprocess,'check_output',return_value=json.dumps([loaded])):module.verify_loaded(self.directory,receipt)
+  receipt['public_profile_sha256']='f'*64;self.write(receipt);self.assertRaises(ValueError,module.verify,self.directory)
+  for index,value in [(1,'BRITELINK_API_ORIGIN=http://127.0.0.1:8099'),(2,'BRITELINK_API_ANON_KEY=wrong'),(3,'BRITELINK_PRIVACY_NOTICE_VERSION=changed'),(4,'BRITELINK_ATTACHMENTS_ENABLED=true'),(5,'BRITELINK_PUBLIC_CONFIG_SHA256='+'f'*64)]:
+   changed=environment.copy();changed[index]=value;self.fixture(environment=changed);self.assertRaises(ValueError,module.verify,self.directory)
+ def test_fixture_archive_cannot_be_relabelled_as_production(self):
+  self.production_environment();os.environ['BRITELINK_CHECKED_BUILD_MODE']='qa-configured';receipt,_=self.fixture(environment=self.configured_environment())
+  receipt.update(build_mode='production-configured',public_profile_sha256=os.environ['BRITELINK_PUBLIC_PROFILE_SHA256']);self.write(receipt)
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='production-configured';self.assertRaises(ValueError,module.verify,self.directory)
+ def test_production_mode_refuses_unbound_profile_and_fixture_receipt_claim(self):
+  env=self.production_environment();self.fixture(environment=env);del os.environ['BRITELINK_PUBLIC_PROFILE_SHA256'];self.assertRaises(ValueError,module.verify,self.directory)
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='unconfigured-demo';receipt,_=self.fixture();receipt['public_profile_sha256']='f'*64;self.write(receipt);self.assertRaises(ValueError,module.verify,self.directory)
  def configured_environment(self,role='anon',run='42',origin='http://127.0.0.1:8099'):
   encode=lambda value:base64.urlsafe_b64encode(value).decode().rstrip('=')
   unsigned=encode(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode())+'.'+encode(json.dumps({'role':role,'iss':'supabase-staging','iat':1700000000,'exp':2700000000},separators=(',',':')).encode())

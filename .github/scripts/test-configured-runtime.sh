@@ -39,7 +39,8 @@ node --input-type=module <<'JS'
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 const report=JSON.parse(await readFile('qa/staging/journey-report.json','utf8'));
 if(report.passed!==true||!Array.isArray(report.steps)||!report.steps.length||report.steps.some(step=>step.ok!==true))throw new Error('Every configured browser step must pass');
+if(report.transport?.guardedNodeFetch!==true||report.transport?.guardedBrowserRequests!==true||report.transport?.browserWebSocketsBlocked!==true||report.transport?.blockedRequests!==0)throw new Error('Fixture journey transport boundary missing or violated');
 await mkdir('.verification',{recursive:true});
-await writeFile('.verification/britelink-configured-image.json',JSON.stringify({schema:1,revision:process.env.RELEASE_SHA,buildMode:'qa-configured',configuredSavedImageVerified:true,realIsolatedSupabase:true,syntheticHouseholds:true,authenticatedJourneySteps:report.steps.length,steps:report.steps.map(({name,ok,ms})=>({name,ok,ms})),productionImageEligible:false,productionTouched:false,externalEmailSent:false},null,2));
+await writeFile('.verification/britelink-configured-image.json',JSON.stringify({schema:1,revision:process.env.RELEASE_SHA,buildMode:'qa-configured',configuredSavedImageVerified:true,realIsolatedSupabase:true,syntheticHouseholds:true,authenticatedJourneySteps:report.steps.length,steps:report.steps.map(({name,ok,ms})=>({name,ok,ms})),transport:report.transport,productionImageEligible:false,productionTouched:false,externalEmailSent:false},null,2));
 console.log(`Imported configured image: ${report.steps.length} authenticated browser journey steps passed against real isolated Supabase`);
 JS
