@@ -37,7 +37,7 @@ export function StaffAuthoring({
   const [draftState, setDraftState] = useState(
     recovered ? "recovered" : "clean",
   );
-  const [resource, setResource] = useState({
+  const emptyResource = {
     title: "",
     url: "",
     requirement: "optional",
@@ -47,7 +47,8 @@ export function StaffAuthoring({
     attribution: "",
     reviewed: false,
     substituteResourceId: "",
-  });
+  };
+  const [resource, setResource] = useState(emptyResource);
   const [resourceLessonId, setResourceLessonId] = useState("");
   useEffect(() => {
     if (draftState === "clean") return;
@@ -511,7 +512,9 @@ export function StaffAuthoring({
             const timestamp = resource.reviewed
               ? new Date().toISOString()
               : null;
-            act("Resource", () =>
+            // A saved resource clears the form, including the review attestation: each resource
+            // must be reviewed on its own, and a resubmit must not add the same one twice.
+            Promise.resolve(act("Resource", () =>
               repository.addStaffPlanResource({
                 householdId,
                 planId: plan.id,
@@ -527,7 +530,9 @@ export function StaffAuthoring({
                   linkCheckedAt: resource.url ? timestamp : null,
                 },
               }),
-            );
+            )).then((saved) => {
+              if (saved) setResource(emptyResource);
+            });
           }}
         >
           <h4>Add governed resource</h4>

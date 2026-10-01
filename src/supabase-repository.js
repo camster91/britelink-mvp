@@ -20,6 +20,10 @@ export class SupabaseBriteLinkRepository {
   // follows the link: provision_beta_household (migration 041) only serves a signed-in,
   // email-confirmed caller, so an unauthenticated visitor can no longer create or look up accounts.
   async joinBeta(email, redirectTo, {learnerName,learnerGrade}={}) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true, data: { beta_learner_name: String(learnerName||"").trim(), beta_learner_grade: String(learnerGrade||"").trim() } } }), "Join beta"); }
+  // The child's name and grade ride in the account's signup metadata only until the household
+  // exists. Clearing them keeps the name out of the auth record and stops an erased household from
+  // being silently re-created from that metadata on a later sign-in.
+  async clearBetaSignupDetails() { return unwrap(await this.client.auth.updateUser({ data: { beta_learner_name: null, beta_learner_grade: null } }), "Clear signup details"); }
   async provisionBetaHousehold({learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_beta_household",{learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Set up your household");return rows?.[0]??null}
   async requestFreshSignIn(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Reauthentication redirect URL"), shouldCreateUser: false } }), "Send fresh sign-in link"); }
   async signOut() {

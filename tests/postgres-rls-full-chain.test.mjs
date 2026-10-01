@@ -466,6 +466,13 @@ test("educators can tag lessons with what fits today; bad tags are refused; the 
       [{ needsScreen: "yes" }, /needs screen must be true or false/],
     ]) await assert.rejects(() => author([lesson(bad)]), message);
 
+    // 054: the export carries only plans the family was given, so publish this one (with the
+    // approving review 053 requires) before checking that its lesson tags travel.
+    const draftOnly = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
+    assert.ok(!draftOnly.lessons.some((row) => row.estimated_minutes === 20), "a draft plan's lessons stay out of the family's export");
+    await db.query(`insert into public.plan_reviews (household_id, plan_id, reviewer_user_id, curriculum_checked, safeguarding_checked, accessibility_checked, resource_rights_checked, approved_at)
+      values ($1, $2, $3, true, true, true, true, now())`, [houseA, created.plan_id, users.adminA]);
+    await db.query(`update public.plans set status='published', published_at=now() where id=$1`, [created.plan_id]);
     const exported = (await as(db, "authenticated", users.guardianA, () => db.query(`select public.export_guardian_household($1) as payload`, [houseA]))).rows[0].payload;
     const tagged = exported.lessons.find((row) => row.estimated_minutes === 20);
     assert.deepEqual([tagged?.help_level, tagged?.needs_screen], ["independent", false]);

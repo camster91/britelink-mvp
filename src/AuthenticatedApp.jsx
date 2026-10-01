@@ -1958,6 +1958,7 @@ function ParentWorkspace({
         </section>
       </div>
       <AuthenticatedServicePrivacy
+        key={selectedLearner.id}
         householdId={household.household_id}
         learner={selectedLearner}
         serviceCase={selectedCase}
@@ -2010,6 +2011,11 @@ export function Workspace({
   });
   const [householdId, setHouseholdId] = useState("");
   const workspaceRequest = useRef(0);
+  const signupDetailsCleared = useRef(false);
+  // Read through a ref: the session object changes on every token refresh, and reloading the
+  // workspace each time would reset what the family is looking at.
+  const signupMetadata = useRef(null);
+  signupMetadata.current = session?.user?.user_metadata ?? null;
   const load = useCallback(async () => {
     const request = ++workspaceRequest.current;
     setState((previous) => ({
@@ -2032,6 +2038,18 @@ export function Workspace({
           error: null,
         });
         return;
+      }
+      const metadata = signupMetadata.current ?? {};
+      if (
+        !signupDetailsCleared.current &&
+        (metadata.beta_learner_name || metadata.beta_learner_grade) &&
+        repository.clearBetaSignupDetails
+      ) {
+        // The household exists, so the signup copy of the child's name is no longer needed.
+        signupDetailsCleared.current = true;
+        repository.clearBetaSignupDetails().catch(() => {
+          signupDetailsCleared.current = false;
+        });
       }
       const household =
         memberships.find((item) => item.household_id === householdId) ??

@@ -1,4 +1,4 @@
-// Migration 053 (review integrity), exercised against the real migration chain in PGlite with the
+// Migrations 053 (review integrity) and 054 (privacy integrity), exercised against the real migration chain in PGlite with the
 // synthetic staging seed: co-guardian lesson updates, delivered-requires-delivery, the approved-plan
 // resource freeze, same-plan substitutes, and publication requiring the latest review to approve.
 import assert from "node:assert/strict";
@@ -133,6 +133,34 @@ test("migration 053 integrity rules", async (t) => {
       const none = await asOwner(db, `${reopen} delete from public.plan_reviews where plan_id='${PLAN_A}';
         update public.plans set status='published', published_at=now() where id='${PLAN_A}';`);
       assert.match(String(none.error?.message), /latest internal review/);
+    });
+    await t.test("054: withdrawing consent withdraws every active consent that guardian gave for the learner", async () => {
+      const house = "5eed0000-0000-4000-8000-0000000000a1", learner = id("a10");
+      await db.exec("begin");
+      try {
+        // A second intake version records a second, newer consent.
+        await db.query(`insert into public.guardian_consents (id, household_id, learner_id, guardian_user_id, notice_version, purposes, consented_at)
+          values ('5eed0000-0000-4000-8000-0000000000c2', $1, $2, $3, 'synthetic-v1', array['service_delivery'], now() + interval '1 minute')`, [house, learner, users.guardianA]);
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.guardianA}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+        await db.query(`select public.withdraw_guardian_consent($1, '5eed0000-0000-4000-8000-0000000000c2')`, [house]);
+        await db.exec("reset role");
+        const active = (await db.query(`select count(*)::int as n from public.guardian_consents where learner_id=$1 and withdrawn_at is null`, [learner])).rows[0].n;
+        assert.equal(active, 0, "the older consent from the first intake is withdrawn too");
+        const consent = (await db.query(`select public.has_active_guardian_consent($1, $2) as on`, [house, learner])).rows[0].on;
+        assert.equal(consent, false);
+        const held = (await db.query(`select status from public.service_cases where id=$1`, [CASE_A])).rows[0].status;
+        assert.equal(held, "on_hold");
+        await assert.rejects(() => db.query(`update public.service_cases set status='assigned' where id=$1`, [CASE_A]), /no active guardian consent/,
+          "staff cannot resume a case whose consent was withdrawn");
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("054: a paused case with active consent can resume", async () => {
+      const { error } = await asOwner(db, `update public.service_cases set status='on_hold' where id='${CASE_A}';
+        update public.service_cases set status='assigned' where id='${CASE_A}';`);
+      assert.equal(error, undefined, error?.message);
     });
   } finally {
     await db.close();
