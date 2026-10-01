@@ -1,7 +1,8 @@
 services:
   # Database schemas appearing is earlier than service migration completion.
   # Compose --wait must see HTTP readiness before application migrations begin.
-  # Probes follow Supabase's official docker/docker-compose.yml.
+  # GoTrue follows the official probe. Storage v1.11.13 supplies Node20,
+  # whereas its BusyBox wget lacks flags used by newer official examples.
   auth:
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
@@ -11,7 +12,7 @@ services:
       start_period: 30s
   storage:
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/status"]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/status').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"]
       interval: 3s
       timeout: 5s
       retries: 40

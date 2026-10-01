@@ -16,9 +16,11 @@ cleanup() {
 }
 trap cleanup EXIT
 node .github/scripts/configured-qa-env.mjs
-if ! bash scripts/selfhosted-staging/up.sh --project "$project" --override .github/scripts/configured-ci-compose.yml >"$work/bootstrap.log" 2>&1; then
+if ! timeout --signal=TERM 600 bash scripts/selfhosted-staging/up.sh --project "$project" --override .github/scripts/configured-ci-compose.yml >"$work/bootstrap.log" 2>&1; then
   echo 'Disposable real Supabase bootstrap/isolation failed' >&2
   python3 .github/scripts/sanitize-fixture-log.py "$work/bootstrap.log" >&2
+  "${compose[@]}" logs --no-color --tail 40 auth storage db >"$work/services.log" 2>&1 || true
+  python3 .github/scripts/sanitize-fixture-log.py "$work/services.log" >&2
   exit 1
 fi
 set -a
