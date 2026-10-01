@@ -14,6 +14,7 @@ import "./staff-operations.css";
 import { MessageAttachments } from "./MessageAttachments.jsx";
 import { StaffSharedActivities, StaffWeeklyNote } from "./StaffFamilyTools.jsx";
 import { localDateString } from "./authenticated-workspace.js";
+import { validateAttachmentFile } from "./input-validation.js";
 
 function StaffNotice({ state }) {
   if (!state.message) return null;
@@ -171,7 +172,10 @@ export function EducatorWorkspace({
   const messages = data.messages.filter(
     (item) => item.case_id === selected?.id,
   );
-  const allowed = nextStaffStatuses(selected?.status);
+  const allowed = nextStaffStatuses(
+    selected?.status,
+    selected?.previous_operational_status,
+  );
   const retryStaffAttachments = async () => {
     const recovery = staffAttachmentRecovery.current;
     if (!recovery) return;
@@ -180,12 +184,14 @@ export function EducatorWorkspace({
       message: "Retrying attachments without resending the secure message…",
     });
     const pending = [recovery.retry.file, ...recovery.remainingFiles];
+    let retriedFirst = false;
     try {
       await repository.retryMessageAttachmentUpload({
         householdId: household.household_id,
         attachmentId: recovery.retry.attachmentId,
         file: recovery.retry.file,
       });
+      retriedFirst = true;
       for (let index = 1; index < pending.length; index += 1) {
         try {
           await repository.uploadMessageAttachment({
@@ -222,6 +228,19 @@ export function EducatorWorkspace({
           "Attachments uploaded to the original secure message and quarantined until scanning passes.",
       });
     } catch (error) {
+      if (retriedFirst && !error.attachmentRetry) {
+        // The retried attachment is uploaded; a later file failed in a way that cannot be retried
+        // against this message (no attachment row). Retrying the first one again would only fail.
+        staffAttachmentRecovery.current = null;
+        setMessageBody("");
+        setMessageFiles([]);
+        setOperation({
+          status: "error",
+          message: `The secure message remains sent, but a file could not be attached: ${error.message} Send it in a new message.`,
+        });
+        await load();
+        return;
+      }
       const retry = error.attachmentRetry ?? recovery.retry;
       staffAttachmentRecovery.current = { ...recovery, retry };
       setOperation({
@@ -872,6 +891,9 @@ export function EducatorWorkspace({
                 onSubmit={(event) => {
                   event.preventDefault();
                   act("Secure message", async () => {
+                    // Reject unusable files before the message exists, so a bad file can never
+                    // leave a sent message behind that a second submit would duplicate.
+                    for (const file of messageFiles) validateAttachmentFile(file);
                     const saved = await repository.sendMessage({
                       householdId: household.household_id,
                       caseId: selected.id,
@@ -879,13 +901,23 @@ export function EducatorWorkspace({
                       kind: "service",
                       body: messageBody,
                     });
-                    for (const file of messageFiles)
-                      await repository.uploadMessageAttachment({
-                        householdId: household.household_id,
-                        messageId: saved.id,
-                        file,
-                      });
                     setMessageBody("");
+                    for (const [index, file] of messageFiles.entries()) {
+                      try {
+                        await repository.uploadMessageAttachment({
+                          householdId: household.household_id,
+                          messageId: saved.id,
+                          file,
+                        });
+                      } catch (error) {
+                        if (error.attachmentRetry) throw error;
+                        const left = messageFiles.length - index;
+                        setMessageFiles([]);
+                        throw new Error(
+                          `Secure message sent once, but ${left} file${left === 1 ? "" : "s"} could not be attached: ${error.message} Send ${left === 1 ? "it" : "them"} in a new message.`,
+                        );
+                      }
+                    }
                     setMessageFiles([]);
                   });
                 }}

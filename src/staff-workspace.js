@@ -107,30 +107,38 @@ export function staffNextAction(status) {
   return STAFF_NEXT_ACTIONS[status] ?? "Review this case and choose a valid next step.";
 }
 
-export function nextStaffStatuses(status) {
-  // This map must agree with CASE_TRANSITIONS in service-domain.js, which is the
-  // authority enforced by transitionCase(). QA found the two drifting: `submitted`
-  // offered only `clarification`, so the educator journey the UI itself describes
-  // ("Accept usable intake to start the package SLA") was unreachable and the case
-  // looped submitted -> clarification -> submitted forever. tests/staff-transitions
-  // .test.mjs now pins the two maps together.
+export function nextStaffStatuses(status, previousStatus = null) {
+  // What "Move case forward" offers. It must be a subset of what staff_transition_case accepts in
+  // the database (006, plus 053's delivered-needs-a-delivery rule) -- offering anything else only
+  // produces "invalid case transition" -- and of CASE_TRANSITIONS in service-domain.js
+  // (tests/staff-transitions.test.mjs). Moves that have their own action are left out:
+  //   submitted -> triage   is "Accept intake and start SLA" (staff_accept_usable_intake), which
+  //                         also starts the package SLA; the generic move would skip that.
+  //   -> delivered          is "Record delivery" (staff_record_delivery), which writes the delivery
+  //                         the family acknowledges. Only an overdue case that was already
+  //                         delivered may move back to delivered.
+  //   -> published          stays here: staff_transition_case is the publication path.
+  if (status === "overdue") {
+    const options = ["triage", "assigned", "drafting", "on_hold"];
+    if (previousStatus === "delivered") return ["delivered", "on_hold"];
+    return options.includes(previousStatus) ? [previousStatus, ...options.filter((item) => item !== previousStatus)] : options;
+  }
   return (
     {
       paid: ["intake_pending", "cancelled", "refunded", "chargeback"],
       intake_pending: ["submitted", "cancelled", "refunded", "chargeback"],
-      submitted: ["triage", "clarification", "cancelled", "refunded", "chargeback"],
+      submitted: ["clarification", "cancelled", "refunded", "chargeback"],
       triage: ["clarification", "assigned", "on_hold", "overdue"],
-      clarification: ["submitted", "on_hold", "cancelled"],
+      clarification: ["submitted", "on_hold"],
       assigned: ["drafting", "on_hold", "overdue"],
       drafting: ["internal_review", "on_hold", "overdue"],
       internal_review: ["drafting", "published", "on_hold"],
-      published: ["delivered"],
+      published: [],
       delivered: ["acknowledged", "overdue"],
       acknowledged: ["revision_requested", "closed"],
       revision_requested: ["revised", "on_hold"],
-      revised: ["delivered", "closed"],
+      revised: ["closed"],
       on_hold: ["triage", "assigned", "drafting", "internal_review", "cancelled", "refunded"],
-      overdue: ["triage", "assigned", "drafting", "delivered", "on_hold"],
       closed: [],
       cancelled: [],
       refunded: [],

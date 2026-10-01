@@ -44,7 +44,7 @@ export class SupabaseBriteLinkRepository {
   }
   async listCases(householdId) {
     requireIdentifier(householdId,"Household ID");
-    return unwrap(await this.client.from("service_cases").select("id, learner_id, package_code, status, sla_due_at, assigned_educator_id, updated_at").eq("household_id", householdId).order("created_at", { ascending: false }), "Load cases");
+    return unwrap(await this.client.from("service_cases").select("id, learner_id, package_code, status, previous_operational_status, sla_due_at, assigned_educator_id, updated_at").eq("household_id", householdId).order("created_at", { ascending: false }), "Load cases");
   }
   async loadLatestProfile(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");

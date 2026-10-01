@@ -46,7 +46,6 @@ test("case helpers select latest plan and reserve submitted-to-triage for usable
     "overdue",
   ]);
   assert.deepEqual(nextStaffStatuses("submitted"), [
-    "triage",
     "clarification",
     "cancelled",
     "refunded",

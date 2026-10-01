@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring an existing BriteLink database up to date: apply whichever of migrations 039-052 it is
+# Bring an existing BriteLink database up to date: apply whichever of migrations 039-053 it is
 # missing, in order, each in its own transaction, after a pg_dump backup.
 #
 # Why this exists: supabase/selfhosted up.sh applies every migration once, at bootstrap, and
@@ -25,7 +25,7 @@ psql_do() { docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -q -U postgre
 probe() { psql_do -tA -c "select ($1)::int" | tr -d '[:space:]'; }
 
 # Migration number -> a boolean SQL expression that is true once that migration has been applied.
-order=(039 040 041 042 043 044 045 046 047 048 049 050 051 052)
+order=(039 040 041 042 043 044 045 046 047 048 049 050 051 052 053)
 declare -A check=(
   [039]="to_regprocedure('public.diagnose_caller_identity(uuid)') is not null"
   [040]="exists(select 1 from pg_policies where schemaname='public' and tablename='lesson_activities' and policyname='activities_member_select' and qual ilike '%is null%')"
@@ -42,10 +42,11 @@ declare -A check=(
   [050]="to_regclass('public.calendar_feeds') is not null"
   [051]="exists(select 1 from information_schema.columns where table_schema='public' and table_name='lesson_activities' and column_name='first_completed_at')"
   [052]="to_regtype('public.\"text/calendar\"') is not null"
+  [053]="to_regprocedure('public.enforce_publication_review()') is not null"
 )
 # Re-runnable files (create or replace / drop if exists / revoke / grant): safe to apply when
 # missing even if a later migration is present, so they are exempt from the ordering check.
-rerunnable=" 039 040 041 042 045 "
+rerunnable=" 039 040 041 042 045 053 "
 file_for() { local hit; for hit in "$migrations"/202608280"$1"_*.sql; do [ -f "$hit" ] && { echo "$hit"; return; }; done; }
 
 echo "== database: container ${container} =="
