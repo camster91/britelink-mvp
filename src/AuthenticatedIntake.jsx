@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { INTAKE_SUBJECTS } from "./input-validation.js";
 
 // How much structure the family wants (#46): a spectrum, not a philosophy label. Changeable on any
@@ -82,15 +82,29 @@ export function AuthenticatedIntake({
           ? event.target.checked
           : event.target.value,
     }));
-  const subject = (subjectName) => (event) =>
+  const [subjectsInvalid, setSubjectsInvalid] = useState(false);
+  const firstSubjectRef = useRef(null);
+  const subject = (subjectName) => (event) => {
+    if (event.target.checked) setSubjectsInvalid(false);
     setDraft((value) => ({
       ...value,
       subjects: event.target.checked
         ? [...new Set([...value.subjects, subjectName])]
         : value.subjects.filter((item) => item !== subjectName),
     }));
+  };
   const submit = async (event) => {
     event.preventDefault();
+    if (!draft.subjects.length) {
+      setSubjectsInvalid(true);
+      setOperation({
+        status: "error",
+        message: "Subjects to prioritize: choose at least one subject.",
+        canRetry: false,
+      });
+      firstSubjectRef.current?.focus();
+      return;
+    }
     setOperation({
       status: "loading",
       message: "Submitting a new intake version…",
@@ -184,17 +198,27 @@ export function AuthenticatedIntake({
           </ol>
           <fieldset className="intake-subjects">
             <legend>1. Subjects to prioritize</legend>
-            {INTAKE_SUBJECTS.map((item) => (
+            {INTAKE_SUBJECTS.map((item, index) => (
               <label key={item} htmlFor={`${formId}-subject-${item}`}>
                 <input
                   id={`${formId}-subject-${item}`}
+                  ref={index === 0 ? firstSubjectRef : undefined}
                   type="checkbox"
                   checked={draft.subjects.includes(item)}
                   onChange={subject(item)}
+                  aria-invalid={subjectsInvalid || undefined}
+                  aria-describedby={
+                    subjectsInvalid ? `${formId}-subjects-error` : undefined
+                  }
                 />{" "}
                 {item}
               </label>
             ))}
+            {subjectsInvalid ? (
+              <p className="field-error" id={`${formId}-subjects-error`}>
+                Choose at least one subject.
+              </p>
+            ) : null}
           </fieldset>
           <fieldset className="intake-structure">
             <legend>How do you like to plan?</legend>

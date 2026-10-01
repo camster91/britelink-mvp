@@ -608,6 +608,11 @@ function ParentWorkspace({
   const selectedLearner =
     learners.find((item) => item.id === learnerId) ?? learners[0];
   const selectedCase = caseForLearner(cases, selectedLearner?.id);
+  // Learning notes belong to one learner. Clear them on a switch so the weekly story and report
+  // never show the previous child's notes while (or if) the new learner's notes fail to load.
+  useEffect(() => {
+    setCaptures([]);
+  }, [selectedLearner?.id]);
   useEffect(() => {
     let current = true;
     setWeeklyNotes([]);
@@ -1204,6 +1209,7 @@ function ParentWorkspace({
         ) : null}
       </section>
       <AuthenticatedIntake
+        key={selectedLearner.id}
         householdId={household.household_id}
         learner={selectedLearner}
         repository={repository}

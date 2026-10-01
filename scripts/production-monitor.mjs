@@ -4,19 +4,28 @@
 // least one check failed, which fails the workflow run and makes GitHub email the repository owner.
 //
 // Checks
-//   site          https://<site>/ answers 200 with HSTS, a CSP and nosniff
+//   site          https://<site>/ answers 200 with HSTS, a CSP and nosniff, and its first script
+//                 asset keeps HSTS and nosniff
 //   version       /version.json names a 40-hex commit
 //   api-key       the bundle's anon key is accepted by the API (a dummy calendar_feed call must be
 //                 refused by the RPC itself, not rejected as a bad JWT: PGRST30x = key rejected)
 //   feed-route    /feed/<dummy token>.ics answers 404 (the route is up and hides refusals); a 502
 //                 means the web container cannot reach or verify the API
 //   tls-<host>    certificates for the site and the API are valid for at least 14 more days
+//   closed-ports  the backend's internal ports (Postgres, GoTrue, PostgREST, Storage, the Supabase
+//                 gateway, the web container) refuse or ignore connections from the internet; only
+//                 Traefik on 80/443 should answer for the app and API hosts
+import net from "node:net";
 import tls from "node:tls";
 
 const SITE = process.env.MONITOR_SITE || "britelink.ashbi.ca";
 const API = process.env.MONITOR_API || "britelink-api.ashbi.ca";
 const MIN_CERT_DAYS = Number(process.env.MONITOR_MIN_CERT_DAYS || 14);
 const DUMMY_TOKEN = "0".repeat(64);
+// Ports BriteLink's stacks listen on inside the VPS. Each is bound to 127.0.0.1 or a Docker network;
+// one answering from outside means a compose file published it to the internet.
+const INTERNAL_PORTS = (process.env.MONITOR_INTERNAL_PORTS || "3000,5000,5432,6543,8088,8098,9999,54321,54322")
+  .split(",").map(Number).filter((port) => Number.isInteger(port) && port > 0 && port < 65536);
 const results = [];
 
 async function check(name, run) {
@@ -39,6 +48,18 @@ function certDaysLeft(host) {
     });
     socket.on("error", reject);
     socket.on("timeout", () => { socket.destroy(); reject(new Error("TLS connect timed out")); });
+  });
+}
+
+// Resolves true only when a TCP connection completes. Refused, unreachable or silent all count as
+// closed: a firewall that drops packets is as good as one that refuses them.
+function portAnswers(host, port, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const socket = net.connect({ host, port });
+    const done = (open) => { socket.destroy(); resolve(open); };
+    socket.setTimeout(timeoutMs, () => done(false));
+    socket.once("connect", () => done(true));
+    socket.once("error", () => done(false));
   });
 }
 
@@ -68,7 +89,13 @@ await check("site", async () => {
   if (response.status !== 200) throw new Error(`HTTP ${response.status}`);
   const missing = ["strict-transport-security", "content-security-policy", "x-content-type-options"].filter((h) => !response.headers.get(h));
   if (missing.length) throw new Error(`missing headers: ${missing.join(", ")}`);
-  return "HTTP 200 with HSTS, CSP and nosniff";
+  // Static files are served from their own nginx location, whose add_header replaces the server's.
+  const script = (await response.text()).match(/assets\/[^"']+\.js/)?.[0];
+  if (!script) throw new Error("no script asset referenced by the page");
+  const asset = await get(`https://${SITE}/${script}`);
+  const assetMissing = ["strict-transport-security", "x-content-type-options"].filter((h) => !asset.headers.get(h));
+  if (asset.status !== 200 || assetMissing.length) throw new Error(`${script}: HTTP ${asset.status}${assetMissing.length ? `, missing ${assetMissing.join(", ")}` : ""}`);
+  return "HTTP 200 with HSTS, CSP and nosniff; scripts keep HSTS and nosniff";
 });
 
 await check("version", async () => {
@@ -102,6 +129,16 @@ for (const host of [SITE, API]) {
     return `${days} days left`;
   });
 }
+
+await check("closed-ports", async () => {
+  const open = [];
+  for (const host of [...new Set([SITE, API])]) {
+    const answers = await Promise.all(INTERNAL_PORTS.map((port) => portAnswers(host, port)));
+    INTERNAL_PORTS.forEach((port, index) => { if (answers[index]) open.push(`${host}:${port}`); });
+  }
+  if (open.length) throw new Error(`reachable from the internet: ${open.join(", ")}`);
+  return `${INTERNAL_PORTS.length} internal ports closed on both hosts`;
+});
 
 for (const result of results) console.log(`${result.ok ? "ok  " : "FAIL"} ${result.name.padEnd(28)} ${result.detail}`);
 const failed = results.filter((result) => !result.ok);

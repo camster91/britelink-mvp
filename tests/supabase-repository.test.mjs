@@ -244,3 +244,15 @@ test("weekly notes, shared activities and calendar feeds call their RPCs with th
   assert.ok(calls.some((call) => call[0]==="select" && !String(call[1]).includes("token")), "the feed row is read without any token column");
   assert.ok(calls.some((call) => call[0]==="is" && call[1]==="revoked_at" && call[2]===null));
 });
+
+test("sign-out clears the local session when the server call fails", async () => {
+  const calls = [];
+  const client = { auth: { async signOut(options) { calls.push(options?.scope ?? "global"); return calls.length === 1 ? { error: { message: "Failed to fetch" } } : { error: null }; } } };
+  await new SupabaseBriteLinkRepository(client).signOut();
+  assert.deepEqual(calls, ["global", "local"]);
+});
+
+test("sign-out reports failure only when even the local clear fails", async () => {
+  const client = { auth: { async signOut() { return { error: { message: "storage unavailable" } }; } } };
+  await assert.rejects(() => new SupabaseBriteLinkRepository(client).signOut(), /Sign out: storage unavailable/);
+});

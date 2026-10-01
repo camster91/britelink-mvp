@@ -22,7 +22,14 @@ export class SupabaseBriteLinkRepository {
   async joinBeta(email, redirectTo, {learnerName,learnerGrade}={}) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true, data: { beta_learner_name: String(learnerName||"").trim(), beta_learner_grade: String(learnerGrade||"").trim() } } }), "Join beta"); }
   async provisionBetaHousehold({learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_beta_household",{learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Set up your household");return rows?.[0]??null}
   async requestFreshSignIn(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Reauthentication redirect URL"), shouldCreateUser: false } }), "Send fresh sign-in link"); }
-  async signOut() { return unwrap(await this.client.auth.signOut(), "Sign out"); }
+  async signOut() {
+    // A failed server call (offline, timeout) leaves the session in this browser, so a shared
+    // device would stay signed in. Fall back to clearing it locally; the server-side refresh
+    // token then expires on its own.
+    const result = await this.client.auth.signOut().catch((error) => ({ error }));
+    if (!result?.error) return result?.data ?? null;
+    return unwrap(await this.client.auth.signOut({ scope: "local" }), "Sign out");
+  }
 
   async listMemberships() {
     // RLS permits reading the household roster, including other members' roles.
@@ -60,7 +67,7 @@ export class SupabaseBriteLinkRepository {
   }
   async listLessonActivities(householdId, learnerId) {
     requireIdentifier(householdId,"Household ID"); requireIdentifier(learnerId,"Learner ID");
-    return unwrap(await this.client.from("lesson_activities").select("id, lesson_id, status, caregiver_note, schedule_reason, scheduled_for, updated_at").eq("household_id", householdId).eq("learner_id", learnerId).order("updated_at", { ascending: false }), "Load lesson activity");
+    return unwrap(await this.client.from("lesson_activities").select("id, lesson_id, status, caregiver_note, schedule_reason, scheduled_for, updated_at, first_completed_at").eq("household_id", householdId).eq("learner_id", learnerId).order("updated_at", { ascending: false }), "Load lesson activity");
   }
   // Learning outside the plan (migration 046). Removed captures are soft-deleted and hidden here.
   async listLearningCaptures(householdId, learnerId) {

@@ -18,7 +18,7 @@ BACKUP_DIR="${BACKUP_DIR:-/root/britelink-backups}"
 KEEP="${KEEP:-14}"
 CHECK_CONTAINER="britelink-backup-restore-check"
 
-fail() { echo "FAIL: $*" >&2; exit "${2:-1}"; }
+fail() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
 project="$(docker inspect "$DB_CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
 [ "$project" = "britelink-production" ] || fail "$DB_CONTAINER is not the britelink-production database (project: ${project:-none})"
 image="$(docker inspect "$DB_CONTAINER" --format '{{.Config.Image}}')"
@@ -41,9 +41,19 @@ free_bytes="$(df -PB1 "$BACKUP_DIR" | awk 'NR==2 {print $4}')"
 [ "$free_bytes" -gt $((db_bytes * 3)) ] || fail "not enough disk for a safe backup: ${free_bytes} bytes free, database ${db_bytes} bytes"
 
 echo "== backup =="
-before="$(psql_prod -c "$COUNT_SQL")"
+# The counts and the dump must see the same instant, or a family saving a lesson in between makes
+# a good backup "fail" verification. One read-only transaction exports its snapshot and stays open
+# while both the counts and pg_dump read through that snapshot.
+coproc SNAP { docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -tA -q -U postgres -d postgres; }
+echo "begin isolation level repeatable read read only; select pg_export_snapshot();" >&"${SNAP[1]}"
+snapshot=""
+read -r -t 30 snapshot <&"${SNAP[0]}" || true
+[[ "$snapshot" =~ ^[0-9A-F]+-[0-9A-F]+-[0-9]+$ ]] || fail "could not export a database snapshot"
+release_snapshot() { if [ -n "${SNAP_PID:-}" ]; then echo "commit;" >&"${SNAP[1]}" 2>/dev/null || true; exec {SNAP[1]}>&- 2>/dev/null || true; wait "$SNAP_PID" 2>/dev/null || true; fi; }
+before="$(psql_prod -q -c "begin isolation level repeatable read read only" -c "set transaction snapshot '$snapshot'" -c "$COUNT_SQL" -c "commit")"
 umask 077
-docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres -Fc > "$dump" || { rm -f "$dump"; fail "pg_dump failed"; }
+docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres -Fc --snapshot="$snapshot" > "$dump" || { release_snapshot; rm -f "$dump"; fail "pg_dump failed"; }
+release_snapshot
 [ -s "$dump" ] || { rm -f "$dump"; fail "the dump is empty"; }
 entries="$(docker exec -i "$DB_CONTAINER" pg_restore --list < "$dump" | grep -vc '^;' || true)"
 echo "  ok   $dump ($(du -h "$dump" | cut -f1), $entries archive entries)"

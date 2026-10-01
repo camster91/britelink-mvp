@@ -131,3 +131,15 @@ test("staff workspace keeps core triage available when an auxiliary panel fails"
     /case access unavailable/,
   );
 });
+
+test("cases waiting on staff sort above cases waiting on the family, and finished cases sort last", () => {
+  const cases = [
+    { id: "closed", status: "closed" },
+    { id: "acknowledged", status: "acknowledged" },
+    { id: "revised", status: "revised" },
+    { id: "intake-pending", status: "intake_pending" },
+    { id: "submitted", status: "submitted" },
+    { id: "delivered", status: "delivered" },
+  ];
+  assert.deepEqual(prioritizedCases(cases).map((item) => item.id), ["submitted", "revised", "delivered", "acknowledged", "intake-pending", "closed"]);
+});
