@@ -229,7 +229,7 @@ if [ -n "${stack_dir:-}" ] && [ -d "$repo_selfhosted" ]; then
   for f in docker-compose.yml docker-compose.production.yml gateway.conf; do
     if [ ! -f "$stack_dir/$f" ]; then echo "  $f: missing on the VPS"; continue; fi
     if cmp -s "$repo_selfhosted/$f" "$stack_dir/$f"; then echo "  $f: identical"
-    else echo "  $f: DIFFERS (VPS copy vs repo):"; diff -u "$stack_dir/$f" "$repo_selfhosted/$f" | sed -n '3,60p' | sed 's/^/    /'; fi
+    else echo "  $f: DIFFERS (VPS copy vs repo):"; { diff -u "$stack_dir/$f" "$repo_selfhosted/$f" || true; } | sed -n '3,60p' | sed 's/^/    /'; fi
   done
 else
   echo "  (repo copy of supabase/selfhosted not available to this run)"
