@@ -83,5 +83,13 @@ ENV BRITELINK_API_ORIGIN=$VITE_SUPABASE_URL
 # Same rule as above: derived from the build arg, and defined even when empty so nginx starts.
 ARG VITE_SUPABASE_ANON_KEY=""
 ENV BRITELINK_API_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+# Checked production receipts bind these runtime metadata values to the public
+# build inputs. The browser bundle still receives its values only at build time.
+ARG VITE_PRIVACY_NOTICE_VERSION=""
+ARG VITE_ATTACHMENTS_ENABLED=""
+ARG BRITELINK_PUBLIC_CONFIG_SHA256=""
+ENV BRITELINK_PRIVACY_NOTICE_VERSION=$VITE_PRIVACY_NOTICE_VERSION
+ENV BRITELINK_ATTACHMENTS_ENABLED=$VITE_ATTACHMENTS_ENABLED
+ENV BRITELINK_PUBLIC_CONFIG_SHA256=$BRITELINK_PUBLIC_CONFIG_SHA256
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

@@ -192,7 +192,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Verify image transport tamper rejection
-        run: python3 .github/scripts/test_checked_image.py
+        run: |
+          python3 .github/scripts/test_public_build_profile.py
+          python3 .github/scripts/test_checked_image.py
       - name: Build an explicitly unconfigured demo image
         run: >-
           docker build --build-arg BRITELINK_BUILD_COMMIT="$RELEASE_SHA"

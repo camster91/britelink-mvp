@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import tarfile
+from public_build_profile import load_profile, profile_digest, verify_public_key
 
 REPOSITORY = "camster91/britelink-mvp"
 KIND = "runtime"
@@ -15,7 +16,8 @@ KIND = "runtime"
 
 
 def import_tag(revision):
-    return ("britelink-configured-checked-" if expected_mode() == "qa-configured" else "britelink-checked-") + KIND + ":" + revision
+    prefix = {"qa-configured": "britelink-configured-checked-", "production-configured": "britelink-production-checked-", "unconfigured-demo": "britelink-checked-"}[expected_mode()]
+    return prefix + KIND + ":" + revision
 
 
 def digest(path):
@@ -25,7 +27,7 @@ def digest(path):
 
 def expected_mode():
     mode = os.environ.get("BRITELINK_CHECKED_BUILD_MODE", "unconfigured-demo")
-    if mode not in ("unconfigured-demo", "qa-configured"):
+    if mode not in ("unconfigured-demo", "qa-configured", "production-configured"):
         raise ValueError("Unsupported checked image build mode")
     return mode
 
@@ -51,6 +53,15 @@ def image_configuration(config, revision):
     if expected_mode() == "unconfigured-demo":
         if environment.get("BRITELINK_API_ORIGIN") != "" or environment.get("BRITELINK_API_ANON_KEY") != "":
             raise ValueError("This transport gate requires explicitly unconfigured demo inputs")
+    elif expected_mode() == "production-configured":
+        profile = load_profile()
+        expected = {"BRITELINK_API_ORIGIN": profile["apiOrigin"],
+                    "BRITELINK_PUBLIC_CONFIG_SHA256": profile_digest(profile),
+                    "BRITELINK_PRIVACY_NOTICE_VERSION": profile["privacyNoticeVersion"],
+                    "BRITELINK_ATTACHMENTS_ENABLED": "true" if profile["attachmentsEnabled"] else ""}
+        if any(environment.get(name) != value for name, value in expected.items()):
+            raise ValueError("Image public configuration differs from the reviewed production profile")
+        verify_public_key(environment.get("BRITELINK_API_ANON_KEY", ""), profile)
     else:
         import base64, hmac
         if environment.get("BRITELINK_API_ORIGIN") != "http://127.0.0.1:8099":
@@ -75,6 +86,11 @@ def verify(directory):
     receipt = json.loads((directory / "receipt.json").read_text())
     if receipt.get("schema") != 1 or receipt.get("repository") != REPOSITORY or receipt.get("revision") != revision or receipt.get("kind") != KIND or receipt.get("build_mode") != expected_mode():
         raise ValueError("Receipt does not identify the checked repository and commit")
+    if expected_mode() == "production-configured":
+        if receipt.get("public_profile_sha256") != profile_digest(load_profile()):
+            raise ValueError("Receipt differs from the reviewed public profile")
+    elif "public_profile_sha256" in receipt:
+        raise ValueError("A fixture receipt cannot claim a production profile")
     if not re.fullmatch(r"sha256:[a-f0-9]{64}", receipt.get("image_id", "")):
         raise ValueError("Invalid immutable image ID")
     for variable, field in [("GITHUB_RUN_ID", "workflow_run_id"), ("GITHUB_RUN_ATTEMPT", "workflow_run_attempt")]:
@@ -121,6 +137,8 @@ def export(image, directory):
                "image_id": images[0]["Id"], "archive_sha256": digest(archive),
                "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
                "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT")}
+    if expected_mode() == "production-configured":
+        receipt["public_profile_sha256"] = profile_digest(load_profile())
     (directory / "receipt.json").write_text(json.dumps(receipt, sort_keys=True) + "\n")
     return verify(directory)
 
