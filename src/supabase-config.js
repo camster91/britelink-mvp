@@ -10,6 +10,9 @@ export function readSupabaseConfig(environment = import.meta.env) {
   const url = environment.VITE_SUPABASE_URL;
   const anonKey = environment.VITE_SUPABASE_ANON_KEY;
   const privacyNoticeVersion = environment.VITE_PRIVACY_NOTICE_VERSION?.trim() || null;
-  if(!url||!anonKey)return { configured:false, url, anonKey, privacyNoticeVersion };
-  return { configured:true, ...validateBrowserSupabaseConfig(url,anonKey), privacyNoticeVersion };
+  // Off unless the build says exactly "true". Uploads stay quarantined until the malware scanner
+  // marks them clean, so with no scanner running a family's file could never be opened again.
+  const attachmentsEnabled = String(environment.VITE_ATTACHMENTS_ENABLED ?? "").trim() === "true";
+  if(!url||!anonKey)return { configured:false, url, anonKey, privacyNoticeVersion, attachmentsEnabled };
+  return { configured:true, ...validateBrowserSupabaseConfig(url,anonKey), privacyNoticeVersion, attachmentsEnabled };
 }

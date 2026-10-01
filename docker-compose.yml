@@ -8,6 +8,7 @@ services:
         VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
         VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
         VITE_PRIVACY_NOTICE_VERSION: ${VITE_PRIVACY_NOTICE_VERSION:-}
+        VITE_ATTACHMENTS_ENABLED: ${VITE_ATTACHMENTS_ENABLED:-}
         # The commit being built, so /version.json reports the live revision. The deploy script
         # exports this before `docker compose up -d --build`; absent locally, which is fine.
         BRITELINK_BUILD_COMMIT: ${BRITELINK_BUILD_COMMIT:-}

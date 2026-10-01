@@ -40,6 +40,7 @@ export function EducatorWorkspace({
   repository,
   userId,
   refreshIntervalMs = 60000,
+  attachmentsEnabled = true,
 }) {
   const [data, setData] = useState({
     status: "loading",
@@ -898,23 +899,30 @@ export function EducatorWorkspace({
                     onChange={(event) => setMessageBody(event.target.value)}
                   />
                 </label>
-                <label>
-                  Attachments <span>(optional)</span>
-                  <input
-                    type="file"
-                    accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
-                    multiple
-                    onChange={(event) =>
-                      setMessageFiles(
-                        Array.from(event.target.files ?? []).slice(0, 3),
-                      )
-                    }
-                  />
-                  <small>
-                    Up to 3 files, 10 MB each. Downloads remain blocked until
-                    scanning passes.
-                  </small>
-                </label>
+                {attachmentsEnabled ? (
+                  <label>
+                    Attachments <span>(optional)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
+                      multiple
+                      onChange={(event) =>
+                        setMessageFiles(
+                          Array.from(event.target.files ?? []).slice(0, 3),
+                        )
+                      }
+                    />
+                    <small>
+                      Up to 3 files, 10 MB each. Downloads remain blocked until
+                      scanning passes.
+                    </small>
+                  </label>
+                ) : (
+                  <p className="attachments-off">
+                    File attachments are off until malware scanning is
+                    running. Send links or describe the file instead.
+                  </p>
+                )}
                 <button className="primary">Send secure message</button>
               </form>
             </section>
