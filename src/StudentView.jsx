@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { lessonInstructionTexts } from "./authenticated-workspace.js";
 
 const HOLD_MS = 2000;
 
@@ -99,7 +100,7 @@ export function StudentView({ learnerName, lessons, onDone, onExit }) {
               <h2>{lesson.title}</h2>
               {lesson.instructions?.length ? (
                 <ol>
-                  {lesson.instructions.map((step, index) => (
+                  {lessonInstructionTexts(lesson.instructions).map((step, index) => (
                     <li key={index}>{step}</li>
                   ))}
                 </ol>

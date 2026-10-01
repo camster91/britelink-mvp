@@ -1,0 +1,32 @@
+services:
+  # Database schemas appearing is earlier than service migration completion.
+  # Compose --wait must see HTTP readiness before application migrations begin.
+  # GoTrue follows the official probe. Storage v1.11.13 supplies Node20.
+  # Its localhost wget probe selects ::1 while the service listens on IPv4;
+  # use an explicit IPv4 GET instead (reproduced in an isolated container).
+  auth:
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+  storage:
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5000/status').then(r=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+  gateway:
+    ports: !override
+      - "127.0.0.1:8099:8099"
+    volumes: !override
+      - ../../.github/scripts/configured-ci-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+  checked-web:
+    image: ${BRITELINK_CONFIGURED_CHECKED_IMAGE:?required}
+    network_mode: service:gateway
+    depends_on:
+      gateway:
+        condition: service_started
+    restart: "no"

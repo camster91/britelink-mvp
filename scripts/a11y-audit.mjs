@@ -5,7 +5,12 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { chromeLaunchOptions } from "./resolve-chrome.mjs";
 
-const origin="http://127.0.0.1:4317";
+const externalOrigin=process.env.BRITELINK_CHECKED_RUNTIME_URL;
+if(externalOrigin){
+  const target=new URL(externalOrigin);
+  if(process.env.GITHUB_ACTIONS!=="true"||process.env.BRITELINK_CHECKED_RUNTIME_MODE!=="unconfigured-demo"||target.protocol!=="http:"||target.hostname!=="127.0.0.1"||target.pathname!=="/"||target.username||target.password||target.search||target.hash)throw new Error("Disposable CI demo runtime required");
+}
+const origin=externalOrigin||"http://127.0.0.1:4317";
 // The demo views only exist when Supabase is UNconfigured (src/main.jsx renders the
 // authenticated app otherwise). Vite loads .env.local automatically, and developers
 // with a configured workspace were silently getting the sign-in screen here -- the
@@ -14,7 +19,7 @@ const origin="http://127.0.0.1:4317";
 // Pinning both Supabase variables to the empty string forces the demo build even when
 // .env.local exists, so this audit measures what it claims to measure. `--mode test`
 // additionally skips .env.local's mode-specific overrides.
-const server=spawn(process.execPath,["node_modules/vite/bin/vite.js","--host","127.0.0.1","--port","4317","--mode","test"],{stdio:"ignore",env:{...process.env,VITE_SUPABASE_URL:"",VITE_SUPABASE_ANON_KEY:"",VITE_PRIVACY_NOTICE_VERSION:""}});
+const server=externalOrigin?null:spawn(process.execPath,["node_modules/vite/bin/vite.js","--host","127.0.0.1","--port","4317","--mode","test"],{stdio:"ignore",env:{...process.env,VITE_SUPABASE_URL:"",VITE_SUPABASE_ANON_KEY:"",VITE_PRIVACY_NOTICE_VERSION:""}});
 
 async function waitForServer(){for(let attempt=0;attempt<60;attempt+=1){try{const response=await fetch(origin);if(response.ok)return}catch{}await new Promise((resolve)=>setTimeout(resolve,100))}throw new Error("Accessibility preview server did not start")}
 
@@ -51,4 +56,4 @@ try{
   await writeFile(new URL("../qa/accessibility/report.json",import.meta.url),JSON.stringify(report,null,2));
   if(serious.length||overflow.length||keyboardFailures.length)throw new Error([...serious,...overflow,...keyboardFailures].join("\n"));
   process.stdout.write(`Accessibility audit passed ${results.length} rendered view/viewport combinations.\n`);
-} finally { server.kill("SIGTERM"); }
+} finally { server?.kill("SIGTERM"); }
