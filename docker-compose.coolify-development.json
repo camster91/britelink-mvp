@@ -12,10 +12,10 @@
           "BRITELINK_BUILD_COMMIT": "${SOURCE_COMMIT}"
         }
       },
-      "ports": [
-        "127.0.0.1:18088:80"
-      ],
-      "restart": "unless-stopped"
+      "restart": "unless-stopped",
+      "expose": [
+        "80"
+      ]
     }
   }
 }
