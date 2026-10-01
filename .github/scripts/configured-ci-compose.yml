@@ -1,8 +1,9 @@
 services:
   # Database schemas appearing is earlier than service migration completion.
   # Compose --wait must see HTTP readiness before application migrations begin.
-  # GoTrue follows the official probe. Storage v1.11.13 supplies Node20,
-  # whereas its BusyBox wget lacks flags used by newer official examples.
+  # GoTrue follows the official probe. Storage v1.11.13 supplies Node20.
+  # Its localhost wget probe selects ::1 while the service listens on IPv4;
+  # use an explicit IPv4 GET instead (reproduced in an isolated container).
   auth:
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
