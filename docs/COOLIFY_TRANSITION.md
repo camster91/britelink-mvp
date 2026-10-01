@@ -23,7 +23,22 @@ The Docker build now uses Node22, matching package.json's >=22.12 requirement an
 the existing CI Node22 runtime. Nginx startup remains the standard nginx master and
 worker arrangement; this is not a claim that the master runs unprivileged.
 
+Two additional CI jobs prepare a separate `qa-configured` saved image and import
+it on a fresh runner. The build and runner derive matching disposable fixture
+keys from the source/run/attempt identity. This is synthetic CI configuration,
+never an existing backend's signing secret or service key. The imported frontend
+shares a loopback gateway with a uniquely named real Supabase compose project;
+the existing bootstrap applies genuine Auth/Storage schemas, every migration,
+synthetic households and the read/mutation isolation checks. The existing staging
+browser journey then tests genuine magic-link sign-in, durable notes and lesson
+completion across devices, calendar-feed revocation and the educator workbench.
+No SMTP/provider credentials are supplied. Generated configuration and disposable
+volumes are removed; only sanitized step results are uploaded. A successful run
+proves that saved QA image against this isolated backend. It does not establish
+production build-input equivalence or eligibility for production promotion.
+
 These artifacts are labelled demo and **must not be promoted to production**.
+The separate configured QA artifacts are also **ineligible for production**.
 Production's Supabase URL, public anon key, approved privacy notice and attachment
 flag are build-time inputs. Testing an unconfigured image does not verify a
 configured production image. The artifact is temporary (seven days); separate

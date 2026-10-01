@@ -1,0 +1,13 @@
+services:
+  gateway:
+    ports: !override
+      - "127.0.0.1:8099:8099"
+    volumes: !override
+      - ../../.github/scripts/configured-ci-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+  checked-web:
+    image: ${BRITELINK_CONFIGURED_CHECKED_IMAGE:?required}
+    network_mode: service:gateway
+    depends_on:
+      gateway:
+        condition: service_started
+    restart: "no"

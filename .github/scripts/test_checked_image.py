@@ -1,4 +1,4 @@
-import copy,hashlib,importlib.util,io,json,os,pathlib,tarfile,tempfile,unittest
+import base64,copy,hashlib,hmac,importlib.util,io,json,os,pathlib,tarfile,tempfile,unittest
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('checked_image',pathlib.Path(__file__).parent/'checked-image.py');module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
 REVISION='a'*40
@@ -6,14 +6,35 @@ class CheckedImage(unittest.TestCase):
  def setUp(self):
   self.temp=tempfile.TemporaryDirectory();self.directory=pathlib.Path(self.temp.name);self.env=patch.dict(os.environ,{'RELEASE_SHA':REVISION,'GITHUB_RUN_ID':'42','GITHUB_RUN_ATTEMPT':'1'},clear=True);self.env.start();module.KIND='runtime'
  def tearDown(self):self.env.stop();self.temp.cleanup()
- def fixture(self,kind='runtime',user=None,command=None,tag=None):
+ def fixture(self,kind='runtime',user=None,command=None,tag=None,environment=None):
   module.KIND=kind;settings={'User':user or 'root','Labels':{'org.opencontainers.image.revision':REVISION},'Env':['RELEASE_SHA='+REVISION,'BRITELINK_API_ORIGIN=','BRITELINK_API_ANON_KEY='],'Cmd':['nginx','-g','daemon off;'],'Entrypoint':['/docker-entrypoint.sh']}
   if command is not None:settings['Cmd']=command
+  if environment is not None:settings['Env']=environment
   config={'config':settings,'architecture':'amd64','os':'linux','rootfs':{'type':'layers','diff_ids':['sha256:'+hashlib.sha256(b'layer').hexdigest()]}};raw=json.dumps(config).encode();image='sha256:'+hashlib.sha256(raw).hexdigest()
   with tarfile.open(self.directory/'runtime-image.tar','w') as bundle:
    for name,data in [('manifest.json',json.dumps([{'Config':'config.json','RepoTags':[tag or module.import_tag(REVISION)],'Layers':['layer.tar']}]).encode()),('config.json',raw),('layer.tar',b'layer')]:
     entry=tarfile.TarInfo(name);entry.size=len(data);bundle.addfile(entry,io.BytesIO(data))
-  receipt={'schema':1,'repository':module.REPOSITORY,'revision':REVISION,'kind':kind,'build_mode':'unconfigured-demo','image_id':image,'archive_sha256':module.digest(self.directory/'runtime-image.tar'),'workflow_run_id':'42','workflow_run_attempt':'1'};self.write(receipt);return receipt,config
+  receipt={'schema':1,'repository':module.REPOSITORY,'revision':REVISION,'kind':kind,'build_mode':module.expected_mode(),'image_id':image,'archive_sha256':module.digest(self.directory/'runtime-image.tar'),'workflow_run_id':'42','workflow_run_attempt':'1'};self.write(receipt);return receipt,config
+ def configured_environment(self,role='anon',run='42',origin='http://127.0.0.1:8099'):
+  encode=lambda value:base64.urlsafe_b64encode(value).decode().rstrip('=')
+  unsigned=encode(json.dumps({'alg':'HS256','typ':'JWT'},separators=(',',':')).encode())+'.'+encode(json.dumps({'role':role,'iss':'supabase-staging','iat':1700000000,'exp':2700000000},separators=(',',':')).encode())
+  secret=hashlib.sha256(('britelink-ci-only-signing:'+REVISION+':'+run+':1').encode()).hexdigest()
+  token=unsigned+'.'+encode(hmac.digest(secret.encode(),unsigned.encode(),'sha256'))
+  return ['RELEASE_SHA='+REVISION,'BRITELINK_API_ORIGIN='+origin,'BRITELINK_API_ANON_KEY='+token]
+ def test_configured_fixture_accepts_only_this_run_anon_key(self):
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='qa-configured'
+  receipt,_=self.fixture(environment=self.configured_environment());self.assertEqual(module.verify(self.directory),receipt)
+  for change in [{'role':'service_role'},{'run':'43'},{'origin':'https://britelink-api.ashbi.ca'}]:
+   self.fixture(environment=self.configured_environment(**change));self.assertRaises(ValueError,module.verify,self.directory)
+  environment=self.configured_environment();environment[-1]=environment[-1][:-1]+'!'
+  self.fixture(environment=environment);self.assertRaises(ValueError,module.verify,self.directory)
+ def test_configured_fixture_cannot_pass_demo_gate_or_become_production(self):
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='qa-configured';self.fixture(environment=self.configured_environment())
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='unconfigured-demo';self.assertRaises(ValueError,module.verify,self.directory)
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='production';self.assertRaises(ValueError,module.verify,self.directory)
+ def test_configured_fixture_refuses_missing_workflow_identity(self):
+  os.environ['BRITELINK_CHECKED_BUILD_MODE']='qa-configured';self.fixture(environment=self.configured_environment())
+  del os.environ['GITHUB_RUN_ID'];self.assertRaises(ValueError,module.verify,self.directory)
  def write(self,receipt):(self.directory/'receipt.json').write_text(json.dumps(receipt))
  def test_accepts_checked_runtime(self):
   receipt,_=self.fixture();self.assertEqual(module.verify(self.directory),receipt)

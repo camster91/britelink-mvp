@@ -15,12 +15,19 @@ KIND = "runtime"
 
 
 def import_tag(revision):
-    return "britelink-checked-" + KIND + ":" + revision
+    return ("britelink-configured-checked-" if expected_mode() == "qa-configured" else "britelink-checked-") + KIND + ":" + revision
 
 
 def digest(path):
     with path.open("rb") as source:
         return hashlib.file_digest(source, "sha256").hexdigest()
+
+
+def expected_mode():
+    mode = os.environ.get("BRITELINK_CHECKED_BUILD_MODE", "unconfigured-demo")
+    if mode not in ("unconfigured-demo", "qa-configured"):
+        raise ValueError("Unsupported checked image build mode")
+    return mode
 
 
 def expected_revision():
@@ -41,15 +48,32 @@ def image_configuration(config, revision):
     if settings.get("Entrypoint") != ["/docker-entrypoint.sh"] or settings.get("Cmd") != ["nginx", "-g", "daemon off;"]:
         raise ValueError("Unexpected application startup configuration")
     environment = dict(value.split("=", 1) for value in settings.get("Env", []) if "=" in value)
-    if environment.get("BRITELINK_API_ORIGIN") != "" or environment.get("BRITELINK_API_ANON_KEY") != "":
-        raise ValueError("This transport gate only accepts explicitly unconfigured demo images")
+    if expected_mode() == "unconfigured-demo":
+        if environment.get("BRITELINK_API_ORIGIN") != "" or environment.get("BRITELINK_API_ANON_KEY") != "":
+            raise ValueError("This transport gate requires explicitly unconfigured demo inputs")
+    else:
+        import base64, hmac
+        if environment.get("BRITELINK_API_ORIGIN") != "http://127.0.0.1:8099":
+            raise ValueError("Only the disposable configured CI backend is accepted")
+        run, attempt = os.environ.get("GITHUB_RUN_ID", ""), os.environ.get("GITHUB_RUN_ATTEMPT", "")
+        if not re.fullmatch("[0-9]+", run) or not re.fullmatch("[0-9]+", attempt):
+            raise ValueError("Complete configured fixture workflow identity required")
+        key = environment.get("BRITELINK_API_ANON_KEY", "")
+        parts = key.split(".")
+        if len(parts) != 3:
+            raise ValueError("Configured fixture anon key must be a JWT")
+        payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4)))
+        secret = hashlib.sha256(("britelink-ci-only-signing:" + revision + ":" + run + ":" + attempt).encode()).hexdigest()
+        signature = base64.urlsafe_b64encode(hmac.digest(secret.encode(), (parts[0] + "." + parts[1]).encode(), "sha256")).decode().rstrip("=")
+        if payload.get("role") != "anon" or payload.get("iss") != "supabase-staging" or not hmac.compare_digest(parts[2], signature):
+            raise ValueError("Configured image does not carry this run's disposable public anon key")
 
 
 
 def verify(directory):
     revision = expected_revision()
     receipt = json.loads((directory / "receipt.json").read_text())
-    if receipt.get("schema") != 1 or receipt.get("repository") != REPOSITORY or receipt.get("revision") != revision or receipt.get("kind") != KIND or receipt.get("build_mode") != "unconfigured-demo":
+    if receipt.get("schema") != 1 or receipt.get("repository") != REPOSITORY or receipt.get("revision") != revision or receipt.get("kind") != KIND or receipt.get("build_mode") != expected_mode():
         raise ValueError("Receipt does not identify the checked repository and commit")
     if not re.fullmatch(r"sha256:[a-f0-9]{64}", receipt.get("image_id", "")):
         raise ValueError("Invalid immutable image ID")
@@ -93,7 +117,7 @@ def export(image, directory):
     tag = import_tag(revision)
     subprocess.run(["docker", "image", "tag", images[0]["Id"], tag], check=True)
     subprocess.run(["docker", "image", "save", "--output", str(archive), tag], check=True)
-    receipt = {"schema": 1, "repository": REPOSITORY, "revision": revision, "kind": KIND, "build_mode": "unconfigured-demo",
+    receipt = {"schema": 1, "repository": REPOSITORY, "revision": revision, "kind": KIND, "build_mode": expected_mode(),
                "image_id": images[0]["Id"], "archive_sha256": digest(archive),
                "workflow_run_id": os.environ.get("GITHUB_RUN_ID"),
                "workflow_run_attempt": os.environ.get("GITHUB_RUN_ATTEMPT")}
