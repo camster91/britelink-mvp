@@ -65,6 +65,7 @@ async function signedInPage(browser, userId) {
   if (ciDiagnostics) {
     const events=[]; diagnosticPages.push({page,events});
     const record=event=>{if(events.length<40)events.push(event);};
+    page.on('console',message=>{if(message.type()==='error')record({kind:'console-error',message:safeText(message.text())});});
     page.on('pageerror',error=>record({kind:'script-error',message:safeText(error.message)}));
     page.on('requestfailed',request=>record({kind:'request-failed',url:safeLocation(request.url()),reason:safeText(request.failure()?.errorText)}));
     page.on('response',response=>{if(response.status()>=400)record({kind:'http-error',url:safeLocation(response.url()),status:response.status()});});
