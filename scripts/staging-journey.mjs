@@ -26,6 +26,14 @@ import { stagingJourneyConfig } from "./staging-journey-config.mjs";
 const config = stagingJourneyConfig();
 const admin = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 const steps = [];
+// Diagnostics are limited to the disposable saved-image fixture. Never inspect
+// an operator's staging page, cookies, auth storage values, or application rows.
+const ciDiagnostics = process.env.GITHUB_ACTIONS === "true" &&
+  process.env.BRITELINK_CHECKED_BUILD_MODE === "qa-configured" &&
+  config.appUrl === "http://127.0.0.1:8099" && config.supabaseUrl === config.appUrl;
+const diagnosticPages = [];
+const safeText = value => String(value).replace(/[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,"[REDACTED_JWT]").replace(/([?&#](?:access_token|refresh_token|token|token_hash)=)[^&\s"']+/g,"$1[REDACTED]").replace(/[a-f0-9]{32,}/g,"[REDACTED]").slice(0,600);
+const safeLocation = value => { try { const url = new URL(value); return safeText(url.origin+url.pathname); } catch { return "invalid-url"; } };
 const step = async (name, run) => {
   const started = Date.now();
   try {
@@ -33,6 +41,12 @@ const step = async (name, run) => {
     steps.push({ name, ok: true, ms: Date.now() - started });
   } catch (error) {
     steps.push({ name, ok: false, ms: Date.now() - started, error: error.message });
+    if (ciDiagnostics) {
+      for (const {page,events} of diagnosticPages) {
+        const ui = await page.evaluate(() => ({title:document.title,heading:document.querySelector('h1')?.textContent,bootFallback:!!document.querySelector('.boot-fallback'),alerts:[...document.querySelectorAll('[role="alert"],.boot-fallback p')].map(e=>e.textContent)})).catch(()=>({unavailable:true}));
+        console.log('Disposable CI browser diagnostics: '+JSON.stringify({location:safeLocation(page.url()),ui:{...ui,heading:safeText(ui.heading??''),alerts:ui.alerts?.map(safeText)},events}));
+      }
+    }
     throw error;
   }
 };
@@ -48,6 +62,14 @@ async function signInLink(userId) {
 async function signedInPage(browser, userId) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage();
+  if (ciDiagnostics) {
+    const events=[]; diagnosticPages.push({page,events});
+    const record=event=>{if(events.length<40)events.push(event);};
+    page.on('console',message=>{if(message.type()==='error')record({kind:'console-error',message:safeText(message.text())});});
+    page.on('pageerror',error=>record({kind:'script-error',message:safeText(error.message)}));
+    page.on('requestfailed',request=>record({kind:'request-failed',url:safeLocation(request.url()),reason:safeText(request.failure()?.errorText)}));
+    page.on('response',response=>{if(response.status()>=400)record({kind:'http-error',url:safeLocation(response.url()),status:response.status()});});
+  }
   await page.goto(await signInLink(userId), { waitUntil: "networkidle" });
   return { context, page };
 }

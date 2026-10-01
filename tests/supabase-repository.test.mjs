@@ -2,6 +2,33 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { SupabaseBriteLinkRepository } from "../src/supabase-repository.js";
 
+test("workspace access uses the verified account's roles across households, not another member's first role", async () => {
+  const roster = [
+    {user_id:"administrator-a",household_id:"household-a",role:"admin"},
+    {user_id:"signed-in-user",household_id:"household-a",role:"guardian"},
+    {user_id:"signed-in-user",household_id:"household-b",role:"educator"},
+  ];
+  let filter;
+  const query = {
+    select(){return this;},
+    eq(column,value){filter=[column,value];return this;},
+    async order(){return {data:filter?roster.filter(row=>row[filter[0]]===filter[1]):roster};},
+  };
+  const client={auth:{getUser:async()=>({data:{user:{id:"signed-in-user"}}})},from:()=>query};
+  const result=await new SupabaseBriteLinkRepository(client).listMemberships();
+  assert.deepEqual(result,roster.slice(1));
+});
+
+test("missing signed-in account cannot load workspace memberships", async () => {
+  const client={auth:{getUser:async()=>({data:{user:null}})},from(){throw new Error("membership query must not run");}};
+  await assert.rejects(()=>new SupabaseBriteLinkRepository(client).listMemberships(),/Signed-in user ID/);
+});
+
+test("failed account verification cannot load workspace memberships", async () => {
+  const client={auth:{getUser:async()=>({error:{message:"session rejected"}})},from(){throw new Error("membership query must not run");}};
+  await assert.rejects(()=>new SupabaseBriteLinkRepository(client).listMemberships(),/Read signed-in account: session rejected/);
+});
+
 function mockClient(result = { data: [] }) {
   const calls = [];
   const query = new Proxy({}, {

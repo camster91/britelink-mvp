@@ -7,6 +7,7 @@ import {
   dueLessonsForToday,
   latestPublishedPlan,
   lessonFitSummary,
+  lessonInstructionTexts,
   localDateString,
   messageIsUnread,
   nextLessonForToday,
@@ -343,7 +344,7 @@ function PrintSheet({ learnerName, scope, days, printedOn }) {
                   <p>{lesson.objective}</p>
                   {lesson.instructions.length ? (
                     <ol>
-                      {lesson.instructions.map((step, index) => (
+                      {lessonInstructionTexts(lesson.instructions).map((step, index) => (
                         <li key={index}>{step}</li>
                       ))}
                     </ol>
@@ -1586,7 +1587,7 @@ function ParentWorkspace({
                         <h4>Instructions</h4>
                         {selectedLesson.instructions?.length ? (
                           <ol>
-                            {selectedLesson.instructions.map((item, index) => (
+                            {lessonInstructionTexts(selectedLesson.instructions).map((item, index) => (
                               <li key={index}>{item}</li>
                             ))}
                           </ol>

@@ -181,3 +181,123 @@ jobs:
             qa/operations/*.png
           if-no-files-found: ignore
           retention-days: 7
+
+  checked-image-build:
+    name: checked-image-build
+    needs: [build-test, migration-harness, browser-audits]
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Verify image transport tamper rejection
+        run: python3 .github/scripts/test_checked_image.py
+      - name: Build an explicitly unconfigured demo image
+        run: >-
+          docker build --build-arg BRITELINK_BUILD_COMMIT="$RELEASE_SHA"
+          --build-arg VITE_SUPABASE_URL= --build-arg VITE_SUPABASE_ANON_KEY=
+          --build-arg VITE_PRIVACY_NOTICE_VERSION= --build-arg VITE_ATTACHMENTS_ENABLED=
+          -t britelink:checked-candidate .
+      - name: Export the exact saved runtime and source receipt
+        run: python3 .github/scripts/checked-image.py export --image britelink:checked-candidate --directory "$RUNNER_TEMP/britelink-checked-image"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: britelink-demo-checked-image-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/britelink-checked-image/
+          if-no-files-found: error
+          retention-days: 7
+  checked-image-runtime:
+    name: checked-image-runtime
+    needs: checked-image-build
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for the saved-image browser audit
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: britelink-demo-checked-image-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/britelink-checked-image/
+      - name: Verify and load the saved runtime without rebuilding
+        run: python3 .github/scripts/checked-image.py load --directory "$RUNNER_TEMP/britelink-checked-image"
+      - name: Audit the actual saved demo runtime and restart
+        run: bash .github/scripts/test-checked-runtime.sh
+      - name: Preserve the saved-image browser report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: britelink-demo-image-browser-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: qa/accessibility/
+          if-no-files-found: error
+          retention-days: 7
+
+  configured-image-build:
+    name: configured-image-build
+    needs: [build-test, migration-harness, browser-audits]
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 25
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+      BRITELINK_CHECKED_BUILD_MODE: qa-configured
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Verify disposable fixture and transport guards
+        run: |
+          node --test .github/scripts/test_configured_qa_env.mjs
+          python3 .github/scripts/test_checked_image.py
+      - name: Build image with isolated CI public configuration
+        run: node .github/scripts/build-configured-image.mjs
+      - name: Export exact configured runtime and receipt
+        run: python3 .github/scripts/checked-image.py export --image britelink:configured-candidate --directory "$RUNNER_TEMP/britelink-configured-image"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: britelink-configured-checked-image-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/britelink-configured-image/
+          if-no-files-found: error
+          retention-days: 7
+
+  configured-image-runtime:
+    name: configured-image-runtime
+    needs: configured-image-build
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 30
+    env:
+      RELEASE_SHA: ${{ github.sha }}
+      BRITELINK_CHECKED_BUILD_MODE: qa-configured
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium for genuine authenticated journeys
+        run: npx playwright install ${{ runner.environment == 'github-hosted' && '--with-deps' || '' }} chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: britelink-configured-checked-image-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/britelink-configured-image/
+      - name: Verify and load saved configured image without rebuilding
+        run: python3 .github/scripts/checked-image.py load --directory "$RUNNER_TEMP/britelink-configured-image"
+      - name: Test saved image with real isolated Supabase and synthetic households
+        run: bash .github/scripts/test-configured-runtime.sh
+      - name: Preserve only sanitized configured-image proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: britelink-configured-image-proof-${{ github.sha }}-attempt-${{ github.run_attempt }}
+          path: .verification/britelink-configured-image.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7

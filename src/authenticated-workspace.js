@@ -1,3 +1,11 @@
+// Older stored plans use {step,text}; current authoring stores plain strings.
+// Render instruction text without rewriting either persisted representation.
+export function lessonInstructionTexts(instructions) {
+  if (!Array.isArray(instructions)) return [];
+  return instructions.map(item => typeof item === "string" ? item : item?.text)
+    .filter(text => typeof text === "string" && text.trim());
+}
+
 export function latestPublishedPlan(plans) {
   if (!Array.isArray(plans)) return null;
   return [...plans]
@@ -200,7 +208,7 @@ export function printableDays(weeks = [], { scope = "week", weekIndex = 0, dayIn
       subject: lesson.subject,
       title: lesson.title,
       objective: lesson.objective,
-      instructions: lesson.instructions ?? [],
+      instructions: lessonInstructionTexts(lesson.instructions),
       materials: lesson.materials ?? [],
       fit: lessonFitSummary(lesson),
       done: ["completed", "skipped"].includes(activitiesByLessonId[lesson.id]?.status) ? activitiesByLessonId[lesson.id].status : null,
