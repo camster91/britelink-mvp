@@ -12,8 +12,12 @@ test("attachment download reserves a user-initiated window and reports popup blo
 test("generated text files download through a revoked object URL", async () => {
   const { downloadTextFile } = await import("../src/browser-download.js");
   const events = [];
-  const anchor = { click: () => events.push(["click", anchor.href, anchor.download]) };
+  const anchor = { style: {}, click: () => events.push(["click", anchor.href, anchor.download]), remove: () => events.push(["remove"]) };
   const urls = { createObjectURL: (blob) => { events.push(["create", blob.type]); return "blob:report"; }, revokeObjectURL: (url) => events.push(["revoke", url]) };
-  downloadTextFile("report.csv", "a,b", "text/csv", { createElement: () => anchor }, urls);
-  assert.deepEqual(events, [["create", "text/csv"], ["click", "blob:report", "report.csv"], ["revoke", "blob:report"]]);
+  const deferred = [];
+  const doc = { createElement: () => anchor, body: { appendChild: (node) => events.push(["append", node === anchor]) } };
+  downloadTextFile("report.csv", "a,b", "text/csv", doc, urls, (run) => deferred.push(run));
+  assert.deepEqual(events, [["create", "text/csv"], ["append", true], ["click", "blob:report", "report.csv"]], "the URL stays valid through the click");
+  deferred.forEach((run) => run());
+  assert.deepEqual(events.slice(-2), [["remove"], ["revoke", "blob:report"]]);
 });
