@@ -6,7 +6,7 @@ This is the AC5 artifact for issue #1 (*"Environment ownership, access, cost, an
 teardown/rotation procedure are recorded"*). It is written **before** the hosted projects
 exist, so it records what is decided, what is not yet provisioned, and what still needs an
 owner decision. Nothing here is a substitute for the provisioning checklist in
-`docs/SUPABASE_PROVISIONING.md`.
+`docs/archive/SUPABASE_PROVISIONING.md`.
 
 **Status as of 2026-09-18.** Backend decision: hosted Supabase, `dev` + `staging`, region
 `ca-central-1`. No Supabase project exists yet. The only running environment is the
@@ -36,7 +36,7 @@ stays unconfigured until someone decides otherwise:**
 
 1. `src/supabase-config.js` reads `import.meta.env`, which Vite inlines at **build** time,
    and neither the `Dockerfile` nor `docker-compose.yml` passes any `VITE_*` build argument.
-   Documented as an open gap in `docs/SUPABASE_PROVISIONING.md` §7a.
+   Documented as an open gap in `docs/archive/SUPABASE_PROVISIONING.md` §7a.
 2. Even once that plumbing exists, pointing the public site at a hosted backend is a
    deployment change gated on the same approval as provisioning.
 
@@ -144,7 +144,7 @@ is hardcoded in the Traefik route at `/opt/traefik/dynamic/britelink.yml`.
 - [ ] Provision E2 and E3 (blocked: Supabase account and payment method — Cameron)
 - [ ] Choose the tier, with the idle-pause tradeoff in §3 in mind
 - [ ] Record project refs and chosen region in a secure doc, **not in git**
-- [ ] Close §7a in `docs/SUPABASE_PROVISIONING.md` if the hosted staging site should be live
+- [ ] Close §7a in `docs/archive/SUPABASE_PROVISIONING.md` if the hosted staging site should be live
 - [ ] Nominate a second person with dashboard access, or record explicitly that there is none
 - [ ] Assign an owner for E5 before any real family data exists
 - [ ] Re-check pricing before committing to a tier

@@ -211,12 +211,29 @@ for var in API_EXTERNAL_URL GOTRUE_SITE_URL GOTRUE_URI_ALLOW_LIST GOTRUE_DISABLE
 done
 printf '%-34s  %s\n' "GOTRUE_SMTP_USER / _PASS" "$( [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SMTP_USER)" ] && echo user-set || echo user-unset ) / $( [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SMTP_PASS)" ] && echo pass-set || echo pass-unset )"
 ext="$(env_of "$AUTH_CONTAINER" API_EXTERNAL_URL)"
-case "$ext" in
-  */auth/v1) echo "magic-link address:                 ${ext}/verify (routed by the gateway)";;
-  "") echo "magic-link address:                 unknown (API_EXTERNAL_URL unset)";;
-  *) echo "magic-link address:                 ${ext}/verify -- the gateway only routes /auth/v1/*, so links would 404 unless GoTrue adds the prefix";;
-esac
-echo "GoTrue verify endpoint via gateway:  HTTP $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${ext%/auth/v1}/auth/v1/health" || true) (health at /auth/v1/health)"
+# Probe the exact address a sign-in email links to, with a dummy token: GoTrue answers 303 (redirect
+# to the site with "link expired"); a 404 means the link would never reach GoTrue.
+if [ -n "$ext" ]; then
+  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${ext}/verify?token=0&type=magiclink" || true)"
+  case "$code" in 303|302|400|401|403) verdict="reaches GoTrue";; 404) verdict="NOT ROUTED -- sign-in links would 404";; *) verdict="unexpected";; esac
+  echo "sign-in link address:               ${ext}/verify -> HTTP $code ($verdict)"
+else
+  echo "sign-in link address:               unknown (API_EXTERNAL_URL unset)"
+fi
+
+echo "== production stack files vs this commit =="
+# The stack runs its own copies under $stack_dir; show how they differ from the repo's. Compose
+# files hold no secrets (values come from .env), so the diff is printed.
+repo_selfhosted="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/supabase/selfhosted"
+if [ -n "${stack_dir:-}" ] && [ -d "$repo_selfhosted" ]; then
+  for f in docker-compose.yml docker-compose.production.yml gateway.conf; do
+    if [ ! -f "$stack_dir/$f" ]; then echo "  $f: missing on the VPS"; continue; fi
+    if cmp -s "$repo_selfhosted/$f" "$stack_dir/$f"; then echo "  $f: identical"
+    else echo "  $f: DIFFERS (VPS copy vs repo):"; diff -u "$stack_dir/$f" "$repo_selfhosted/$f" | sed -n '3,60p' | sed 's/^/    /'; fi
+  done
+else
+  echo "  (repo copy of supabase/selfhosted not available to this run)"
+fi
 
 echo "== consent records (counts only) =="
 PROD_DB="${PROD_DB:-britelink-production-db-1}"

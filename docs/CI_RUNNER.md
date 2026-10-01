@@ -4,7 +4,7 @@
 
 ## What is true now
 
-- Hosted runners stopped being assigned on 2026-09-18. Runs sit `queued` with zero jobs (see `docs/ship-status.md`). Because Deploy waits for a green CI run, **nothing deploys automatically**.
+- **Resolved 2026-09-30:** jobs run on GitHub-hosted `ubuntu-24.04`, and every merge to `main` runs CI and then Deploy automatically (#33). History: hosted runners stopped being assigned on 2026-09-18 (`docs/archive/ship-status.md`).
 - Every job in `.github/workflows/ci.yml` and `deploy.yml` now reads its runner from the repository variable **`CI_RUNS_ON`**:
   - unset: `ubuntu-24.04`, which is today's behaviour;
   - set to a JSON array such as `["self-hosted","linux","britelink-ci"]`: that self-hosted runner.

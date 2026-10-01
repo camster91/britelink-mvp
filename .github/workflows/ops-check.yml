@@ -72,7 +72,7 @@ jobs:
           trap 'rm -rf "$work"' EXIT
           cd /docker/britelink-web
           git fetch --depth=1 origin "$SHA"
-          git archive "$SHA" scripts/ops-check.sh | tar -x -C "$work"
+          git archive "$SHA" scripts/ops-check.sh supabase/selfhosted | tar -x -C "$work"
           bash "$work/scripts/ops-check.sh" "$MODE" "$VALUE"
           REMOTE
 

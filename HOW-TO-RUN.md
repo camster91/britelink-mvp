@@ -26,16 +26,12 @@ The app will be available at `http://localhost:5173` (or the port shown in the t
 
 ## Self-host on vps.ashbi.ca (no cloud vendors)
 
-> **Superseded in part, 2026-09-18.** The backend question was decided in favour of **hosted
-> Supabase** (`dev` + `staging`, region `ca-central-1`) — see
-> `docs/SUPABASE_PROVISIONING.md`. The paragraph below still describes the *web tier*
-> accurately: the SPA is built and served from this VPS, and Stripe and OpenAI Sites remain
-> out. Read "not hosted Supabase" as historical. Note also that the hosted projects do not yet
-> change what this container serves — that is now a **decision** rather than a missing
-> mechanism: the deployment builds the Supabase project URL, anon key, privacy notice version,
-> and commit stamp from build args (`Dockerfile`, `docker-compose.yml`), and the CSP origin is
-> derived from the same value. With no `.env` on the host the build still produces the honest
-> demo. See `docs/SUPABASE_PROVISIONING.md` §7a.
+> **Current (2026-09-30):** production runs a **self-hosted Supabase** stack on this VPS
+> (`supabase/selfhosted/`, project `britelink-production`, API at `britelink-api.ashbi.ca`). The
+> earlier hosted-Supabase plan is in `docs/archive/SUPABASE_PROVISIONING.md` for history. The web
+> build takes the API URL, anon key, privacy notice version and commit stamp as build args
+> (`Dockerfile`, `docker-compose.yml`), and the CSP origin is derived from the same value. With no
+> `.env` on the host, the build still produces the honest demo.
 
 The intended web runtime is this VPS, not Stripe or OpenAI Sites. Unconfigured builds stay in interactive demo mode (device-only sample data). A local Postgres 16 container already runs on the VPS at `/docker/britelink-postgres` with nightly dumps under `/opt/backups/britelink`.
 
@@ -141,15 +137,15 @@ VITE_PRIVACY_NOTICE_VERSION=2026-09-01
 - `tests/` — Test suites (domain, integration, accessibility)
 - `scripts/` — Build, audit, and operations scripts
 - `supabase/` — Database migrations and RLS policies
-- `docs/` — Implementation plan and operations runbooks
+- `docs/` — `TODO.md` (what is left), `PROJECT-STATUS.md` (what is verified) and the operations runbooks
 
 ## Important Notes
 
 ### Current Status
 
-This is an **MVP prototype** with locally verified features. The demo runs with no third-party accounts. It is **not approved** for real family data or paid service delivery until privacy, educator, and accessibility gates in `docs/RELEASE_READINESS.md` are closed.
+Production (`britelink.ashbi.ca`) is live on a self-hosted backend with the approved privacy notice. Local runs with no `.env` produce the interactive demo, which needs no third-party accounts. What is still needed before real families is listed in `docs/TODO.md`.
 
-See `docs/IMPLEMENTATION_PLAN.md` and `REAL_WORLD_REVIEW.md` for complete status.
+See `docs/PROJECT-STATUS.md` for verified status.
 
 ### Browser-Only Demo Limitations
 
@@ -185,7 +181,7 @@ Some tests (especially restore drill) can take 30+ seconds. This is expected.
 
 ## Next Steps
 
-- Review `docs/IMPLEMENTATION_PLAN.md` for implementation status
+- Review `docs/TODO.md` for what is left
 - Review `REAL_WORLD_REVIEW.md` for known gaps and blockers
 - Review `docs/RELEASE_READINESS.md` for launch gates
 

@@ -10,7 +10,7 @@ Operators can use this page before creating or connecting hosted projects. It do
 
 ## Invited-only Auth (when staging exists)
 
-Configure Auth only after explicit infrastructure approval (`docs/GOAL_COMPLETION_PLAN.md` Workstream C):
+Configure Auth only after explicit infrastructure approval (`docs/archive/GOAL_COMPLETION_PLAN.md` Workstream C):
 
 | Setting | Required value |
 | --- | --- |
@@ -46,7 +46,7 @@ Those IDs are not something to invent by hand. `supabase/seed/synthetic-staging.
 two households and prints the whole `BRITELINK_TEST_*` block ready to paste. It prints every
 variable the verifier reads **except** the four JWTs, which only Supabase Auth can mint — and that
 gap is asserted in the migration harness, so it cannot silently grow as the verifier changes.
-Procedure and rationale: `docs/SUPABASE_PROVISIONING.md` §2a.
+Procedure and rationale: `docs/archive/SUPABASE_PROVISIONING.md` §2a.
 
 Service-role keys never enter Vite or browser env.
 
@@ -92,7 +92,7 @@ Do not mark these complete from this Linux environment or from automated audits 
 4. Live hosted Auth, isolation, restore, monitoring alerts, payments, malware scanner, physical erasure
 5. Private-beta invitations to real households
 
-Track closure in `docs/RELEASE_READINESS.md` and the sequenced plan in `docs/GOAL_COMPLETION_PLAN.md`.
+Track closure in `docs/RELEASE_READINESS.md` and the sequenced plan in `docs/archive/GOAL_COMPLETION_PLAN.md`.
 
 ## Staging from GitHub Actions (no SSH needed)
 

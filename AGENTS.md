@@ -1,6 +1,6 @@
 # Ship handoff
 
-> **Read `docs/AGENT_HANDOFF.md` first** for product status, next agent track, and Cameron-gated work. Also `docs/ship-status.md` + `docs/END_TO_END_SHIP_PLAN.md`.
+> **Read `docs/AGENT_HANDOFF.md` first**, then `docs/TODO.md` (the one list of what is left) and `docs/PROJECT-STATUS.md` (what is verified). Older plans live in `docs/archive/` for history only.
 
 # Prototype Instructions
 

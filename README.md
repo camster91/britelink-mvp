@@ -140,42 +140,43 @@ if the served `/version.json` does not name that commit**.
 A local build with no `BRITELINK_BUILD_COMMIT` reports `"unknown"` rather than guessing from the
 checkout — a wrong stamp would be worse than none.
 
-See `docs/STAGING-PROVISIONING-RUNBOOK-2026-09-21.md` for staging setup.
+Staging is a self-hosted synthetic stack on the same VPS; see `docs/STAGING_HANDOFF.md`.
 
 ## Current state
 
-Honest summary, so nobody has to reverse-engineer it.
+Honest summary, so nobody has to reverse-engineer it. **`docs/TODO.md` is the one list of what is left.**
 
-**Working and verified:** the product is built, the schema is real, the tests pass, and the demo is
-deployed and reachable at `britelink.ashbi.ca`.
+**Live and verified (2026-09-30):**
+- `britelink.ashbi.ca` runs current `main` and deploys on every merge.
+- It is backed by a self-hosted Supabase stack on the VPS: real auth, all migrations applied.
+- The approved privacy notice is live, so guardian intake is open.
+- An hourly external monitor and nightly restore-verified backups are running.
+- Evidence is in `docs/PROJECT-STATUS.md`.
 
-**Not yet real:**
-- No hosted Supabase project is provisioned, so there is no live authentication
-- No real family data has ever been collected, by design
-- Stripe webhook verification exists but has no live endpoint or keys
-- The malware scanner and the physical-deletion job are not implemented
-- No external monitoring or managed backups
-- Manual accessibility (VoiceOver, true browser zoom) is a human gate, not yet run
+**Not yet proven or not yet real:**
+- Sign-in email is configured (Mailgun) but not yet proven with a real invited family account.
+- There is no live payment provider (webhook verification exists; the provider and prices are undecided).
+- The malware scanner is not deployed, so attachments stay quarantined.
+- Manual accessibility (VoiceOver, true browser zoom) is a human gate, not yet run.
 
-**Deliberately out of scope:** public marketing, child logins, AI-generated plans, community features,
-and any expansion into health, diagnosis, or IEP data.
+**Deliberately out of scope:** child logins, AI-generated plans, community features, and any expansion
+into health, diagnosis, or IEP data.
 
-### Launch gates
-
-The paths to private beta are tracked in `docs/`:
+### Where things are tracked
 
 | Document | Purpose |
 |---|---|
-| `LAUNCH-TODO.md` | Phased plan from here to beta and to a product families keep using |
-| `RELEASE_READINESS.md` | The eight release gates and their current evidence |
-| `GOAL_COMPLETION_PLAN.md` | Sequenced workstreams to close those gates |
-| `PROJECT-STATUS.md` | Live status: done, in progress, blocked, next action |
+| `TODO.md` | What is left before and after the first real families, with owners |
+| `PROJECT-STATUS.md` | What is verified in production, with evidence |
+| `APPLYING_MIGRATIONS.md` | Running the production database and the ops workflows |
+| `RELEASE_READINESS.md` | The release gates and their evidence |
 | `PRIVACY_OPERATIONS.md` | Data rules, guardian rights, retention |
 | `INCIDENT_RESPONSE.md` | Runbook awaiting thresholds and named owners |
+| `archive/` | Superseded plans and evaluations, kept for history |
 
 ## Contributing notes
 
-- **Read `docs/PROJECT-STATUS.md` first.** It names the one next action and what is blocked.
+- **Read `docs/TODO.md` first.** It lists what is left and who can do it.
 - The repository has no TypeScript or linter; `npm test` and the browser audits are the validation path.
 - Migrations are append-only and numbered. A destructive migration needs approval and a rollback path.
 - Do not commit anything that puts real family data, credentials, or production tokens in the tree.
