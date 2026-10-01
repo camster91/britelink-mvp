@@ -109,9 +109,15 @@ jobs:
           echo "served index.html sha256: $BEFORE_HTML"
 
           echo "== fetch and reset (shallow clone, depth 1) =="
-          git fetch --depth=1 origin main
-          # FETCH_HEAD, not origin/main: with an explicit refspec the update of
-          # refs/remotes/origin/main is only opportunistic.
+          # Fetch the exact CI-verified commit and check it before touching the working tree, so a
+          # main that moved on in the meantime can never leave the VPS checked out on an unverified
+          # commit (the newer commit gets its own Deploy run).
+          git fetch --depth=1 origin "$EXPECTED_SHA"
+          FETCHED_SHA=$(git rev-parse FETCH_HEAD)
+          if [ "$FETCHED_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::fetched $FETCHED_SHA, expected CI-verified commit $EXPECTED_SHA"
+            exit 1
+          fi
           git reset --hard FETCH_HEAD
 
           DEPLOYED_SHA=$(git rev-parse HEAD)

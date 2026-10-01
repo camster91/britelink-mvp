@@ -138,6 +138,11 @@ try {
     .getByRole("button", { name: "Add reviewed resource" })
     .click();
   await page.getByText("Resource completed and audited.").waitFor();
+  // Each resource is attested on its own: a saved resource clears the form, review box included.
+  if (await resourceForm.getByRole("checkbox", { name: /I checked the link/ }).isChecked())
+    throw new Error("Review attestation carried over to the next resource");
+  if ((await resourceForm.getByLabel("Title", { exact: true }).inputValue()) !== "")
+    throw new Error("Saved resource stayed in the form and could be added twice");
   await resourceForm.getByLabel("Title", { exact: true }).fill("Required sound workbook");
   await resourceForm
     .getByLabel(/HTTPS URL/)
@@ -146,6 +151,12 @@ try {
   await resourceForm
     .getByLabel("Substitute resource")
     .selectOption({ index: 1 });
+  await resourceForm
+    .getByLabel("Rights/attribution")
+    .fill("BriteLink original");
+  await resourceForm
+    .getByRole("checkbox", { name: /I checked the link/ })
+    .check();
   await resourceForm
     .getByRole("button", { name: "Add reviewed resource" })
     .click();
