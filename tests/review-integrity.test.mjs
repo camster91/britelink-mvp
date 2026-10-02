@@ -162,6 +162,20 @@ test("migration 053 integrity rules", async (t) => {
         update public.service_cases set status='assigned' where id='${CASE_A}';`);
       assert.equal(error, undefined, error?.message);
     });
+
+    await t.test("055: a paused, cancelled or chargeback case cannot be marked revised", async () => {
+      for (const from of ["on_hold", "chargeback", "cancelled", "acknowledged"]) {
+        const { error } = await asOwner(db, `update public.service_cases set status='${from}' where id='${CASE_A}';
+          update public.service_cases set status='revised' where id='${CASE_A}';`);
+        assert.match(String(error?.message), /open revision request/, `from ${from}`);
+      }
+    });
+
+    await t.test("055: a case with an open revision request can be marked revised", async () => {
+      const { error } = await asOwner(db, `update public.service_cases set status='revision_requested' where id='${CASE_A}';
+        update public.service_cases set status='revised' where id='${CASE_A}';`);
+      assert.equal(error, undefined, error?.message);
+    });
   } finally {
     await db.close();
   }

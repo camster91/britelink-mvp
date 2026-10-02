@@ -563,6 +563,7 @@ function ParentWorkspace({
   const [fitFiltersOpen, setFitFiltersOpen] = useState(false);
   const [pauseOpen, setPauseOpen] = useState(false);
   // Learning outside the plan (#44), lifted here so the weekly summary can include it.
+  // null means the notes could not load, which the story and report must say rather than hide.
   const [captures, setCaptures] = useState([]);
   // The educator's optional note for each week (048), shown inside the weekly story.
   const [weeklyNotes, setWeeklyNotes] = useState([]);
@@ -703,8 +704,15 @@ function ParentWorkspace({
     day?.lessons?.find((item) => item.id === selectedLessonId) ??
     day?.lessons?.[0] ??
     null;
+  // Set when a save fails, so the rollback below does not overwrite what the parent typed;
+  // "Try again" then resends their words, not the old ones.
+  const keepDraft = useRef(false);
   useEffect(() => {
     if (!selectedLesson) return;
+    if (keepDraft.current) {
+      keepDraft.current = false;
+      return;
+    }
     const activity = activities[selectedLesson.id];
     setSelectedLessonId(selectedLesson.id);
     setDraft({
@@ -743,7 +751,9 @@ function ParentWorkspace({
       scheduleReason: draft.scheduleReason,
       scheduledFor: draft.scheduledFor,
     };
-    const previous = planState.activities;
+    const lessonId = selectedLesson.id;
+    // loadPlan bumps planRequest when the learner changes; a reply for the previous child is dropped.
+    const request = planRequest.current;
     setPlanState((state) => ({
       ...state,
       activities: [
@@ -767,12 +777,11 @@ function ParentWorkspace({
     });
     try {
       const saved = await repository.saveLessonActivity(input);
+      if (request !== planRequest.current) return;
       setPlanState((state) => ({
         ...state,
         activities: [
-          ...state.activities.filter(
-            (item) => item.lesson_id !== selectedLesson.id,
-          ),
+          ...state.activities.filter((item) => item.lesson_id !== lessonId),
           saved,
         ],
       }));
@@ -785,11 +794,20 @@ function ParentWorkspace({
       });
       setCompletion(
         draft.status === "completed" && prior?.status !== "completed"
-          ? { lessonId: selectedLesson.id, title: selectedLesson.title, prior }
+          ? { lessonId, title: selectedLesson.title, prior }
           : null,
       );
     } catch (error) {
-      setPlanState((state) => ({ ...state, activities: previous }));
+      if (request !== planRequest.current) return;
+      // Put back only this lesson, so other saves that finished meanwhile are kept.
+      keepDraft.current = true;
+      setPlanState((state) => ({
+        ...state,
+        activities: [
+          ...state.activities.filter((item) => item.lesson_id !== lessonId),
+          ...(prior ? [prior] : []),
+        ],
+      }));
       setActivityOperation(operationFailure(error, "Lesson activity"));
     }
   };
@@ -807,6 +825,7 @@ function ParentWorkspace({
       scheduledFor: prior?.scheduled_for ?? "",
     };
     setActivityOperation({ status: "loading", message: "Undoing…", canRetry: false });
+    const request = planRequest.current;
     try {
       const saved = await repository.saveLessonActivity({
         householdId: household.household_id,
@@ -815,6 +834,7 @@ function ParentWorkspace({
         userId,
         ...restored,
       });
+      if (request !== planRequest.current) return;
       setPlanState((state) => ({
         ...state,
         activities: [
@@ -830,6 +850,7 @@ function ParentWorkspace({
         canRetry: false,
       });
     } catch (error) {
+      if (request !== planRequest.current) return;
       setActivityOperation({
         ...operationFailure(error, "Undo"),
         onRetry: undoCompletion,
@@ -857,7 +878,9 @@ function ParentWorkspace({
     });
     const failed = [];
     let lastError = null;
+    const request = planRequest.current;
     for (const move of moves) {
+      if (request !== planRequest.current) return;
       try {
         const saved = await repository.saveLessonActivity({
           householdId: household.household_id,
@@ -865,6 +888,7 @@ function ParentWorkspace({
           userId,
           ...move,
         });
+        if (request !== planRequest.current) return;
         setPlanState((state) => ({
           ...state,
           activities: [
@@ -1799,12 +1823,13 @@ function ParentWorkspace({
           <WeeklyStory
             learnerName={selectedLearner.preferred_name}
             notes={weeklyNotes}
+            notesUnavailable={captures === null}
             offsetWeeks={storyOffset}
             onOffset={setStoryOffset}
             story={weeklyStory({
               weeks,
               activities: planState.activities,
-              captures,
+              captures: captures ?? [],
               schedule,
               today,
               offsetWeeks: storyOffset,
@@ -1814,7 +1839,8 @@ function ParentWorkspace({
                 learnerName={selectedLearner.preferred_name}
                 weeks={weeks}
                 activities={planState.activities}
-                captures={captures}
+                captures={captures ?? []}
+                capturesUnavailable={captures === null}
                 today={today}
               />
             }

@@ -5,7 +5,7 @@ import { REPORT_DISCLAIMER, learningReport, learningReportCsv } from "./learning
 
 // Learning report (#50): pick a period, then download a CSV or print a plain report. A family
 // learning log, never a credit or transcript -- the disclaimer rides on every rendering.
-export function LearningReport({ learnerName, weeks, activities, captures, today }) {
+export function LearningReport({ learnerName, weeks, activities, captures, capturesUnavailable = false, today }) {
   const formId = useId();
   const monthStart = `${today.slice(0, 8)}01`;
   const [from, setFrom] = useState(monthStart);
@@ -18,6 +18,8 @@ export function LearningReport({ learnerName, weeks, activities, captures, today
   } catch (failure) {
     error = failure.message;
   }
+  // Without the learning notes the report would be incomplete, so it is not offered at all.
+  if (capturesUnavailable) report = null;
   useEffect(() => {
     if (!printing) return undefined;
     const done = () => setPrinting(false);
@@ -44,7 +46,11 @@ export function LearningReport({ learnerName, weeks, activities, captures, today
             <input id={`${formId}-to`} type="date" value={to} max={today} onChange={(event) => setTo(event.target.value)} aria-invalid={error ? true : undefined} aria-describedby={error ? `${formId}-error` : undefined} />
           </label>
         </div>
-        {error ? (
+        {capturesUnavailable ? (
+          <p role="alert" className="form-error-summary">
+            Learning notes could not load, so a report now would be missing them. Use Try again in Learning outside the plan, then make the report.
+          </p>
+        ) : error ? (
           <p role="alert" className="form-error-summary" id={`${formId}-error`}>
             {error}
           </p>

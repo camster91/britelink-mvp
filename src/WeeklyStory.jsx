@@ -6,7 +6,7 @@ const list = (items) =>
 
 // The weekly story (#43): what happened this week, told plainly. Evidence without judgement --
 // no percentages, no red/green, no "behind" -- per BUILD-PRIORITIES' "never use anxiety as retention".
-export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, notes = [], report = null }) {
+export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, notes = [], notesUnavailable = false, report = null }) {
   const headingId = useId();
   const title =
     offsetWeeks === 0 ? "This week" : offsetWeeks === -1 ? "Last week" : `Week of ${story.start}`;
@@ -38,14 +38,19 @@ export function WeeklyStory({ learnerName, story, offsetWeeks, onOffset, notes =
           </button>
         </div>
       </header>
-      {story.isEmpty ? (
+      {notesUnavailable ? (
+        <p role="alert" className="weekly-story-lead">
+          Learning notes from outside the plan could not load, so this week may look emptier than it was.
+        </p>
+      ) : null}
+      {story.isEmpty && !notesUnavailable ? (
         <p className="weekly-story-lead">
           Nothing recorded for this week yet.
           {offsetWeeks === 0
             ? " Learning outside the plan counts too; you can add it below."
             : ""}
         </p>
-      ) : (
+      ) : story.isEmpty ? null : (
         <p className="weekly-story-lead">
           {parts.join(", ")}
           {story.subjects.length ? `, across ${list(story.subjects)}.` : "."}
