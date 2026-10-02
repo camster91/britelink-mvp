@@ -43,10 +43,15 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
     } catch (error) {
       if (current === request.current) {
         setState({ status: "error", items: [], error: error.message });
-        onChange?.([]);
+        // null, not []: the story and report must say the notes are missing, not "nothing recorded".
+        onChange?.(null);
       }
     }
   }, [householdId, learner.id, onChange, publish, repository]);
+  // A reply that lands after this learner's panel is gone must not reach the next child's record.
+  useEffect(() => () => {
+    request.current += 1;
+  }, []);
   useEffect(() => {
     setDraft(emptyDraft(today));
     setInvalid([]);

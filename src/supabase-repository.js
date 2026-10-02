@@ -76,7 +76,14 @@ export class SupabaseBriteLinkRepository {
   // Learning outside the plan (migration 046). Removed captures are soft-deleted and hidden here.
   async listLearningCaptures(householdId, learnerId) {
     requireIdentifier(householdId, "Household ID"); requireIdentifier(learnerId, "Learner ID");
-    return unwrap(await this.client.from("learning_captures").select("id, captured_on, kind, subjects, note, created_at").eq("household_id", householdId).eq("learner_id", learnerId).is("removed_at", null).order("captured_on", { ascending: false }).order("created_at", { ascending: false }).limit(100), "Load learning notes");
+    // Every note, a page at a time: the weekly story and learning report must not silently miss older ones.
+    const pageSize = 1000;
+    const items = [];
+    for (let from = 0; ; from += pageSize) {
+      const page = unwrap(await this.client.from("learning_captures").select("id, captured_on, kind, subjects, note, created_at").eq("household_id", householdId).eq("learner_id", learnerId).is("removed_at", null).order("captured_on", { ascending: false }).order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, from + pageSize - 1), "Load learning notes") ?? [];
+      items.push(...page);
+      if (page.length < pageSize) return items;
+    }
   }
   async recordLearningCapture(input) {
     const valid = validateLearningCapture(input);

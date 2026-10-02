@@ -111,12 +111,18 @@ try{
   await page.getByRole("button",{name:"Request included revision"}).click();
   await page.getByText("Revision request 1 submitted",{exact:false}).waitFor();
   await page.evaluate(()=>{globalThis.qaRejectSensitiveOnce=true});await page.getByRole("button",{name:"Download my data"}).click();await page.getByText("requires a fresh sign-in",{exact:false}).waitFor();await page.getByRole("button",{name:"Send fresh sign-in link"}).click();await page.getByText("Fresh sign-in link sent",{exact:false}).waitFor();const freshCalls=await page.evaluate(()=>globalThis.qaState.calls.filter(item=>item[0]==="requestFreshSignIn"));if(freshCalls.length!==1||freshCalls[0][1]!=="guardian@example.ca")throw new Error("Sensitive action did not request a fresh invited-account sign-in");const downloadPromise=page.waitForEvent("download");await page.getByRole("button",{name:"Download my data"}).click();const download=await downloadPromise;if(!download.suggestedFilename().startsWith("britelink-household-export-"))throw new Error("Household export did not create the expected download after fresh sign-in");
-  await page.getByText("Household export downloaded",{exact:false}).waitFor();
+  await page.getByText("Household export saved",{exact:false}).waitFor();
   const deletion=page.locator("article.service-delete");await deletion.getByLabel("Reason").fill("Finished using the service.");await deletion.getByRole("checkbox").check();await page.evaluate(()=>{globalThis.qaFailPrivacyReads=4});await deletion.getByRole("button",{name:"Request household deletion"}).click();await page.getByText("Deletion request is pending",{exact:false}).waitFor();await page.getByText("latest records could not be refreshed",{exact:false}).waitFor();if((await page.evaluate(()=>globalThis.qaState.privacyRequests.length))!==1)throw new Error("Successful deletion write was lost when its refresh failed");await page.getByRole("button",{name:"Retry refresh"}).click();await page.getByText("A deletion request is already pending",{exact:false}).waitFor();
   await page.getByLabel("Status").selectOption("completed");
   await page.getByLabel("Reason").selectOption("illness");
   await page.getByLabel("New date").fill("2026-09-14");
   await page.getByLabel(/Caregiver note/).fill("Completed with a short movement break.");
+  // A failed save keeps what the parent typed, and Try again sends their words, not the old ones.
+  await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
+  await page.getByRole("button",{name:"Save lesson activity"}).click();
+  await page.getByText("Save lesson activity: temporarily unavailable").first().waitFor();
+  if(await page.getByLabel(/Caregiver note/).inputValue()!=="Completed with a short movement break.")throw new Error("a failed lesson save erased the caregiver note");
+  if(await page.getByLabel("Status").inputValue()!=="completed")throw new Error("a failed lesson save reset the lesson status");
   await page.getByRole("button",{name:"Save lesson activity"}).click();
   // Completing a lesson gets a calm confirmation with Undo; undo restores exactly what was there.
   const done=page.locator(".lesson-complete");
