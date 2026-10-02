@@ -176,6 +176,8 @@ export function StaffSharedActivities({ repository, householdId, learners }) {
     }
   };
   const remove = async (activity) => {
+    // The family sees this activity, so removing it is confirmed first.
+    if (!globalThis.confirm?.(`Remove “${activity.title}” from the family’s activities?`)) return;
     setOperation({ status: "loading", message: "Removing…" });
     try {
       await repository.removeSharedActivity({ householdId, activityId: activity.id });
@@ -290,7 +292,7 @@ export function StaffSharedActivities({ repository, householdId, learners }) {
                     .join(", ")}
                 </small>
               </div>
-              <button type="button" className="ghost" aria-label={`Remove ${activity.title}`} onClick={() => remove(activity)}>
+              <button type="button" className="ghost" aria-label={`Remove ${activity.title}`} disabled={operation.status === "loading"} onClick={() => remove(activity)}>
                 Remove
               </button>
             </li>

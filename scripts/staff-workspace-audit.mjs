@@ -171,9 +171,14 @@ try {
   await page.getByLabel("Review notes").fill("All required checks completed.");
   await page.getByRole("button", { name: "Save independent review" }).click();
   await page.getByText("Plan review completed and audited.").waitFor();
+  await page.getByText(/^Approved on .*Saving another review replaces this approval/).waitFor();
+  if (await page.getByLabel("Curriculum").isChecked()) throw new Error("review checks must start clear after a saved review");
   await page.getByLabel("Next status").selectOption("internal_review");
   await page.getByRole("button", { name: "Apply transition" }).click();
   await page.getByText("Case transition completed and audited.").waitFor();
+  // After a move, the status box must offer the new status's options, never the old choice.
+  const nextStatus = await page.getByLabel("Next status").inputValue();
+  if (nextStatus === "internal_review" || !nextStatus) throw new Error(`status box kept a stale choice: "${nextStatus}"`);
   await page.getByLabel("Next status").selectOption("published");
   await page.getByRole("button", { name: "Apply transition" }).click();
   await page.getByText("Case transition completed and audited.").waitFor();
@@ -350,6 +355,11 @@ try {
     JSON.stringify(sharedRow.subjects) !== '["Science"]'
   )
     throw new Error(`shared activity did not reach the repository: ${JSON.stringify(sharedRow)}`);
+  // Removing family-visible content asks first: cancelling keeps it, confirming removes it.
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await sharedForm.getByRole("button", { name: "Remove Pond study walk" }).click();
+  await sharedForm.getByRole("list", { name: "Shared activities" }).getByText("Pond study walk").waitFor();
+  page.once("dialog", (dialog) => dialog.accept());
   await sharedForm.getByRole("button", { name: "Remove Pond study walk" }).click();
   await sharedForm.getByText("Removed “Pond study walk”.").waitFor();
   const audit = await new AxeBuilder({ page })

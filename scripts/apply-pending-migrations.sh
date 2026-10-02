@@ -25,7 +25,7 @@ psql_do() { docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -q -U postgre
 probe() { psql_do -tA -c "select ($1)::int" | tr -d '[:space:]'; }
 
 # Migration number -> a boolean SQL expression that is true once that migration has been applied.
-order=(039 040 041 042 043 044 045 046 047 048 049 050 051 052 053 054 055)
+order=(039 040 041 042 043 044 045 046 047 048 049 050 051 052 053 054 055 056)
 declare -A check=(
   [039]="to_regprocedure('public.diagnose_caller_identity(uuid)') is not null"
   [040]="exists(select 1 from pg_policies where schemaname='public' and tablename='lesson_activities' and policyname='activities_member_select' and qual ilike '%is null%')"
@@ -45,6 +45,7 @@ declare -A check=(
   [053]="to_regprocedure('public.enforce_publication_review()') is not null"
   [054]="to_regprocedure('public.enforce_consent_to_resume()') is not null"
   [055]="to_regprocedure('public.enforce_revision_from_request()') is not null"
+  [056]="to_regprocedure('public.enforce_revision_outcome()') is not null"
 )
 # Re-runnable files (create or replace / drop if exists / revoke / grant): safe to apply when
 # missing even if a later migration is present, so they are exempt from the ordering check.
