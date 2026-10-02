@@ -24,6 +24,8 @@ export function StaffAuthoring({
   deliveries,
   repository,
   act,
+  revisionAccepted = false,
+  planApproved = false,
 }) {
   const draftKey = useMemo(
     () => staffDraftKey({ householdId, caseId: serviceCase.id, userId }),
@@ -125,11 +127,15 @@ export function StaffAuthoring({
       })),
     })),
   });
-  const editable = [
-    "drafting",
-    "internal_review",
-    "revision_requested",
-  ].includes(serviceCase.status);
+  // Matches staff_create_plan_version: a revision is authored only once it has been accepted.
+  const awaitingRevisionDecision =
+    serviceCase.status === "revision_requested" && !revisionAccepted;
+  const editable =
+    ["drafting", "internal_review"].includes(serviceCase.status) ||
+    (serviceCase.status === "revision_requested" && revisionAccepted);
+  // Migration 053 freezes resources once an independent reviewer has approved the plan.
+  const resourcesOpen =
+    plan && ["draft", "internal_review"].includes(plan.status) && !planApproved;
   const planLessons = (plan?.plan_weeks ?? []).flatMap((w) =>
     (w.plan_days ?? []).flatMap((d) =>
       (d.lessons ?? []).map((l) => ({
@@ -149,7 +155,7 @@ export function StaffAuthoring({
     (item) => item.case_id === serviceCase.id,
   );
   const resourceLessonChooser =
-    firstLesson && ["draft", "internal_review"].includes(plan.status) ? (
+    firstLesson && resourcesOpen ? (
       <section className="resource-target">
         <h4>Resource lesson</h4>
         <p>Choose the exact lesson this governed resource supports.</p>
@@ -179,6 +185,17 @@ export function StaffAuthoring({
           separate dump of tools.
         </p>
       </header>
+      {awaitingRevisionDecision ? (
+        <p className="staff-next-hint" role="note">
+          Accept or decline the family’s revision request first. The plan editor opens once it is accepted.
+        </p>
+      ) : null}
+      {plan && ["draft", "internal_review"].includes(plan.status) && planApproved ? (
+        <p className="staff-next-hint" role="note">
+          This plan version has been approved, so its resources are locked. Publish it, or save a new
+          version if something must change.
+        </p>
+      ) : null}
       {editable ? (
         <section className="draft-recovery" aria-label="Plan draft recovery">
           {recovered ? (
@@ -505,7 +522,7 @@ export function StaffAuthoring({
         </form>
       ) : null}
       {resourceLessonChooser}
-      {firstLesson && ["draft", "internal_review"].includes(plan.status) ? (
+      {firstLesson && resourcesOpen ? (
         <form
           onSubmit={(event) => {
             event.preventDefault();

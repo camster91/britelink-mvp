@@ -171,10 +171,40 @@ test("migration 053 integrity rules", async (t) => {
       }
     });
 
-    await t.test("055: a case with an open revision request can be marked revised", async () => {
-      const { error } = await asOwner(db, `update public.service_cases set status='revision_requested' where id='${CASE_A}';
+    await t.test("056: revised needs a completed revision whose new plan is published", async () => {
+      const toRequested = `update public.service_cases set status='revision_requested' where id='${CASE_A}';`;
+      const bare = await asOwner(db, `${toRequested} update public.service_cases set status='revised' where id='${CASE_A}';`);
+      assert.match(String(bare.error?.message), /complete the revision/, "the old published plan is not a revision");
+      const done = await asOwner(db, `${toRequested}
+        update public.revision_requests set status='completed', completed_plan_id='${PLAN_A}', completed_at=now() where id='${id("ab0")}';
         update public.service_cases set status='revised' where id='${CASE_A}';`);
-      assert.equal(error, undefined, error?.message);
+      assert.equal(done.error, undefined, done.error?.message);
+    });
+
+    await t.test("056: acknowledged from a revision request needs the request declined", async () => {
+      const toRequested = `update public.service_cases set status='revision_requested' where id='${CASE_A}';`;
+      const open = await asOwner(db, `${toRequested} update public.service_cases set status='acknowledged' where id='${CASE_A}';`);
+      assert.match(String(open.error?.message), /decline the revision request/);
+      const declined = await asOwner(db, `${toRequested}
+        update public.revision_requests set status='declined', disposition_reason='Out of scope' where id='${id("ab0")}';
+        update public.service_cases set status='acknowledged' where id='${CASE_A}';`);
+      assert.equal(declined.error, undefined, declined.error?.message);
+    });
+
+    await t.test("056: overdue marking skips delivered cases and includes internal review", async () => {
+      const house = "5eed0000-0000-4000-8000-0000000000a1";
+      const run = async (status) => {
+        await db.exec("begin");
+        try {
+          await db.query(`update public.service_cases set status=$2, sla_due_at=now() - interval '1 day' where id=$1`, [CASE_A, status]);
+          await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.adminA}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+          return (await db.query(`select case_id from public.staff_mark_overdue_cases($1)`, [house])).rows.map((row) => row.case_id);
+        } finally {
+          await db.exec("rollback");
+        }
+      };
+      assert.deepEqual(await run("delivered"), [], "a plan delivered on time is not overdue");
+      assert.deepEqual(await run("internal_review"), [CASE_A], "a plan stuck in review is overdue");
     });
   } finally {
     await db.close();

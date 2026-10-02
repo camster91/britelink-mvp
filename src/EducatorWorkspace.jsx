@@ -57,7 +57,10 @@ export function EducatorWorkspace({
     warnings: [],
     error: null,
   });
-  const [selectedId, setSelectedId] = useState(cases[0]?.id ?? "");
+  // Open on the most urgent case, the same order as the queue.
+  const [selectedId, setSelectedId] = useState(
+    () => prioritizedCases(cases)[0]?.id ?? "",
+  );
   const [casePackage, setCasePackage] = useState("essentials");
   const [newCaseLearnerId, setNewCaseLearnerId] = useState("");
   const [operation, setOperation] = useState({ status: "idle", message: "" });
@@ -175,6 +178,35 @@ export function EducatorWorkspace({
   const allowed = nextStaffStatuses(
     selected?.status,
     selected?.previous_operational_status,
+  );
+  // A choice made for the old status is meaningless once the case moves (an action here, or
+  // the background refresh), so the form starts again from the new status's suggestion.
+  useEffect(() => {
+    setTransition({ status: "", reason: "" });
+  }, [selected?.id, selected?.status]);
+  const nextStatus = allowed.includes(transition.status)
+    ? transition.status
+    : (allowed[0] ?? "");
+  const latestReview = plan
+    ? ([...data.reviews]
+        .filter((item) => item.plan_id === plan.id)
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0] ?? null)
+    : null;
+  const planApproved = Boolean(
+    plan && data.reviews.some((item) => item.plan_id === plan.id && item.approved_at),
+  );
+  // A saved review starts the next one from clear boxes, so nothing is approved by leftover ticks.
+  useEffect(() => {
+    setChecks({
+      curriculum: false,
+      safeguarding: false,
+      accessibility: false,
+      resourceRights: false,
+    });
+    setReviewNotes("");
+  }, [latestReview?.id]);
+  const revisionAccepted = data.revisions.some(
+    (item) => item.case_id === selected?.id && item.status === "accepted",
   );
   const retryStaffAttachments = async () => {
     const recovery = staffAttachmentRecovery.current;
@@ -534,7 +566,7 @@ export function EducatorWorkspace({
               <form
                 onSubmit={(event) => {
                   event.preventDefault();
-                  const status = transition.status || allowed[0];
+                  const status = nextStatus;
                   if (!status) return;
                   act("Case transition", () =>
                     repository.transitionStaffCase({
@@ -555,7 +587,7 @@ export function EducatorWorkspace({
                   Next status
                   <select
                     required
-                    value={transition.status || allowed[0] || ""}
+                    value={nextStatus}
                     onChange={(event) =>
                       setTransition((value) => ({
                         ...value,
@@ -620,7 +652,18 @@ export function EducatorWorkspace({
                         key={item.educator_user_id}
                         value={item.educator_user_id}
                       >
-                        {item.educator_user_id} · max {item.max_active_cases}
+                        {item.educator_user_id === userId
+                          ? "You"
+                          : `Educator ${item.educator_user_id.slice(0, 8)}`}{" "}
+                        ·{" "}
+                        {
+                          data.cases.filter(
+                            (row) =>
+                              row.assigned_educator_id === item.educator_user_id &&
+                              !["closed", "cancelled", "refunded", "chargeback"].includes(row.status),
+                          ).length
+                        }{" "}
+                        of {item.max_active_cases} cases
                       </option>
                     ))}
                   </select>
@@ -686,6 +729,18 @@ export function EducatorWorkspace({
                   }}
                 >
                   <h4>Independent internal review</h4>
+                  {latestReview ? (
+                    <p
+                      className="staff-next-hint"
+                      role="status"
+                    >
+                      {latestReview.approved_at
+                        ? `Approved on ${new Date(latestReview.approved_at).toLocaleDateString()}. Saving another review replaces this approval; if any check is left unticked, the plan can no longer be published.`
+                        : `Latest review did not approve this plan${latestReview.notes ? `: ${latestReview.notes}` : "."} Fix the plan, then review again.`}
+                    </p>
+                  ) : (
+                    <p className="staff-next-hint">Not reviewed yet. Tick every check to approve this plan for publishing.</p>
+                  )}
                   <fieldset>
                     <legend>Required checks</legend>
                     {[
@@ -864,7 +919,12 @@ export function EducatorWorkspace({
                               Mark read
                             </button>
                           ) : null}
-                          {!message.resolved_at ? (
+                          {/* Only the response owner or an admin may resolve (008), and resolving
+                              your own message would only clear the family's reply deadline. */}
+                          {!message.resolved_at &&
+                          message.sender_user_id !== userId &&
+                          (message.response_owner_user_id === userId ||
+                            membership.role === "admin") ? (
                             <button
                               className="ghost"
                               onClick={() =>
@@ -984,6 +1044,8 @@ export function EducatorWorkspace({
               deliveries={data.deliveries}
               repository={repository}
               act={act}
+              revisionAccepted={revisionAccepted}
+              planApproved={planApproved}
             />
           </div>
         </div>

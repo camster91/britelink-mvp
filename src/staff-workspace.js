@@ -136,7 +136,7 @@ export function nextStaffStatuses(status, previousStatus = null) {
       published: [],
       delivered: ["acknowledged", "overdue"],
       acknowledged: ["revision_requested", "closed"],
-      revision_requested: ["revised", "on_hold"],
+      revision_requested: ["on_hold"],
       revised: ["closed"],
       on_hold: ["triage", "assigned", "drafting", "internal_review", "cancelled", "refunded"],
       closed: [],
