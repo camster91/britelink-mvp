@@ -6,6 +6,7 @@ import {fileURLToPath} from "node:url";
 import {
   configure,
   digestOf,
+  listAllObjects,
   parseClamdReply,
   runOnce,
   sanitizeResultCode,
@@ -165,4 +166,36 @@ test("configuration reports every missing value rather than failing on the first
   assert.deepEqual(full.missing,[]);
   // Defaults match the deployed clamd port and are documented, not accidental.
   assert.equal(full.clamdPort,3310);
+});
+
+
+test("downloads scan the exact Blob, Buffer, Uint8Array and ArrayBuffer bytes",async()=>{
+  const payload=Buffer.from("synthetic bytes");
+  for(const data of [new Blob([payload]),payload,new Uint8Array(payload),new Uint8Array(payload).buffer]){
+    let scanned;let digest;
+    const entry=await scanOne({
+      attachment:{attachment_id:"blob",household_id:"h",object_path:"h/blob"},
+      storage:{download:async()=>({data})},
+      scanner:async({bytes})=>{scanned=bytes;return {verdict:"clean",code:"ok"};},
+      rpc:async(name,args)=>{digest=args.content_sha256;return {data:[]};},
+    });
+    assert.equal(entry.outcome,"clean");
+    assert.deepEqual(scanned,payload);
+    assert.equal(digest,digestOf(payload));
+  }
+});
+
+test("object reconciliation paginates every folder and propagates later page errors",async()=>{
+  const calls=[];
+  const items=Array.from({length:1001},(_,i)=>({id:`id${i}`,name:`file${i}`}));
+  const client={storage:{from:()=>({list:async(prefix,{limit,offset})=>{
+    calls.push([prefix,offset]);
+    return {data:prefix===""?[{name:"folder"}]:items.slice(offset,offset+limit)};
+  }})}};
+  const result=await listAllObjects(client);
+  assert.equal(result.paths.length,1001);
+  assert.equal(result.paths.at(-1),"folder/file1000");
+  assert.deepEqual(calls,[["",0],["folder",0],["folder",1000]]);
+  client.storage.from=()=>({list:async(prefix,{offset})=>offset?{error:{message:"page failed"}}:{data:items.slice(0,1000)}});
+  assert.deepEqual(await listAllObjects(client),{error:{message:"page failed"}});
 });

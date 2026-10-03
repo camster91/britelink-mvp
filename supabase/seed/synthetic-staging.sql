@@ -222,6 +222,12 @@ insert into public.plans
    '5eed0000-0000-4000-8000-000000000b20', '5eed0000-0000-4000-8000-000000000b10', 1, 'published',
    :'admin_b'::uuid, :'admin_b'::uuid, now());
 
+-- Reviewable author-owned plan for the D2 independent-review denial probe.
+insert into public.plans (id, household_id, case_id, learner_id, version, status, authored_by) values
+  ('5eed0000-0000-4000-8000-000000000a31', '5eed0000-0000-4000-8000-0000000000a1',
+   '5eed0000-0000-4000-8000-000000000a20', '5eed0000-0000-4000-8000-000000000a10',
+   2, 'draft', :'educator_a'::uuid);
+
 insert into public.plan_weeks (id, household_id, plan_id, week_number, theme) values
   ('5eed0000-0000-4000-8000-000000000a40', '5eed0000-0000-4000-8000-0000000000a1',
    '5eed0000-0000-4000-8000-000000000a30', 1, 'Synthetic week A'),
