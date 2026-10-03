@@ -152,7 +152,7 @@ def verify(application, directory, database):
     password = settings.get('POSTGRES_PASSWORD','')
     if not re.fullmatch(r'[0-9a-f]{48,128}', password):
         raise RuntimeError('Candidate password is not a generated candidate credential')
-    client = ['docker','exec','-i',db['Id'],'psql','-U','supabase_admin','-d',database,'-qAt','-v','ON_ERROR_STOP=1']
+    client = ['docker','exec','-i','-e','PGPASSWORD='+password,db['Id'],'psql','-h','127.0.0.1','-U','supabase_admin','-d',database,'-qAt','-v','ON_ERROR_STOP=1']
     def sql(query): return run(client + ['-c',query])
     if int(sql("SELECT count(*) FROM pg_stat_activity WHERE backend_type='client backend' AND pid<>pg_backend_pid()").strip()):
         raise RuntimeError('Candidate has active writers before API startup')
@@ -163,7 +163,7 @@ def verify(application, directory, database):
     catalog = json.loads(private_file(directory/'database-catalog.private.json').read_text())
     if json.loads(sql(CATALOG_QUERY)) != catalog:
         raise RuntimeError('Imported database/extension catalog differs')
-    schema = canon(run(['docker','exec',db['Id'],'pg_dump','-U','supabase_admin','-d',database,'--schema-only']))
+    schema = canon(run(['docker','exec','-e','PGPASSWORD='+password,db['Id'],'pg_dump','-h','127.0.0.1','-U','supabase_admin','-d',database,'--schema-only']))
     if hashlib.sha256(schema).hexdigest() != proof['restoredSchemaSHA256']:
         raise RuntimeError('Imported schema/owners/grants differ from the parser-qualified restore')
     hashes = json.loads(private_file(directory/'table-hashes.private.json').read_text())
@@ -194,6 +194,22 @@ def restore_candidate(application, directory, database):
     checks=['allRestoredTableHashesMatch','fullRolePrivilegesQualified','databaseAndExtensionCatalogMatch','noExtraRestoreOperatorRoleCreated','schemaOwnershipAndGrantsMatch','fileHashesModesOwnersAndLinksMatch','sourceStorageEmpty']
     if proof.get('application')!=application or not all(proof.get(k) for k in checks) or proof['sourceImage']!=db['Image']:
         raise RuntimeError('Import source is not fully qualified')
+    restore_archive(db,directory,database)
+    return verify(application,directory,database)
+
+
+def restore_archive(db, directory, database):
+    """Shared SQL engine; the CLI always verifies native resource binding first.
+
+    Called independently only by the isolated tmpfs qualification harness. This
+    function does not create a resource or authorize startup/cutover.
+    """
+    if not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',database) or database=='postgres':
+        raise RuntimeError('Import needs a new separate database name')
+    directory=Path(directory)
+    proof=json.loads(private_file(directory/'recovery-proof.json').read_text())
+    if proof['sourceImage']!=db['Image']:
+        raise RuntimeError('Import image differs from the qualified source')
     dump=private_file(directory/'database.private.dump').read_bytes()
     if hashlib.sha256(dump).hexdigest()!=proof['dumpSHA256']:
         raise RuntimeError('Import archive checksum differs')
@@ -207,8 +223,8 @@ def restore_candidate(application, directory, database):
     if not rolemap['supabase_admin']['rolsuper'] or any(e['owner']!='supabase_admin' for e in catalog['extensions']):
         raise RuntimeError('This import requires the qualified single extension-owner topology')
     quote=lambda value:'"'+value.replace('"','""')+'"'
-    prefix=['docker','exec','-i',db['Id']]
-    control=prefix+['psql','-U','supabase_admin','-d','postgres','-qAt','-v','ON_ERROR_STOP=1']
+    prefix=['docker','exec','-i','-e','PGPASSWORD='+password,db['Id']]
+    control=prefix+['psql','-h','127.0.0.1','-U','supabase_admin','-d','postgres','-qAt','-v','ON_ERROR_STOP=1']
     databases=run(control+['-c','SELECT datname FROM pg_database']).decode().splitlines()
     if database in databases:
         raise RuntimeError('Import destination already exists; refusing overwrite')
@@ -236,8 +252,8 @@ def restore_candidate(application, directory, database):
     run(control,'\n'.join(statements).encode())
     if json.loads(run(control+['-c',ROLES_QUERY]))!=roles['roles'] or json.loads(run(control+['-c',MEMBERS_QUERY]))!=roles['memberships']:
         raise RuntimeError('Imported source role attributes/memberships differ')
-    run(prefix+['createdb','-U','supabase_admin','--template=template0','--owner='+catalog['databaseOwner'],database])
-    client=prefix+['psql','-U','supabase_admin','-d',database,'-qAt','-v','ON_ERROR_STOP=1']
+    run(prefix+['createdb','-h','127.0.0.1','-U','supabase_admin','--template=template0','--owner='+catalog['databaseOwner'],database])
+    client=prefix+['psql','-h','127.0.0.1','-U','supabase_admin','-d',database,'-qAt','-v','ON_ERROR_STOP=1']
     source_schema=private_file(directory/'source-schema.private.sql').read_text()
     eventowners=[]
     for owner in re.findall(r'^ALTER EVENT TRIGGER .+ OWNER TO (.+);$',source_schema,re.M):
@@ -253,20 +269,19 @@ def restore_candidate(application, directory, database):
     acl=b'\n'.join(line if line in deferred or line.startswith(b';') else b';'+line for line in toc)
     run(prefix+['sh','-c','umask 077; cat > /tmp/britelink-import-filtered.list'],filtered)
     run(prefix+['sh','-c','umask 077; cat > /tmp/britelink-import-graphql.list'],acl)
-    restore=prefix+['pg_restore','-U','supabase_admin','-d',database,'--exit-on-error','--use-list=/tmp/britelink-import-filtered.list']
+    restore=prefix+['pg_restore','-h','127.0.0.1','-U','supabase_admin','-d',database,'--exit-on-error','--use-list=/tmp/britelink-import-filtered.list']
     run(restore+['--section=pre-data'],dump)
     missing=run(client+['-c',"SELECT to_regprocedure('graphql_public.graphql(text,text,jsonb,jsonb)') IS NULL"]).strip()==b't'
     if missing:
         function=private_file(directory/'graphql-extension-function.private.sql').read_text()
         run(client,(function+';\nALTER FUNCTION graphql_public.graphql(text,text,jsonb,jsonb) OWNER TO supabase_admin;\nALTER EXTENSION pg_graphql ADD FUNCTION graphql_public.graphql(text,text,jsonb,jsonb);').encode())
     run(restore+['--section=data'],dump);run(restore+['--section=post-data'],dump)
-    run(prefix+['pg_restore','-U','supabase_admin','-d',database,'--exit-on-error','--use-list=/tmp/britelink-import-graphql.list'],dump)
+    run(prefix+['pg_restore','-h','127.0.0.1','-U','supabase_admin','-d',database,'--exit-on-error','--use-list=/tmp/britelink-import-graphql.list'],dump)
     if eventowners:run(control,'\n'.join('ALTER ROLE '+quote(name)+' NOSUPERUSER;' for name in eventowners).encode())
     if json.loads(run(control+['-c',ROLES_QUERY]))!=roles['roles'] or json.loads(run(control+['-c',MEMBERS_QUERY]))!=roles['memberships']:
         raise RuntimeError('Import changed role ownership or grants')
     # The shared candidate password is used by the role job AND all three API connectors.
     run(control,'\n'.join('ALTER ROLE '+quote(role)+" PASSWORD '"+password+"';" for role in sorted(PASSWORD_ROLES)).encode())
-    return verify(application,directory,database)
 
 def main():
     os.umask(0o077)
