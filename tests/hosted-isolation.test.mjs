@@ -6,6 +6,7 @@ import {
   MUTATION_RPC_CONTRACTS,
   PRIVATE_TABLES,
   SEALED_TABLES,
+  judgeStorage,
   judgeStorageDelete,
   verifyHostedIsolation,
   verifyHostedMutationDenial,
@@ -697,4 +698,42 @@ test("self-approval needs the independent-author gate, not a role or validation 
     assert.equal(error.report.probes.find(entry=>entry.id==="educator.self_approval").outcome,"inconclusive");
     return true;
   });
+});
+
+
+test("storage not-found denials require owner-confirmed existence", () => {
+  const notFound = { statusCode: "404", error: "not_found", message: "Object not found" };
+  assert.deepEqual(judgeStorage({ status: 400, body: notFound }, true), {
+    outcome: "denied", detail: "[404 not_found]",
+  });
+  assert.equal(judgeStorage({ status: 400, body: notFound }).outcome, "inconclusive");
+  assert.equal(judgeStorage({ status: 400, body: { statusCode: "400", error: "InvalidRequest" } }, true).outcome, "inconclusive");
+  assert.equal(judgeStorage({ status: 404, body: {} }, true).outcome, "denied");
+  assert.equal(judgeStorage({ status: 404, body: {} }).outcome, "inconclusive");
+  for (const body of [{ error: "Not found" }, { message: "The resource was not found" }]) {
+    assert.equal(judgeStorage({ status: 400, body }, true).outcome, "denied");
+    assert.equal(judgeStorage({ status: 400, body }).outcome, "inconclusive");
+  }
+  for (const body of ["", "not found", {}, { statusCode: "400" }])
+    assert.equal(judgeStorage({ status: 400, body }, true).outcome, "inconclusive");
+  assert.equal(judgeStorage({ status: 401, body: {} }).outcome, "denied");
+  assert.equal(judgeStorage({ status: 200, body: notFound }, true).outcome, "allowed");
+});
+
+test("storage sign and overwrite use the preceding owner sign control", async () => {
+  for (const status of [400, 404]) {
+    const { calls, fetchImpl } = stagingProbe({ override: call =>
+      call.path.startsWith("/storage/v1/object/") && call.token === "jwt-guardian" &&
+      (call.path.includes("/sign/") || call.method === "PUT")
+        ? stagingResponse({ statusCode: "404", error: "not_found", message: "Object not found" }, status)
+        : null,
+    });
+    const report = await verifyHostedMutationDenial({ ...mutationConfig, fetchImpl });
+    for (const id of ["storage.sign", "storage.overwrite"])
+      assert.equal(report.probes.find(entry => entry.id === id).outcome, "denied");
+    const ownerSign = calls.findIndex(call => call.path.includes("/sign/") && call.token === mutationConfig.adminTokenB);
+    const foreignSign = calls.findIndex(call => call.path.includes("/sign/") && call.token === "jwt-guardian");
+    const overwrite = calls.findIndex(call => call.method === "PUT" && call.path.startsWith("/storage/"));
+    assert.ok(ownerSign >= 0 && ownerSign < foreignSign && ownerSign < overwrite);
+  }
 });

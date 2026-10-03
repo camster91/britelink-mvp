@@ -727,7 +727,14 @@ function errorField(body, field) {
 
 function describeError(body) {
   const code = errorField(body, "code");
-  return /^[A-Za-z0-9_]{1,20}$/.test(code) ? `[${code}]` : "";
+  const statusCode = errorField(body, "statusCode");
+  const error = errorField(body, "error");
+  const details = [
+    /^\d{3}$/.test(statusCode) ? statusCode : "",
+    /^[A-Za-z0-9_]{1,20}$/.test(code) ? code : "",
+    /^[A-Za-z0-9_ -]{1,30}$/.test(error) ? error : "",
+  ].filter(Boolean);
+  return details.length ? `[${details.join(" ")}]` : "";
 }
 
 async function sendProbe(fetchImpl, url, options) {
@@ -806,10 +813,13 @@ function judgeNoEffect(result, exists = false) {
   };
 }
 
-function judgeStorage(result) {
-  // Storage wraps some policy failures in HTTP 400. Malformed requests and missing
-  // routes/objects are inconclusive, even when the owner can sign the target object.
-  if (result.status === 403 || (result.status === 400 &&
+export function judgeStorage(result, exists = false) {
+  // Storage may hide an RLS-filtered object as not found. That proves denial only
+  // when the owner's sign control has confirmed the target exists.
+  const hiddenObject = exists === true && (result.status === 404 ||
+    (result.status === 400 && (errorField(result.body, "statusCode") === "404" ||
+      /not.?found/i.test(errorField(result.body, "error") + " " + errorField(result.body, "message")))));
+  if (result.status === 401 || result.status === 403 || hiddenObject || (result.status === 400 &&
       (errorField(result.body, "statusCode") === "403" ||
        /row.level security|unauthorized|permission denied|violat.*policy/i.test(
          typeof result.body === "string" ? result.body : errorField(result.body, "message") + " " + errorField(result.body, "error")))))
@@ -829,7 +839,7 @@ function judgeStorage(result) {
 }
 
 export function judgeStorageDelete(result, exists = false) {
-  const storageJudgment = judgeStorage(result);
+  const storageJudgment = judgeStorage(result, exists);
   if (result.status === 401 || storageJudgment.outcome === "denied")
     return { outcome: "denied", detail: storageJudgment.detail };
   if (result.status >= 200 && result.status < 300) {
@@ -955,6 +965,7 @@ export async function verifyHostedMutationDenial({
     throw new Error(
       `Household B storage control failed: household B cannot sign its own object (HTTP ${signResult.status}${describeError(signResult.body) ? `, ${describeError(signResult.body)}` : ""}), so the cross-household storage denials below prove nothing`,
     );
+  const storageExists = signResult.status >= 200 && signResult.status < 300;
   controls.push({ surface: "bucket:household-b-control", outcome: "confirmed" });
 
   const probes = [];
@@ -1141,7 +1152,7 @@ export async function verifyHostedMutationDenial({
     requirement:
       "a guardian cannot obtain a clean download of another household's object",
     actor: "guardian",
-    judge: judgeStorage,
+    judge: (result) => judgeStorage(result, storageExists),
     url: new URL(`/storage/v1/object/sign/${bucketName}/${objectPath}`, origin),
     options: {
       method: "POST",
@@ -1158,8 +1169,8 @@ export async function verifyHostedMutationDenial({
     probes.push({ id, surface: `bucket:${bucketName}`, actor: "guardian",
       requirement: `a guardian cannot ${id.split(".")[1]} another household's object`,
       judge: id === "storage.delete"
-        ? (result) => judgeStorageDelete(result, signResult.status >= 200 && signResult.status < 300)
-        : judgeStorage,
+        ? (result) => judgeStorageDelete(result, storageExists)
+        : (result) => judgeStorage(result, storageExists),
       url: new URL(`/storage/v1/object/${path}`, origin),
       options: { method, headers: { ...headers(key, resolved.guardian.token),
         "content-type": method === "PUT" ? "text/plain" : "application/json" }, body },
