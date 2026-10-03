@@ -1,0 +1,32 @@
+# BriteLink Coolify backend candidate
+
+This private preparation migrates the existing five-service Supabase backend into a separate Coolify application. The frontend remains a separate application. The old production API, staging, shared proxy, DNS and providers stay in place until the reviewed cutover.
+
+`docker-compose.coolify-backend-candidate.json` uses six services: database, one-shot role bootstrap, Auth, PostgREST, file storage and gateway. The default profile starts only the database. `--profile api` is a separate step after importing and verifying the copied database. Both persistent volumes have explicit resource-UUID names; no existing production volume is attached. The sole network is internal, no service publishes ports, and image pulls/builds are disabled. The exact original images used by the successful isolated runtime test are pinned in reviewed-images.json. Separate rollback image IDs are also recorded; validate installed image identity before deployment. The retained PostgREST metadata copy adds PATH, so it is not represented as raw-config-identical or selected as the candidate image.
+
+All candidate passwords, JWT secret and API keys must be newly generated on the VPS. `.env` stays root-private on the server. Do not copy production SMTP/provider settings into this definition. The candidate uses deliberate auto-confirm for synthetic test users, disabled public signup and an internal origin; it is not a production email configuration.
+
+## Candidate startup and acceptance
+
+1. Obtain approval for the exact new private Coolify application, two new persistent volumes and source branch. Create it with no public domain, no automatic deployment, no preview deployments and no immediate startup. Do not add repository access or credentials without the separate existing authorization.
+2. Set the Compose location to `/docker-compose.coolify-backend-candidate.json`, raw Compose mode and reviewed existing image IDs. Supply `COOLIFY_RESOURCE_UUID`, the five BRITELINK_*_IMAGE values, `BRITELINK_DATABASE`, and generated candidate-only secrets through server-private configuration. Choose an empty restored database name different from the image's initialized `postgres` database.
+3. Attach `bash deploy/coolify-backend/before-deploy.sh <resource-uuid>` for the initial recovery of the running original. It verifies the resource's repository and Compose location before choosing containers. It performs a consistent full dump/globals, independently restores all table hashes, roles/ownership/grants, retains all five rollback images and verifies non-database file/config archive hashes, modes, owners and links. There is no source build.
+4. Start the database-only profile using Coolify. Import into a fresh empty database using the qualified Supabase restore procedure: role attributes/grantor identities, historical event-trigger ownership, deferred GraphQL ACL/bootstrap and parser-qualified CHECK roundtrip. Preserve the original production database and every volume. Verify the actual destination and record an import receipt bound to the native resource, volume, current schema/data and image.
+5. Prepare and separately review the initial API startup command against that fresh import receipt. The normal backup guard intentionally refuses a partial native stack and cannot be bypassed by falling back to the original. The bootstrap/import/initial-API-start path still needs implementation and rehearsal; this definition is not ready for deployment by itself.
+6. Once all native services run, attach and rehearse the normal guard on their actual dynamic deployment names. Verify native volume persistence and the full private/sealed-table access suite, gateway/auth/storage/runtime behavior and recovery. Keep automatic deployment off until a complete production configuration, provider readiness, release ownership, approved domain route and signed-main acceptance are established.
+
+## What the guard proves
+
+The guard selects a single running container per required service through `com.docker.compose.project` and service labels. A stopped, partial or duplicate native stack fails closed. Only complete absence of the native stack allows exact original-name recovery. One-shot role jobs are not application consumers. All three actual connector URLs must target the same DB on a shared network; the database name comes from those URLs rather than blindly backing up the initialized POSTGRES_DB.
+
+Private diagnostics, SQL/credentials/config and archives stay on the VPS. The fixture restore uses the exact installed source DB image, with no network/host port and tmpfs. It reproduces role attributes/password hashes and membership grantors. Operator loopback connections follow the fixture's pg_hba rules and do not independently prove password authentication; the separately passed five-service runtime test used cross-container connector authentication.
+
+Raw schema hashes can differ only when the original CHECK constraints are reparsed in the restored DB and have identical expression trees after parser-location normalization. Every other schema byte must match. No general removal of parentheses or relaxation of ownership/grant checks is permitted.
+
+File/config recovery is stable over its own archive interval, but independent of the database snapshot. A coordinated single-writer snapshot/cutover is still required. Full restore failures block deployment. Non-default tablespaces, unsupported mount members, ambiguous database ownership or new extension/ownership requirements require review, not silent fallback.
+
+## Checks and remaining gates
+
+Run `python deploy/coolify-backend/test_backup_ownership.py`. Parse the Compose definition on the actual VPS with synthetic environment values; verify its defaults/profile, namespaced volumes, no ports, internal-only network and installed image identity. The full guard's native bootstrap, attachment and destination path are not yet qualified. Existing full-production restore and five-service runtime receipts support the restore core, not completion of this new native guard.
+
+No app migrations are applied by this preparation. In particular, pending product migration056 remains separately gated. Main workflows, the competing legacy SSH deploy, monitor/backup ownership and shared Traefik/API route need an explicit coordinated handoff. Do not merge, enable automatic deployment, activate providers, change the shared proxy, retire the original backend, or delete any Docker volume as part of this local preparation.
