@@ -92,12 +92,17 @@ def main():
         sourceSchema=canon(run(sourcePrefix+['pg_dump','-U',user,'-d',database,'--schema-only','--snapshot='+snapshot]))
         rolesQuery="SELECT jsonb_agg(to_jsonb(r)-'oid' ORDER BY rolname) FROM pg_authid r"
         membersQuery="SELECT coalesce(jsonb_agg(jsonb_build_object('role',a.rolname,'member',b.rolname,'grantor',g.rolname,'admin',m.admin_option) ORDER BY a.rolname,b.rolname,g.rolname),'[]'::jsonb) FROM pg_auth_members m JOIN pg_roles a ON a.oid=m.roleid JOIN pg_roles b ON b.oid=m.member JOIN pg_roles g ON g.oid=m.grantor"
+        catalogQuery="SELECT json_build_object('databaseOwner',(SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname=current_database()),'extensions',(SELECT json_agg(json_build_object('name',extname,'owner',pg_get_userbyid(extowner),'schema',n.nspname,'version',extversion) ORDER BY extname) FROM pg_extension x JOIN pg_namespace n ON n.oid=x.extnamespace))"
+        sourceCatalog=json.loads(snapshot_sql(catalogQuery))
         sourceRoles=json.loads(run(client+['-c',rolesQuery]))
         sourceMembers=json.loads(run(client+['-c',membersQuery]))
         assert int(run(client+['-c',"SELECT count(*) FROM pg_tablespace WHERE spcname NOT IN ('pg_default','pg_global')"]).strip())==0
         roleNames=[r['rolname'] for r in sourceRoles]
-        operator='ashbi_restore_operator'
-        assert operator not in roleNames
+        operator='supabase_admin'
+        assert any(r['rolname']==operator and r['rolsuper'] for r in sourceRoles)
+        assert all(e['owner']==operator for e in sourceCatalog['extensions']),'Mixed extension owners require separate restore review'
+        (folder/'database-catalog.private.json').write_text(json.dumps(sourceCatalog))
+        (folder/'source-schema.private.sql').write_bytes(sourceSchema)
         (folder/'roles-and-memberships.private.json').write_text(json.dumps({'roles':sourceRoles,'memberships':sourceMembers}))
         image=json.loads(run(['docker','image','inspect',db['Image']]))[0]
         fixturePassword=secrets.token_hex(24)
@@ -112,7 +117,7 @@ def main():
             time.sleep(1)
         else:raise RuntimeError('Isolated PostgreSQL restore did not become ready')
         initial=['docker','exec','-i','-e','PGPASSWORD='+fixturePassword,fixture,'psql','-U',restoreUser,'-d','postgres','-v','ON_ERROR_STOP=1']
-        run(initial,('CREATE ROLE '+operator+" LOGIN SUPERUSER PASSWORD '"+fixturePassword+"';").encode())
+        assert operator==restoreUser
         fixturePrefix=['docker','exec','-i','-e','PGPASSWORD='+fixturePassword,fixture]
         fclient=fixturePrefix+['psql','-h','127.0.0.1','-U',operator,'-d','postgres','-qAt','-v','ON_ERROR_STOP=1']
         existing=set(run(fclient+['-c','SELECT rolname FROM pg_roles']).decode().splitlines())
@@ -155,7 +160,7 @@ def main():
         assert restoredMembers==sourceMembers,'Role membership/grantor attributes differ'
         restoredRoles=[r for r in json.loads(run(fclient+['-c',rolesQuery])) if r['rolname'] in roleNames]
         assert restoredRoles==sourceRoles,'Role attributes after grantor replay differ'
-        run(fixturePrefix+['createdb','-h','127.0.0.1','-U',operator,'--template=template0',restoreDB])
+        run(fixturePrefix+['createdb','-h','127.0.0.1','-U',operator,'--template=template0','--owner='+sourceCatalog['databaseOwner'],restoreDB])
         eventOwners=snapshot_sql('SELECT DISTINCT r.rolname FROM pg_event_trigger e JOIN pg_roles r ON r.oid=e.evtowner WHERE NOT r.rolsuper ORDER BY r.rolname').decode().splitlines()
         assert all(role in roleNames for role in eventOwners)
         if eventOwners:run(fclient,'\n'.join('ALTER ROLE '+quote(role)+' SUPERUSER;' for role in eventOwners).encode())
@@ -184,6 +189,8 @@ def main():
         if eventOwners:run(fclient,'\n'.join('ALTER ROLE '+quote(role)+' NOSUPERUSER;' for role in eventOwners).encode())
         restoredRoles=[r for r in json.loads(run(fclient+['-c',rolesQuery])) if r['rolname'] in roleNames]
         assert restoredRoles==sourceRoles,'Role attributes after full schema restore differ'
+        restoredCatalog=json.loads(run(restoreClient+['-c',catalogQuery]))
+        assert restoredCatalog==sourceCatalog,'Database or extension ownership/version/schema differs'
         restoredSchema=canon(run(fixturePrefix+['pg_dump','-h','127.0.0.1','-U',operator,'-d',restoreDB,'--schema-only']))
         rawSchemaHashesMatch=restoredSchema==sourceSchema
         normalizedCheckCount=0
@@ -272,13 +279,16 @@ def main():
                 if info['kind']=='file':assert member.isfile() and hashlib.sha256(archive.extractfile(member).read()).hexdigest()==info['sha256']
                 elif info['kind']=='link':assert member.issym() and member.linkname==info['target']
                 else:assert member.isdir()
+    storagePath=pathlib.Path(next(m['Source'] for m in records['storage']['Mounts'] if m['Destination']=='/var/lib/storage'))
+    storageManifest=next(expected for path,expected in mounts if path==storagePath)
+    sourceStorageEmpty=all(info['kind']=='directory' for info in storageManifest.values())
     protected=databaseProtected;tag=databaseTag
     (folder/'stack-inspect.private.json').write_text(json.dumps(records))
     assert volume_names==set(run(['docker','volume','ls','-q']).decode().splitlines())
     after={r['Id']:r for r in json.loads(run(['docker','inspect']+running_ids))}
     assert all(after[k]['State']['Running'] and after[k]['Image']==v['image'] and after[k]['State']['StartedAt']==v['startedAt'] for k,v in before.items())
     (folder/'table-hashes.private.json').write_text(json.dumps(baseline,indent=2))
-    proof={'backupDirectory':str(folder),'sourceImage':db['Image'],'protectedImage':protected['Id'],'protectedTag':tag,'rootFSLayersMatch':True,'consistentExportedSnapshot':True,'applicationSchemas':['auth','public','storage','vault'],'roleNamesPreparedForRestore':True,'fullRolePrivilegesQualified':True,'roleAttributesAndPasswordHashesMatch':True,'roleMembershipsAndGrantorsMatch':True,'schemaOwnershipAndGrantsMatch':True,'sourceRoleCount':len(sourceRoles),'sourceMembershipCount':len(sourceMembers),'fullSchemaSHA256':hashlib.sha256(sourceSchema).hexdigest(),'restoredSchemaSHA256':hashlib.sha256(restoredSchema).hexdigest(),'rawSchemaHashesMatch':rawSchemaHashesMatch,'parserQualifiedCheckNormalizations':normalizedCheckCount,'allOtherSchemaBytesMatch':True,'sourceRoleAttributesUnchanged':True,'graphqlExtensionOwnedFunctionRecreated':graphqlMissing,'temporaryFixtureOnlyGrantorElevationRemoved':True,'temporaryFixtureOnlyEventOwnerElevationRemoved':True,'allApplicationTables':len(baseline),'totalSnapshotRows':sum(v['rows'] for v in baseline.values()),'allRestoredTableHashesMatch':True,'dumpBytes':len(dump),'dumpSHA256':hashlib.sha256(dump).hexdigest(),'globalRolesSavedPrivately':True,'databaseVolumeRetained':True,'allDockerVolumesRetained':True,'volumeCount':len(volume_names),'productionBackendContainerStatesUnchanged':True,'fixtureRemoved':True,'liveDatabaseStopped':False,'liveDatabaseOrConsumerConfigurationChanged':False,'candidateProvisioned':False,'application':application,'retainedStackImages':retained,'filesConfigArchiveSHA256':hashlib.sha256(archivePath.read_bytes()).hexdigest(),'fileHashesModesOwnersAndLinksMatch':True,'nonDatabaseMountsArchived':len(mounts),'sourceBuildPerformed':False}
+    proof={'backupDirectory':str(folder),'sourceImage':db['Image'],'protectedImage':protected['Id'],'protectedTag':tag,'rootFSLayersMatch':True,'consistentExportedSnapshot':True,'applicationSchemas':['auth','public','storage','vault'],'roleNamesPreparedForRestore':True,'fullRolePrivilegesQualified':True,'databaseAndExtensionCatalogMatch':True,'sourceDatabaseOwner':sourceCatalog['databaseOwner'],'extensionCount':len(sourceCatalog['extensions']),'noExtraRestoreOperatorRoleCreated':True,'roleAttributesAndPasswordHashesMatch':True,'roleMembershipsAndGrantorsMatch':True,'schemaOwnershipAndGrantsMatch':True,'sourceRoleCount':len(sourceRoles),'sourceMembershipCount':len(sourceMembers),'fullSchemaSHA256':hashlib.sha256(sourceSchema).hexdigest(),'restoredSchemaSHA256':hashlib.sha256(restoredSchema).hexdigest(),'rawSchemaHashesMatch':rawSchemaHashesMatch,'parserQualifiedCheckNormalizations':normalizedCheckCount,'allOtherSchemaBytesMatch':True,'sourceRoleAttributesUnchanged':True,'graphqlExtensionOwnedFunctionRecreated':graphqlMissing,'temporaryFixtureOnlyGrantorElevationRemoved':True,'temporaryFixtureOnlyEventOwnerElevationRemoved':True,'allApplicationTables':len(baseline),'totalSnapshotRows':sum(v['rows'] for v in baseline.values()),'allRestoredTableHashesMatch':True,'dumpBytes':len(dump),'dumpSHA256':hashlib.sha256(dump).hexdigest(),'globalRolesSavedPrivately':True,'databaseVolumeRetained':True,'allDockerVolumesRetained':True,'volumeCount':len(volume_names),'productionBackendContainerStatesUnchanged':True,'fixtureRemoved':True,'liveDatabaseStopped':False,'liveDatabaseOrConsumerConfigurationChanged':False,'candidateProvisioned':False,'application':application,'retainedStackImages':retained,'filesConfigArchiveSHA256':hashlib.sha256(archivePath.read_bytes()).hexdigest(),'fileHashesModesOwnersAndLinksMatch':True,'nonDatabaseMountsArchived':len(mounts),'sourceStorageEmpty':sourceStorageEmpty,'sourceBuildPerformed':False}
     (folder/'recovery-proof.json').write_text(json.dumps(proof,indent=2))
     assert folder.stat().st_mode&0o077==0 and all(p.stat().st_mode&0o077==0 for p in folder.iterdir())
     print(json.dumps(proof))

@@ -38,8 +38,8 @@ jobs:
 
       - name: Coolify backend ownership and syntax checks
         run: |
-          python3 deploy/coolify-backend/test_backup_ownership.py
-          python3 -m py_compile deploy/coolify-backend/backup.py
+          python3 -m unittest discover -s deploy/coolify-backend -p 'test_*.py'
+          python3 -m py_compile deploy/coolify-backend/backup.py deploy/coolify-backend/bootstrap.py
           bash -n deploy/coolify-backend/before-deploy.sh
 
       - name: Install dependencies
