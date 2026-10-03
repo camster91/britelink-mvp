@@ -1,0 +1,299 @@
+{
+  "services": {
+    "db": {
+      "image": "${BRITELINK_DB_IMAGE:?reviewed existing image required}",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "1g",
+            "cpus": "1.5"
+          }
+        }
+      },
+      "environment": {
+        "POSTGRES_USER": "supabase_admin",
+        "POSTGRES_DB": "postgres",
+        "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD:?candidate password required}"
+      },
+      "volumes": [
+        "database:/var/lib/postgresql/data"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U supabase_admin -d postgres"
+        ],
+        "interval": "3s",
+        "timeout": "3s",
+        "retries": 40,
+        "start_period": "30s"
+      }
+    },
+    "db-roles": {
+      "image": "${BRITELINK_DB_IMAGE:?reviewed existing image required}",
+      "pull_policy": "never",
+      "restart": "no",
+      "networks": [
+        "backend"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "256m",
+            "cpus": "0.5"
+          }
+        }
+      },
+      "environment": {
+        "PGPASSWORD": "${POSTGRES_PASSWORD:?candidate password required}"
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "entrypoint": [
+        "psql"
+      ],
+      "command": [
+        "-h",
+        "db",
+        "-U",
+        "supabase_admin",
+        "-d",
+        "${BRITELINK_DATABASE:?restored database required}",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-v",
+        "pw=${POSTGRES_PASSWORD:?candidate password required}",
+        "-f",
+        "/init/roles.sql"
+      ],
+      "volumes": [
+        "./supabase/selfhosted/init:/init:ro"
+      ],
+      "profiles": [
+        "api"
+      ]
+    },
+    "auth": {
+      "image": "${BRITELINK_AUTH_IMAGE:?reviewed existing image required}",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "256m",
+            "cpus": "0.5"
+          }
+        }
+      },
+      "environment": {
+        "GOTRUE_API_HOST": "0.0.0.0",
+        "GOTRUE_API_PORT": "9999",
+        "API_EXTERNAL_URL": "http://gateway:8000",
+        "GOTRUE_DB_DRIVER": "postgres",
+        "DATABASE_URL": "postgres://supabase_auth_admin:${POSTGRES_PASSWORD:?candidate password required}@db:5432/${BRITELINK_DATABASE:?restored database required}",
+        "GOTRUE_DB_MIGRATIONS_PATH": "/migrations",
+        "GOTRUE_SITE_URL": "http://gateway:8000",
+        "GOTRUE_URI_ALLOW_LIST": "http://gateway:8000",
+        "GOTRUE_JWT_SECRET": "${JWT_SECRET:?synthetic candidate JWT secret required}",
+        "GOTRUE_JWT_EXP": "3600",
+        "GOTRUE_JWT_AUD": "authenticated",
+        "GOTRUE_JWT_DEFAULT_GROUP_NAME": "authenticated",
+        "GOTRUE_DISABLE_SIGNUP": "true",
+        "GOTRUE_EXTERNAL_EMAIL_ENABLED": "true",
+        "GOTRUE_MAILER_AUTOCONFIRM": "true",
+        "GOTRUE_LOG_LEVEL": "warn"
+      },
+      "profiles": [
+        "api"
+      ],
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        },
+        "db-roles": {
+          "condition": "service_completed_successfully"
+        }
+      }
+    },
+    "rest": {
+      "image": "${BRITELINK_REST_IMAGE:?reviewed existing image required}",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "256m",
+            "cpus": "0.5"
+          }
+        }
+      },
+      "environment": {
+        "PGRST_DB_URI": "postgres://authenticator:${POSTGRES_PASSWORD:?candidate password required}@db:5432/${BRITELINK_DATABASE:?restored database required}",
+        "PGRST_DB_SCHEMAS": "public,storage",
+        "PGRST_DB_ANON_ROLE": "anon",
+        "PGRST_JWT_SECRET": "${JWT_SECRET:?synthetic candidate JWT secret required}",
+        "PGRST_DB_USE_LEGACY_GUCS": "false"
+      },
+      "profiles": [
+        "api"
+      ],
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        },
+        "db-roles": {
+          "condition": "service_completed_successfully"
+        }
+      }
+    },
+    "storage": {
+      "image": "${BRITELINK_STORAGE_IMAGE:?reviewed existing image required}",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "256m",
+            "cpus": "0.5"
+          }
+        }
+      },
+      "environment": {
+        "ANON_KEY": "${ANON_KEY:?synthetic anon key required}",
+        "SERVICE_KEY": "${SERVICE_KEY:?synthetic service key required}",
+        "PGRST_JWT_SECRET": "${JWT_SECRET:?synthetic candidate JWT secret required}",
+        "DATABASE_URL": "postgres://supabase_storage_admin:${POSTGRES_PASSWORD:?candidate password required}@db:5432/${BRITELINK_DATABASE:?restored database required}",
+        "STORAGE_BACKEND": "file",
+        "FILE_STORAGE_BACKEND_PATH": "/var/lib/storage",
+        "TENANT_ID": "candidate",
+        "REGION": "candidate",
+        "GLOBAL_S3_BUCKET": "candidate",
+        "POSTGREST_URL": "http://rest:3000",
+        "ENABLE_IMAGE_TRANSFORMATION": "false"
+      },
+      "profiles": [
+        "api"
+      ],
+      "volumes": [
+        "files:/var/lib/storage"
+      ],
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        },
+        "db-roles": {
+          "condition": "service_completed_successfully"
+        }
+      }
+    },
+    "gateway": {
+      "image": "${BRITELINK_GATEWAY_IMAGE:?reviewed existing image required}",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "deploy": {
+        "resources": {
+          "limits": {
+            "memory": "256m",
+            "cpus": "0.5"
+          }
+        }
+      },
+      "profiles": [
+        "api"
+      ],
+      "volumes": [
+        "./supabase/selfhosted/gateway.conf:/etc/nginx/conf.d/default.conf:ro"
+      ],
+      "depends_on": [
+        "auth",
+        "rest",
+        "storage"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://127.0.0.1:8000/auth/v1/health"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 12,
+        "start_period": "30s"
+      }
+    }
+  },
+  "volumes": {
+    "database": {
+      "name": "${COOLIFY_RESOURCE_UUID:?candidate resource UUID required}-britelink-database-v1"
+    },
+    "files": {
+      "name": "${COOLIFY_RESOURCE_UUID:?candidate resource UUID required}-britelink-files-v1"
+    }
+  },
+  "networks": {
+    "backend": {
+      "internal": true
+    }
+  }
+}

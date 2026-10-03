@@ -1,0 +1,37 @@
+{
+  "db": {
+    "sourceImage": "sha256:0e2279598bc0224fb5960c3a61eb23270cd60119427f3a7bdec86ba282600dcc",
+    "candidateImage": "sha256:0e2279598bc0224fb5960c3a61eb23270cd60119427f3a7bdec86ba282600dcc",
+    "identicalLayersQualified": true,
+    "rollbackImage": "sha256:5ad10922fc10ed16c031874ba9e281a01a9d461d45f4f306afe85a9b7013d3b9",
+    "candidateUsesExactRuntimeQualifiedImage": true
+  },
+  "auth": {
+    "sourceImage": "sha256:0cfa54e096dcae4ed30162811fa8794f7c443708c41973329e07f7d44c1cc3e7",
+    "candidateImage": "sha256:0cfa54e096dcae4ed30162811fa8794f7c443708c41973329e07f7d44c1cc3e7",
+    "identicalLayersQualified": true,
+    "rollbackImage": "sha256:ab10dce50dc55a89b5fbb2ed0728c48ef834e590b4a5cabcb60801bc375e04af",
+    "candidateUsesExactRuntimeQualifiedImage": true
+  },
+  "rest": {
+    "sourceImage": "sha256:729bf65c733b73f5b52777f0e4b853f22ed73aa67a22d38269d289779b0a8401",
+    "candidateImage": "sha256:729bf65c733b73f5b52777f0e4b853f22ed73aa67a22d38269d289779b0a8401",
+    "identicalLayersQualified": true,
+    "rollbackImage": "sha256:758fe39656b96b24ee71809205b94b18b888aef1175b1025e64bd5c269c801bb",
+    "candidateUsesExactRuntimeQualifiedImage": true
+  },
+  "storage": {
+    "sourceImage": "sha256:1e85dad48e8b3e85890a555e5114dc7ee48c2e8be4cfd97dd4e3564b4f104fcd",
+    "candidateImage": "sha256:1e85dad48e8b3e85890a555e5114dc7ee48c2e8be4cfd97dd4e3564b4f104fcd",
+    "identicalLayersQualified": true,
+    "rollbackImage": "sha256:a439955c565e226f1a943cb6979d2f6f6082f996a1ddffa4266f06c5e210d4b0",
+    "candidateUsesExactRuntimeQualifiedImage": true
+  },
+  "gateway": {
+    "sourceImage": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+    "candidateImage": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+    "identicalLayersQualified": true,
+    "rollbackImage": "sha256:cec29db853bae427455ee2e226fa48109363e49ee3c5f1bd4cbaadc41adedeb9",
+    "candidateUsesExactRuntimeQualifiedImage": true
+  }
+}
