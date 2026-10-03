@@ -310,7 +310,7 @@ const INCONCLUSIVE_CODES = new Set([
 // alongside the evidence rather than left implicit.
 const MUTATION_ASSUMPTIONS = [
   "every id in `foreign` refers to a row that exists in household B",
-  "the activity id used for the no-effect probe refers to a row that exists, or '0 rows affected' proves nothing",
+  "no-effect probes require an owner-token lookup confirming the exact target row",
   "the object path used for the storage probes exists in the bucket, which the household B sign control confirms",
   "the matrix proves each denial is household-specific given the actor's role; it does not prove the same RPC succeeds on the actor's own household, which would require writing to staging",
 ];
@@ -727,9 +727,14 @@ function errorField(body, field) {
 
 function describeError(body) {
   const code = errorField(body, "code");
-  const message =
-    errorField(body, "message") || errorField(body, "error") || errorField(body, "msg");
-  return [code && `[${code}]`, message].filter(Boolean).join(" ").slice(0, 200);
+  const statusCode = errorField(body, "statusCode");
+  const error = errorField(body, "error");
+  const details = [
+    /^\d{3}$/.test(statusCode) ? statusCode : "",
+    /^[A-Za-z0-9_]{1,20}$/.test(code) ? code : "",
+    /^[A-Za-z0-9_ -]{1,30}$/.test(error) ? error : "",
+  ].filter(Boolean);
+  return details.length ? `[${details.join(" ")}]` : "";
 }
 
 async function sendProbe(fetchImpl, url, options) {
@@ -789,17 +794,18 @@ function judgeInsert(result) {
   };
 }
 
-function judgeNoEffect(result) {
+function judgeNoEffect(result, exists = false) {
   if (result.status === 401 || result.status === 403)
     return { outcome: "denied", detail: `HTTP ${result.status}` };
   if (result.status >= 200 && result.status < 300) {
-    const rows = Array.isArray(result.body) ? result.body : [];
+    if (!Array.isArray(result.body)) return { outcome: "inconclusive", detail: "missing affected-row representation" };
+    const rows = result.body;
     return rows.length
       ? {
           outcome: "allowed",
           detail: `updated ${rows.length} row(s) belonging to the other household`,
         }
-      : { outcome: "denied", detail: "0 rows affected" };
+      : { outcome: exists ? "denied" : "inconclusive", detail: exists ? "0 rows affected on confirmed target" : "0 rows affected without existence proof" };
   }
   return {
     outcome: "inconclusive",
@@ -807,10 +813,16 @@ function judgeNoEffect(result) {
   };
 }
 
-function judgeStorage(result) {
-  // 404 counts as denied here only because the household B sign control proves the object
-  // exists and the request shape is right. Without that control a 404 would be uninformative.
-  if ([400, 403, 404].includes(result.status))
+export function judgeStorage(result, exists = false) {
+  // Storage may hide an RLS-filtered object as not found. That proves denial only
+  // when the owner's sign control has confirmed the target exists.
+  const hiddenObject = exists === true && (result.status === 404 ||
+    (result.status === 400 && (errorField(result.body, "statusCode") === "404" ||
+      /not.?found/i.test(errorField(result.body, "error") + " " + errorField(result.body, "message")))));
+  if (result.status === 401 || result.status === 403 || hiddenObject || (result.status === 400 &&
+      (errorField(result.body, "statusCode") === "403" ||
+       /row.level security|unauthorized|permission denied|violat.*policy/i.test(
+         typeof result.body === "string" ? result.body : errorField(result.body, "message") + " " + errorField(result.body, "error")))))
     return {
       outcome: "denied",
       detail: describeError(result.body) || `HTTP ${result.status}`,
@@ -824,6 +836,23 @@ function judgeStorage(result) {
     outcome: "inconclusive",
     detail: `HTTP ${result.status}: ${describeError(result.body) || "no error detail"}`,
   };
+}
+
+export function judgeStorageDelete(result, exists = false) {
+  const storageJudgment = judgeStorage(result, exists);
+  if (result.status === 401 || storageJudgment.outcome === "denied")
+    return { outcome: "denied", detail: storageJudgment.detail };
+  if (result.status >= 200 && result.status < 300) {
+    if (!Array.isArray(result.body))
+      return { outcome: "inconclusive", detail: "missing removed-object representation" };
+    if (result.body.length)
+      return { outcome: "allowed", detail: `deleted ${result.body.length} object(s) belonging to the other household` };
+    return {
+      outcome: exists ? "denied" : "inconclusive",
+      detail: exists ? "0 objects deleted on confirmed target" : "0 objects deleted without existence proof",
+    };
+  }
+  return storageJudgment;
 }
 
 export async function verifyHostedMutationDenial({
@@ -936,6 +965,7 @@ export async function verifyHostedMutationDenial({
     throw new Error(
       `Household B storage control failed: household B cannot sign its own object (HTTP ${signResult.status}${describeError(signResult.body) ? `, ${describeError(signResult.body)}` : ""}), so the cross-household storage denials below prove nothing`,
     );
+  const storageExists = signResult.status >= 200 && signResult.status < 300;
   controls.push({ surface: "bucket:household-b-control", outcome: "confirmed" });
 
   const probes = [];
@@ -1023,29 +1053,76 @@ export async function verifyHostedMutationDenial({
     });
   }
 
-  // The one update in the matrix. It is judged by rows affected rather than by status: RLS
-  // filters the row out of the UPDATE, so PostgREST answers 200 with an empty array. The probe
-  // is only meaningful because the id refers to a row that exists -- a missing row would give
-  // the same empty array for an innocent reason.
-  const activityUrl = new URL("/rest/v1/lesson_activities", origin);
-  activityUrl.searchParams.set("id", `eq.${foreign.activityId}`);
-  activityUrl.searchParams.set("select", "household_id");
-  probes.push({
-    id: "update.lesson_activities",
-    surface: "table:lesson_activities",
-    requirement:
-      "a guardian cannot update another household's lesson activity by id",
-    actor: "guardian",
-    judge: judgeNoEffect,
-    url: activityUrl,
-    options: {
-      method: "PATCH",
-      headers: {
-        ...jsonHeaders(resolved.guardian.token),
-        prefer: "return=representation",
-      },
-      body: JSON.stringify({ caregiver_note: PROBE_NOTE }),
-    },
+  // Confirm exact foreign targets with the owning admin before judging an empty mutation.
+  const tableTargets = [
+    ["lesson_activities", "id", foreign.activityId, { caregiver_note: PROBE_NOTE }],
+    ["case_message_reads", "message_id", foreign.messageId, { read_at: new Date().toISOString() }],
+    ["case_messages", "id", foreign.messageId, { body: PROBE_NOTE }],
+    ["plans", "id", foreign.planId, { authored_by: resolved.guardian.userId }],
+  ];
+  for (const [table, column, id, body] of tableTargets) {
+    const url = new URL(`/rest/v1/${table}`, origin);
+    url.searchParams.set(column, `eq.${id}`);
+    url.searchParams.set("household_id", `eq.${b}`);
+    url.searchParams.set("select", column);
+    const control = await sendProbe(fetchImpl, url, { headers: headers(key, tokenB) });
+    const exists = control.status === 200 && Array.isArray(control.body) &&
+      control.body.some((row) => row[column] === id);
+    controls.push({ surface: `target:${table}`, outcome: exists ? "confirmed" : "unconfirmed" });
+    for (const [label, method] of [["update", "PATCH"], ["delete", "DELETE"]]) {
+      probes.push({
+        id: `${label}.${table}`, surface: `table:${table}`, actor: "guardian",
+        requirement: `a guardian cannot ${label} another household's ${table}`,
+        judge: (result) => judgeNoEffect(result, exists), url,
+        options: { method, headers: { ...jsonHeaders(resolved.guardian.token), prefer: "return=representation" },
+          ...(method === "PATCH" ? { body: JSON.stringify(body) } : {}) },
+      });
+    }
+  }
+
+  // Same-household roles must still refuse staff-only operations.
+  for (const [sourceId, actor, label] of [
+    ["educator.review_plan", "guardian", "guardian.review_plan"],
+    ["admin.assign_case", "educator", "educator.assign_case"],
+  ]) {
+    const contract = MUTATION_RPC_CONTRACTS.find((entry) => entry.id === sourceId);
+    const values = contract.values(ctx);
+    values.target_household = a;
+    const table = values.target_plan ? "plans" : "service_cases";
+    const lookup = new URL(`/rest/v1/${table}`, origin);
+    lookup.searchParams.set("household_id", `eq.${a}`);
+    lookup.searchParams.set("select", "id");
+    lookup.searchParams.set("limit", "1");
+    const control = await sendProbe(fetchImpl, lookup, { headers: headers(key, resolved.admin.token) });
+    const id = control.status === 200 && Array.isArray(control.body) ? control.body[0]?.id : null;
+    if (!id) throw new Error(`Same-household ${table} fixture is missing`);
+    values[values.target_plan ? "target_plan" : "target_case"] = id;
+    const rpc = MUTATION_RPC_BY_ID[sourceId];
+    probes.push({ id: label, surface: `rpc:${rpc}`, actor,
+      requirement: `same-household ${actor} cannot perform this staff operation`, judge: judgeRpc,
+      url: new URL(`/rest/v1/rpc/${rpc}`, origin),
+      options: { method: "POST", headers: jsonHeaders(resolved[actor].token), body: JSON.stringify(values) },
+    });
+  }
+
+  const ownPlanUrl = new URL("/rest/v1/plans", origin);
+  ownPlanUrl.searchParams.set("household_id", `eq.${a}`);
+  ownPlanUrl.searchParams.set("authored_by", `eq.${resolved.educator.userId}`);
+  ownPlanUrl.searchParams.set("status", "in.(draft,internal_review)");
+  ownPlanUrl.searchParams.set("select", "id,authored_by,status");
+  const ownPlan = await sendProbe(fetchImpl, ownPlanUrl, { headers: headers(key, resolved.admin.token) });
+  const plan = ownPlan.status === 200 && Array.isArray(ownPlan.body) ? ownPlan.body.find(
+    (row) => row.authored_by === resolved.educator.userId && ["draft", "internal_review"].includes(row.status)) : null;
+  if (!plan) throw new Error("Reviewable educator-authored household A plan fixture is missing");
+  const review = MUTATION_RPC_CONTRACTS.find((entry) => entry.id === "educator.review_plan");
+  probes.push({ id: "educator.self_approval", surface: "rpc:staff_review_plan", actor: "educator",
+    requirement: "a plan author cannot approve their own reviewable plan",
+    judge: (result) => result.status >= 400 && errorField(result.body, "message") === "plan author cannot review their own plan"
+      ? { outcome: "denied", detail: "plan author cannot review their own plan" }
+      : { outcome: result.ok ? "allowed" : "inconclusive", detail: "self-approval did not reach the independent-author gate" },
+    url: new URL("/rest/v1/rpc/staff_review_plan", origin),
+    options: { method: "POST", headers: jsonHeaders(resolved.educator.token),
+      body: JSON.stringify({ ...review.values(ctx), target_household: a, target_plan: plan.id }) },
   });
 
   // The bucket. Upload into the other household's prefix, then attempt the clean-download
@@ -1075,7 +1152,7 @@ export async function verifyHostedMutationDenial({
     requirement:
       "a guardian cannot obtain a clean download of another household's object",
     actor: "guardian",
-    judge: judgeStorage,
+    judge: (result) => judgeStorage(result, storageExists),
     url: new URL(`/storage/v1/object/sign/${bucketName}/${objectPath}`, origin),
     options: {
       method: "POST",
@@ -1083,6 +1160,22 @@ export async function verifyHostedMutationDenial({
       body: JSON.stringify({ expiresIn: 60 }),
     },
   });
+
+  // Delete must stay last: an allowed deletion would invalidate later object probes.
+  for (const [id, method, path, body] of [
+    ["storage.overwrite", "PUT", `${bucketName}/${objectPath}`, PROBE_NOTE],
+    ["storage.delete", "DELETE", bucketName, JSON.stringify({ prefixes: [objectPath] })],
+  ]) {
+    probes.push({ id, surface: `bucket:${bucketName}`, actor: "guardian",
+      requirement: `a guardian cannot ${id.split(".")[1]} another household's object`,
+      judge: id === "storage.delete"
+        ? (result) => judgeStorageDelete(result, storageExists)
+        : (result) => judgeStorage(result, storageExists),
+      url: new URL(`/storage/v1/object/${path}`, origin),
+      options: { method, headers: { ...headers(key, resolved.guardian.token),
+        "content-type": method === "PUT" ? "text/plain" : "application/json" }, body },
+    });
+  }
 
   const results = [];
   for (const item of probes) {
@@ -1105,7 +1198,7 @@ export async function verifyHostedMutationDenial({
     targetHousehold: b,
     probeCount: results.length,
     deniedCount: results.length - failed.length,
-    controlCount: controls.length,
+    controlCount: controls.filter((entry) => entry.outcome === "confirmed").length,
     storageBucket: bucketName,
     assumptions: MUTATION_ASSUMPTIONS,
     controls,
@@ -1113,7 +1206,7 @@ export async function verifyHostedMutationDenial({
   };
   if (failed.length) {
     const error = new Error(
-      `${failed.length} of ${results.length} cross-household mutations were not denied: ${failed
+      `${failed.length} of ${results.length} forbidden mutations were not denied: ${failed
         .map((entry) => `${entry.id} (${entry.outcome}: ${entry.detail})`)
         .join("; ")}`,
     );

@@ -6,6 +6,8 @@ import {
   MUTATION_RPC_CONTRACTS,
   PRIVATE_TABLES,
   SEALED_TABLES,
+  judgeStorage,
+  judgeStorageDelete,
   verifyHostedIsolation,
   verifyHostedMutationDenial,
 } from "../src/hosted-isolation.js";
@@ -302,6 +304,14 @@ function stagingProbe({ override = () => null, roleOverride = null } = {}) {
 
     if (call.path === "/rest/v1/memberships" && call.method === "GET")
       return stagingResponse([{ role: roleOverride ?? ROLE_BY_TOKEN[token] }]);
+    if (call.method === "GET" && call.path.startsWith("/rest/v1/")) {
+      const params = new URLSearchParams(call.query);
+      const column = params.get("select");
+      if (column === "id,authored_by,status") return stagingResponse([{
+        id: mutationConfig.foreign.planId, authored_by: mutationConfig.actors.educator.userId, status: "draft",
+      }]);
+      return stagingResponse([{ [column]: (params.get(column) ?? `eq.${mutationConfig.foreign.planId}`).slice(3) }]);
+    }
     if (call.path.startsWith("/storage/v1/object/sign/"))
       return token === mutationConfig.adminTokenB
         ? stagingResponse({ signedURL: "https://example.invalid/signed" })
@@ -311,13 +321,15 @@ function stagingProbe({ override = () => null, roleOverride = null } = {}) {
         { statusCode: "403", message: "row-level security policy violated" },
         403,
       );
+    if (call.path === "/rest/v1/rpc/staff_review_plan" && call.body.target_household === mutationConfig.householdA && call.token === "jwt-educator")
+      return stagingResponse({ code: "P0001", message: "plan author cannot review their own plan" },400);
     if (call.path.startsWith("/rest/v1/rpc/")) {
       const message = GATE_BY_RPC[call.path.slice("/rest/v1/rpc/".length)];
       return message.includes("guardian")
         ? stagingResponse({ code: "42501", message }, 403)
         : stagingResponse({ code: "P0001", message }, 400);
     }
-    if (call.method === "PATCH") return stagingResponse([]);
+    if (call.method === "PATCH" || call.method === "DELETE") return stagingResponse([]);
     if (call.method === "POST")
       return stagingResponse(
         { code: "42501", message: "row-level security policy violated" },
@@ -398,10 +410,10 @@ test("the mutation matrix denies every cross-household write and reports each on
   const report = await verifyHostedMutationDenial({ ...mutationConfig, fetchImpl });
 
   assert.equal(report.status, "passed");
-  assert.equal(report.probeCount, 36);
-  assert.equal(report.deniedCount, 36);
-  assert.equal(report.controlCount, 4);
-  assert.equal(new Set(report.probes.map((entry) => entry.id)).size, 36);
+  assert.equal(report.probeCount, 48);
+  assert.equal(report.deniedCount, 48);
+  assert.equal(report.controlCount, 8);
+  assert.equal(new Set(report.probes.map((entry) => entry.id)).size, 48);
   assert.ok(report.probes.every((entry) => entry.outcome === "denied"));
   assert.ok(
     report.probes.every((entry) => entry.requirement && entry.surface),
@@ -410,7 +422,7 @@ test("the mutation matrix denies every cross-household write and reports each on
 
   // The probes must carry the arguments the contracts declare, not merely the right function.
   const rpcCalls = calls.filter((call) => call.path.startsWith("/rest/v1/rpc/"));
-  assert.equal(rpcCalls.length, MUTATION_RPC_CONTRACTS.length);
+  assert.equal(rpcCalls.length, MUTATION_RPC_CONTRACTS.length + 3);
   for (const call of rpcCalls) {
     const rpc = call.path.slice("/rest/v1/rpc/".length);
     const sent = Object.keys(call.body).sort();
@@ -600,4 +612,128 @@ test("the mutation matrix rejects unsafe or ambiguous configuration before netwo
     /Household B case ID must be a UUID/,
   );
   assert.equal(calls.length, 0);
+});
+
+
+test("storage 400 requires explicit authorization evidence and reports never echo credentials",async()=>{
+  for(const [status,body,denied] of [
+    [400,{message:"invalid request public-project-key jwt-guardian"},false],
+    [400,{message:"new row violates row-level security policy"},true],
+    [400,{error:"Unauthorized"},true],
+    [400,{statusCode:"403",message:"denied"},true],
+    [403,{message:"row-level security policy violated"},true],
+    [404,{message:"missing route"},false],
+  ]){
+    const {fetchImpl}=stagingProbe({override:call=>call.path.includes("/object/") && !call.path.includes("/sign/") ? stagingResponse(body,status):null});
+    if(denied) assert.equal((await verifyHostedMutationDenial({...mutationConfig,fetchImpl})).status,"passed");
+    else await assert.rejects(()=>verifyHostedMutationDenial({...mutationConfig,fetchImpl}),error=>{
+      assert.ok(error.report.probes.some(entry=>entry.id==="storage.upload" && entry.outcome==="inconclusive"));
+      assert.ok(!JSON.stringify(error.report).includes("jwt-guardian"));
+      assert.ok(!error.message.includes("public-project-key"));
+      return true;
+    });
+  }
+});
+
+test("empty affected rows need an exact owner-visible target",async()=>{
+  for(const body of [[],[{id:"wrong-id"}]]){
+    const {fetchImpl}=stagingProbe({override:call=>call.method==="GET" && call.path==="/rest/v1/lesson_activities"?stagingResponse(body):null});
+    await assert.rejects(()=>verifyHostedMutationDenial({...mutationConfig,fetchImpl}),error=>{
+      const probe=error.report.probes.find(entry=>entry.id==="update.lesson_activities");
+      assert.equal(probe.outcome,"inconclusive");
+      assert.match(probe.detail,/without existence proof/);
+      return true;
+    });
+  }
+});
+
+test("matrix includes overwrite, delete, writable-table mutations and same-household role probes",async()=>{
+  const {calls,fetchImpl}=stagingProbe();
+  const report=await verifyHostedMutationDenial({...mutationConfig,fetchImpl});
+  for(const id of ["storage.overwrite","storage.delete","update.case_message_reads","delete.case_message_reads","delete.lesson_activities","update.plans","delete.case_messages","guardian.review_plan","educator.assign_case","educator.self_approval"])
+    assert.ok(report.probes.some(entry=>entry.id===id),id);
+  const overwrite=calls.find(call=>call.method==="PUT");
+  assert.ok(overwrite.path.endsWith(mutationConfig.foreign.objectPath));
+  const remove=calls.find(call=>call.method==="DELETE" && call.path.startsWith("/storage/"));
+  assert.deepEqual(remove.body,{prefixes:[mutationConfig.foreign.objectPath]});
+  for(const rpc of ["staff_review_plan","staff_assign_case"])
+    assert.ok(calls.some(call=>call.path===`/rest/v1/rpc/${rpc}` && call.body.target_household===mutationConfig.householdA));
+});
+
+
+test("storage delete denies an empty array on an owner-confirmed object and runs last", async () => {
+  const { calls, fetchImpl } = stagingProbe({
+    override: (call) => call.method === "DELETE" && call.path.startsWith("/storage/")
+      ? stagingResponse([]) : null,
+  });
+  const report = await verifyHostedMutationDenial({ ...mutationConfig, fetchImpl });
+  assert.equal(report.probes.at(-1).id, "storage.delete");
+  assert.equal(report.probes.at(-1).outcome, "denied");
+  assert.equal(calls.at(-1).method, "DELETE");
+  assert.ok(calls.at(-1).path.startsWith("/storage/v1/object/"));
+});
+
+test("storage delete allows a non-empty removed-object array", async () => {
+  const { fetchImpl } = stagingProbe({
+    override: (call) => call.method === "DELETE" && call.path.startsWith("/storage/")
+      ? stagingResponse([{ name: mutationConfig.foreign.objectPath }]) : null,
+  });
+  await assert.rejects(
+    () => verifyHostedMutationDenial({ ...mutationConfig, fetchImpl }),
+    (error) => {
+      assert.equal(error.report.probes.find((entry) => entry.id === "storage.delete").outcome, "allowed");
+      return true;
+    },
+  );
+});
+
+test("storage delete without an owner sign control leaves an empty array inconclusive", () => {
+  assert.equal(judgeStorageDelete({ status: 200, body: [] }).outcome, "inconclusive");
+});
+
+test("self-approval needs the independent-author gate, not a role or validation failure",async()=>{
+  const {fetchImpl}=stagingProbe({override:call=>call.path==="/rest/v1/rpc/staff_review_plan" && call.body.target_household===mutationConfig.householdA && call.token==="jwt-educator"
+    ? stagingResponse({message:"staff access required"},400):null});
+  await assert.rejects(()=>verifyHostedMutationDenial({...mutationConfig,fetchImpl}),error=>{
+    assert.equal(error.report.probes.find(entry=>entry.id==="educator.self_approval").outcome,"inconclusive");
+    return true;
+  });
+});
+
+
+test("storage not-found denials require owner-confirmed existence", () => {
+  const notFound = { statusCode: "404", error: "not_found", message: "Object not found" };
+  assert.deepEqual(judgeStorage({ status: 400, body: notFound }, true), {
+    outcome: "denied", detail: "[404 not_found]",
+  });
+  assert.equal(judgeStorage({ status: 400, body: notFound }).outcome, "inconclusive");
+  assert.equal(judgeStorage({ status: 400, body: { statusCode: "400", error: "InvalidRequest" } }, true).outcome, "inconclusive");
+  assert.equal(judgeStorage({ status: 404, body: {} }, true).outcome, "denied");
+  assert.equal(judgeStorage({ status: 404, body: {} }).outcome, "inconclusive");
+  for (const body of [{ error: "Not found" }, { message: "The resource was not found" }]) {
+    assert.equal(judgeStorage({ status: 400, body }, true).outcome, "denied");
+    assert.equal(judgeStorage({ status: 400, body }).outcome, "inconclusive");
+  }
+  for (const body of ["", "not found", {}, { statusCode: "400" }])
+    assert.equal(judgeStorage({ status: 400, body }, true).outcome, "inconclusive");
+  assert.equal(judgeStorage({ status: 401, body: {} }).outcome, "denied");
+  assert.equal(judgeStorage({ status: 200, body: notFound }, true).outcome, "allowed");
+});
+
+test("storage sign and overwrite use the preceding owner sign control", async () => {
+  for (const status of [400, 404]) {
+    const { calls, fetchImpl } = stagingProbe({ override: call =>
+      call.path.startsWith("/storage/v1/object/") && call.token === "jwt-guardian" &&
+      (call.path.includes("/sign/") || call.method === "PUT")
+        ? stagingResponse({ statusCode: "404", error: "not_found", message: "Object not found" }, status)
+        : null,
+    });
+    const report = await verifyHostedMutationDenial({ ...mutationConfig, fetchImpl });
+    for (const id of ["storage.sign", "storage.overwrite"])
+      assert.equal(report.probes.find(entry => entry.id === id).outcome, "denied");
+    const ownerSign = calls.findIndex(call => call.path.includes("/sign/") && call.token === mutationConfig.adminTokenB);
+    const foreignSign = calls.findIndex(call => call.path.includes("/sign/") && call.token === "jwt-guardian");
+    const overwrite = calls.findIndex(call => call.method === "PUT" && call.path.startsWith("/storage/"));
+    assert.ok(ownerSign >= 0 && ownerSign < foreignSign && ownerSign < overwrite);
+  }
 });

@@ -108,7 +108,8 @@ export async function scanOne({ attachment, storage, rpc, scanner }) {
   const base = { attachmentId: attachment.attachment_id, householdId: attachment.household_id };
   const downloaded = await storage.download(attachment.object_path);
   if (downloaded.error) return { ...base, outcome: "deferred", reason: "download_failed", detail: downloaded.error.message };
-  const bytes = Buffer.from(downloaded.data);
+  const bytes = Buffer.from(typeof downloaded.data?.arrayBuffer === "function"
+    ? await downloaded.data.arrayBuffer() : downloaded.data);
 
   const verdict = await scanner({ bytes });
   if (verdict.verdict === "error") {
@@ -181,7 +182,7 @@ async function main(argv) {
   const { createClient } = await import("@supabase/supabase-js");
   const client = createClient(config.supabaseUrl, config.serviceRoleKey, { auth: { persistSession: false } });
   const storage = {
-    download: (path) => client.storage.from(BUCKET).download(path).then((r) => (r.error ? { error: r.error } : { data: Buffer.from(r.data) })),
+    download: (path) => client.storage.from(BUCKET).download(path),
     remove: (path) => client.storage.from(BUCKET).remove([path]).then((r) => (r.error ? { error: r.error } : { data: r.data })),
     list: () => listAllObjects(client),
   };
@@ -200,17 +201,24 @@ async function main(argv) {
 // the part of this adapter that needs staging evidence before the reconciler is trusted.
 export async function listAllObjects(client, prefix = "", depth = 0) {
   if (depth > 4) return { paths: [] };
-  const result = await client.storage.from(BUCKET).list(prefix, { limit: 10000 });
-  if (result.error) return { error: result.error };
   const paths = [];
-  for (const item of result.data ?? []) {
-    const path = prefix ? `${prefix}/${item.name}` : item.name;
-    if (item.id) paths.push(path);
-    else {
-      const nested = await listAllObjects(client, path, depth + 1);
-      if (nested.error) return { error: nested.error };
-      paths.push(...nested.paths);
+  const limit = 1000;
+  for (let offset = 0; ; offset += limit) {
+    const result = await client.storage.from(BUCKET).list(prefix, {
+      limit, offset, sortBy: { column: "name", order: "asc" },
+    });
+    if (result.error) return { error: result.error };
+    const page = result.data ?? [];
+    for (const item of page) {
+      const path = prefix ? `${prefix}/${item.name}` : item.name;
+      if (item.id) paths.push(path);
+      else {
+        const nested = await listAllObjects(client, path, depth + 1);
+        if (nested.error) return { error: nested.error };
+        paths.push(...nested.paths);
+      }
     }
+    if (page.length < limit) break;
   }
   return { paths };
 }
