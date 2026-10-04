@@ -5,6 +5,15 @@ import json
 REQUIRED_ROLES = ('db', 'auth', 'rest', 'storage', 'gateway')
 LEGACY = {role: 'britelink-production-' + role + '-1' for role in REQUIRED_ROLES}
 
+def validate_owner(owner):
+    if owner.get('repository') != 'camster91/britelink-mvp':
+        raise RuntimeError('Unexpected backend repository')
+    if owner.get('compose') == '/docker-compose.coolify-backend-candidate.json':
+        return 'candidate'
+    if owner.get('compose') == '/docker-compose.coolify-backend-production.json' and owner.get('branch') == 'main':
+        return 'production'
+    raise RuntimeError('Resource is not a reviewed BriteLink backend')
+
 def select_stack(containers, application):
     candidates = [c for c in containers if (c['Config'].get('Labels') or {}).get('com.docker.compose.project') == application]
     if candidates:
@@ -37,9 +46,9 @@ def main():
     assert run(['hostname']).decode().strip()=='vps.ashbi.ca'
     application=sys.argv[1]
     assert re.fullmatch(r'[a-z0-9]{20,40}',application),'Invalid Coolify resource identity'
-    php="require '/var/www/html/vendor/autoload.php'; $app=require '/var/www/html/bootstrap/app.php'; $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); $r=App\\Models\\Application::where('uuid',$argv[1])->sole(); echo json_encode(['repository'=>$r->git_repository,'compose'=>$r->docker_compose_location]);"
+    php="require '/var/www/html/vendor/autoload.php'; $app=require '/var/www/html/bootstrap/app.php'; $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); $r=App\\Models\\Application::where('uuid',$argv[1])->sole(); echo json_encode(['repository'=>$r->git_repository,'compose'=>$r->docker_compose_location,'branch'=>$r->git_branch]);"
     owner=json.loads(run(['docker','exec','coolify','php','-r',php,application]))
-    assert owner=={'repository':'camster91/britelink-mvp','compose':'/docker-compose.coolify-backend-candidate.json'},'Resource is not the reviewed BriteLink backend candidate'
+    validate_owner(owner)
     ids=run(['docker','ps','-aq']).decode().split()
     containers=json.loads(run(['docker','inspect']+ids))
     records=select_stack(containers,application)

@@ -34,6 +34,27 @@ set -euo pipefail
 set +x
 MODE="${1:-check}"
 case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version VALUE]" >&2; exit 2 ;; esac
+# Read-only checks follow the actual Coolify frontend, rather than the retired SSH web release.
+if [ "$MODE" = check ]; then
+  native_web="$(docker exec coolify php -r '
+    try {
+      require "/var/www/html/vendor/autoload.php";
+      $app=require "/var/www/html/bootstrap/app.php";
+      $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+      $r=App\Models\Application::where("git_repository","camster91/britelink-mvp")->where("git_branch","main")->where("docker_compose_location","/docker-compose.coolify-development.json")->sole();
+      echo $r->workdir()."|".$r->id;
+    } catch(Throwable $e) { exit(1); }
+  ' 2>/dev/null || true)"
+  if [ -n "$native_web" ]; then
+    IFS='|' read -r native_dir native_id <<<"$native_web"
+    if [[ "$native_id" =~ ^[0-9]+$ ]] && [ -f "$native_dir/.env" ]; then
+      WEB_ENV="${WEB_ENV:-$native_dir/.env}"
+      WEB_ORIGIN="${WEB_ORIGIN:-https://britelink.ashbi.ca}"
+      native_containers="$(docker ps -q --filter "label=coolify.applicationId=$native_id" --filter label=com.docker.compose.service=web)"
+      if [[ "$native_containers" =~ ^[a-f0-9]+$ ]]; then WEB_CONTAINER="${WEB_CONTAINER:-$native_containers}"; fi
+    fi
+  fi
+fi
 WEB_ENV="${WEB_ENV:-/docker/britelink-web/.env}"
 WEB_ORIGIN="${WEB_ORIGIN:-http://127.0.0.1:8088}"
 REST_CONTAINER="${REST_CONTAINER:-britelink-production-rest-1}"
@@ -120,6 +141,14 @@ stack_files="$(label_of "$REST_CONTAINER" com.docker.compose.project.config_file
 stack_env="${STACK_ENV:-${stack_dir:+$stack_dir/.env}}"
 env_secret="$(env_file_val "$stack_env" JWT_SECRET)"
 env_anon="$(env_file_val "$stack_env" ANON_KEY)"
+if [ "$stack_project" != britelink-production ] && [[ "$stack_project" =~ ^[a-z0-9]{20,40}$ ]]; then
+  if [ "$MODE" != check ]; then
+    echo "Coolify owns the production stack; legacy mutation modes cannot edit it." >&2
+    exit 2
+  fi
+  env_secret="$(env_file_val "$stack_env" BRITELINK_PROD_REST_PGRST_JWT_SECRET)"
+  env_anon="$(env_file_val "$stack_env" BRITELINK_PROD_STORAGE_ANON_KEY)"
+fi
 storage_secret="$(env_of "$STORAGE_CONTAINER" PGRST_JWT_SECRET)"
 same() { yn test -n "$1" -a "$1" = "$2"; }
 echo "compose project / dir:              ${stack_project:-unknown} / ${stack_dir:-unknown}"
@@ -133,6 +162,9 @@ echo ".env ANON_KEY == web .env key:      $(same "$env_anon" "$web_key")"
 [ -n "$env_secret" ] && [ -n "$env_anon" ] && echo ".env ANON_KEY verifies under .env:  $(jwt_verifies "$env_anon" "$env_secret")"
 [ -n "$auth_secret" ] && [ -n "$web_key" ] && echo "web key verifies under GoTrue:      $(jwt_verifies "$web_key" "$auth_secret")"
 env_service="$(env_file_val "$stack_env" SERVICE_KEY)"
+if [ "$stack_project" != britelink-production ] && [[ "$stack_project" =~ ^[a-z0-9]{20,40}$ ]]; then
+  env_service="$(env_file_val "$stack_env" BRITELINK_PROD_STORAGE_SERVICE_KEY)"
+fi
 echo ".env JWT_SECRET / ANON_KEY lines:   $(grep -cE '^JWT_SECRET=' "$stack_env" 2>/dev/null || echo 0) / $(grep -cE '^ANON_KEY=' "$stack_env" 2>/dev/null || echo 0)"
 echo ".env modified:                      $(date -u -r "$stack_env" +%Y-%m-%dT%H:%M:%S 2>/dev/null || echo unknown)"
 echo "PostgREST secret == storage's:      $(same "$rest_secret" "$storage_secret")"
@@ -167,7 +199,8 @@ print("compose rest secret == running rest:", yn(r and r == os.environ["REST_S"]
 print("compose auth secret == running auth:", yn(a and a == os.environ["AUTH_S"]), "| == .env:", yn(a and a == e))' || true
   for svc in auth rest storage; do
     want="$(printf '%s\n' "$hashes" | awk -v s="$svc" '$1 == s {print $2}')"
-    have="$(label_of "${stack_project}-${svc}-1" com.docker.compose.config-hash)"
+    case "$svc" in auth) current_container="$AUTH_CONTAINER" ;; rest) current_container="$REST_CONTAINER" ;; storage) current_container="$STORAGE_CONTAINER" ;; esac
+    have="$(label_of "$current_container" com.docker.compose.config-hash)"
     if [ -z "$want" ]; then state="unknown"; elif [ "$want" = "$have" ]; then state="matches compose files + .env"; else state="STALE (differs from compose files + .env)"; fi
     printf 'container %-8s                   %s\n' "$svc:" "$state"
   done

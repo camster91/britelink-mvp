@@ -1,0 +1,272 @@
+{
+  "services": {
+    "db": {
+      "image": "sha256:0e2279598bc0224fb5960c3a61eb23270cd60119427f3a7bdec86ba282600dcc",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "environment": {
+        "POSTGRES_DB": "${BRITELINK_PROD_DB_POSTGRES_DB}",
+        "POSTGRES_PASSWORD": "${BRITELINK_PROD_DB_POSTGRES_PASSWORD}",
+        "PATH": "${BRITELINK_PROD_DB_PATH}",
+        "PGDATA": "${BRITELINK_PROD_DB_PGDATA}",
+        "POSTGRES_HOST": "${BRITELINK_PROD_DB_POSTGRES_HOST}",
+        "POSTGRES_USER": "${BRITELINK_PROD_DB_POSTGRES_USER}",
+        "LANG": "${BRITELINK_PROD_DB_LANG}",
+        "LANGUAGE": "${BRITELINK_PROD_DB_LANGUAGE}",
+        "LC_ALL": "${BRITELINK_PROD_DB_LC_ALL}",
+        "LC_CTYPE": "${BRITELINK_PROD_DB_LC_CTYPE}",
+        "LC_COLLATE": "${BRITELINK_PROD_DB_LC_COLLATE}",
+        "LOCALE_ARCHIVE": "${BRITELINK_PROD_DB_LOCALE_ARCHIVE}"
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "target": "/var/lib/postgresql/data",
+          "read_only": false,
+          "source": "db_var_lib_postgresql_data"
+        }
+      ],
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "command": [
+        "postgres",
+        "-D",
+        "/etc/postgresql"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U postgres -d postgres"
+        ],
+        "interval": "3000000000ns",
+        "timeout": "3000000000ns",
+        "start_period": "30000000000ns",
+        "retries": 40
+      },
+      "working_dir": "/",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "container_name": "britelink-production-db-1"
+    },
+    "auth": {
+      "image": "sha256:0cfa54e096dcae4ed30162811fa8794f7c443708c41973329e07f7d44c1cc3e7",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "environment": {
+        "GOTRUE_SMTP_USER": "${BRITELINK_PROD_AUTH_GOTRUE_SMTP_USER}",
+        "GOTRUE_MAILER_AUTOCONFIRM": "${BRITELINK_PROD_AUTH_GOTRUE_MAILER_AUTOCONFIRM}",
+        "GOTRUE_JWT_AUD": "${BRITELINK_PROD_AUTH_GOTRUE_JWT_AUD}",
+        "GOTRUE_API_HOST": "${BRITELINK_PROD_AUTH_GOTRUE_API_HOST}",
+        "GOTRUE_JWT_EXP": "${BRITELINK_PROD_AUTH_GOTRUE_JWT_EXP}",
+        "GOTRUE_EXTERNAL_EMAIL_ENABLED": "${BRITELINK_PROD_AUTH_GOTRUE_EXTERNAL_EMAIL_ENABLED}",
+        "GOTRUE_LOG_LEVEL": "${BRITELINK_PROD_AUTH_GOTRUE_LOG_LEVEL}",
+        "GOTRUE_RATE_LIMIT_EMAIL_SENT": "${BRITELINK_PROD_AUTH_GOTRUE_RATE_LIMIT_EMAIL_SENT}",
+        "GOTRUE_SMTP_SENDER_NAME": "${BRITELINK_PROD_AUTH_GOTRUE_SMTP_SENDER_NAME}",
+        "GOTRUE_DB_MIGRATIONS_PATH": "${BRITELINK_PROD_AUTH_GOTRUE_DB_MIGRATIONS_PATH}",
+        "GOTRUE_DB_DRIVER": "${BRITELINK_PROD_AUTH_GOTRUE_DB_DRIVER}",
+        "GOTRUE_API_PORT": "${BRITELINK_PROD_AUTH_GOTRUE_API_PORT}",
+        "GOTRUE_SMTP_PORT": "${BRITELINK_PROD_AUTH_GOTRUE_SMTP_PORT}",
+        "GOTRUE_URI_ALLOW_LIST": "${BRITELINK_PROD_AUTH_GOTRUE_URI_ALLOW_LIST}",
+        "GOTRUE_MAILER_OTP_EXP": "${BRITELINK_PROD_AUTH_GOTRUE_MAILER_OTP_EXP}",
+        "GOTRUE_SMTP_ADMIN_EMAIL": "${BRITELINK_PROD_AUTH_GOTRUE_SMTP_ADMIN_EMAIL}",
+        "GOTRUE_JWT_DEFAULT_GROUP_NAME": "${BRITELINK_PROD_AUTH_GOTRUE_JWT_DEFAULT_GROUP_NAME}",
+        "GOTRUE_MAILER_EXTERNAL_HOSTS": "${BRITELINK_PROD_AUTH_GOTRUE_MAILER_EXTERNAL_HOSTS}",
+        "DATABASE_URL": "${BRITELINK_PROD_AUTH_DATABASE_URL}",
+        "GOTRUE_DISABLE_SIGNUP": "${BRITELINK_PROD_AUTH_GOTRUE_DISABLE_SIGNUP}",
+        "GOTRUE_SMTP_HOST": "${BRITELINK_PROD_AUTH_GOTRUE_SMTP_HOST}",
+        "GOTRUE_SMTP_PASS": "${BRITELINK_PROD_AUTH_GOTRUE_SMTP_PASS}",
+        "GOTRUE_SITE_URL": "${BRITELINK_PROD_AUTH_GOTRUE_SITE_URL}",
+        "API_EXTERNAL_URL": "${BRITELINK_PROD_AUTH_API_EXTERNAL_URL}",
+        "GOTRUE_JWT_SECRET": "${BRITELINK_PROD_AUTH_GOTRUE_JWT_SECRET}",
+        "PATH": "${BRITELINK_PROD_AUTH_PATH}"
+      },
+      "volumes": [],
+      "command": [
+        "auth"
+      ],
+      "user": "supabase",
+      "working_dir": "/",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "container_name": "britelink-production-auth-1"
+    },
+    "rest": {
+      "image": "sha256:729bf65c733b73f5b52777f0e4b853f22ed73aa67a22d38269d289779b0a8401",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "environment": {
+        "PGRST_DB_URI": "${BRITELINK_PROD_REST_PGRST_DB_URI}",
+        "PGRST_DB_SCHEMAS": "${BRITELINK_PROD_REST_PGRST_DB_SCHEMAS}",
+        "PGRST_DB_ANON_ROLE": "${BRITELINK_PROD_REST_PGRST_DB_ANON_ROLE}",
+        "PGRST_JWT_SECRET": "${BRITELINK_PROD_REST_PGRST_JWT_SECRET}",
+        "PGRST_DB_USE_LEGACY_GUCS": "${BRITELINK_PROD_REST_PGRST_DB_USE_LEGACY_GUCS}"
+      },
+      "volumes": [],
+      "command": [
+        "/bin/postgrest"
+      ],
+      "user": "1000",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "container_name": "britelink-production-rest-1"
+    },
+    "storage": {
+      "image": "sha256:1e85dad48e8b3e85890a555e5114dc7ee48c2e8be4cfd97dd4e3564b4f104fcd",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "environment": {
+        "SERVICE_KEY": "${BRITELINK_PROD_STORAGE_SERVICE_KEY}",
+        "DATABASE_URL": "${BRITELINK_PROD_STORAGE_DATABASE_URL}",
+        "STORAGE_BACKEND": "${BRITELINK_PROD_STORAGE_STORAGE_BACKEND}",
+        "ANON_KEY": "${BRITELINK_PROD_STORAGE_ANON_KEY}",
+        "FILE_STORAGE_BACKEND_PATH": "${BRITELINK_PROD_STORAGE_FILE_STORAGE_BACKEND_PATH}",
+        "GLOBAL_S3_BUCKET": "${BRITELINK_PROD_STORAGE_GLOBAL_S3_BUCKET}",
+        "TENANT_ID": "${BRITELINK_PROD_STORAGE_TENANT_ID}",
+        "POSTGREST_URL": "${BRITELINK_PROD_STORAGE_POSTGREST_URL}",
+        "PGRST_JWT_SECRET": "${BRITELINK_PROD_STORAGE_PGRST_JWT_SECRET}",
+        "ENABLE_IMAGE_TRANSFORMATION": "${BRITELINK_PROD_STORAGE_ENABLE_IMAGE_TRANSFORMATION}",
+        "REGION": "${BRITELINK_PROD_STORAGE_REGION}",
+        "PATH": "${BRITELINK_PROD_STORAGE_PATH}",
+        "NODE_VERSION": "${BRITELINK_PROD_STORAGE_NODE_VERSION}",
+        "YARN_VERSION": "${BRITELINK_PROD_STORAGE_YARN_VERSION}",
+        "VERSION": "${BRITELINK_PROD_STORAGE_VERSION}"
+      },
+      "volumes": [
+        {
+          "type": "volume",
+          "target": "/var/lib/storage",
+          "read_only": false,
+          "source": "storage_var_lib_storage"
+        }
+      ],
+      "entrypoint": [
+        "docker-entrypoint.sh"
+      ],
+      "command": [
+        "node",
+        "dist/start/server.js"
+      ],
+      "working_dir": "/app",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "container_name": "britelink-production-storage-1"
+    },
+    "gateway": {
+      "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "networks": [
+        "backend"
+      ],
+      "environment": {
+        "PATH": "${BRITELINK_PROD_GATEWAY_PATH}",
+        "NGINX_VERSION": "${BRITELINK_PROD_GATEWAY_NGINX_VERSION}",
+        "PKG_RELEASE": "${BRITELINK_PROD_GATEWAY_PKG_RELEASE}",
+        "DYNPKG_RELEASE": "${BRITELINK_PROD_GATEWAY_DYNPKG_RELEASE}",
+        "NJS_VERSION": "${BRITELINK_PROD_GATEWAY_NJS_VERSION}",
+        "NJS_RELEASE": "${BRITELINK_PROD_GATEWAY_NJS_RELEASE}"
+      },
+      "volumes": [
+        {
+          "type": "bind",
+          "target": "/etc/nginx/conf.d/default.conf",
+          "read_only": true,
+          "source": "/opt/britelink-production/supabase/selfhosted/gateway.conf"
+        }
+      ],
+      "entrypoint": [
+        "/docker-entrypoint.sh"
+      ],
+      "command": [
+        "nginx",
+        "-g",
+        "daemon off;"
+      ],
+      "ports": [
+        {
+          "target": 8000,
+          "published": "8098",
+          "host_ip": "127.0.0.1",
+          "protocol": "tcp"
+        }
+      ],
+      "working_dir": "/",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      },
+      "container_name": "britelink-production-gateway-1"
+    }
+  },
+  "volumes": {
+    "db_var_lib_postgresql_data": {
+      "external": true,
+      "name": "britelink-production_db-data"
+    },
+    "storage_var_lib_storage": {
+      "external": true,
+      "name": "britelink-production_storage-data"
+    }
+  },
+  "networks": {
+    "backend": {
+      "driver": "bridge"
+    }
+  }
+}
