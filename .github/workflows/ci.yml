@@ -40,8 +40,9 @@ jobs:
         run: |
           python3 -m unittest discover -s deploy/coolify-backend -p 'test_*.py'
           python3 -m py_compile deploy/coolify-backend/backup.py deploy/coolify-backend/bootstrap.py deploy/coolify-backend/production.py
-          bash -n deploy/coolify-backend/before-deploy.sh
-          bash -n deploy/coolify-backend/helper-production.sh scripts/backup-production.sh scripts/ops-check.sh
+          for script in deploy/coolify-backend/before-deploy.sh deploy/coolify-backend/helper-production.sh scripts/backup-production.sh scripts/ops-check.sh; do
+            bash -n "$script"
+          done
 
       - name: Install dependencies
         run: npm ci
