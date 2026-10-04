@@ -36,6 +36,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Coolify backend ownership and syntax checks
+        run: |
+          python3 -m unittest discover -s deploy/coolify-backend -p 'test_*.py'
+          python3 -m py_compile deploy/coolify-backend/backup.py deploy/coolify-backend/bootstrap.py
+          bash -n deploy/coolify-backend/before-deploy.sh
+
       - name: Install dependencies
         run: npm ci
 
