@@ -174,6 +174,21 @@ const repository = {
     state.calls.push(["listStaffRevisions", h]);
     return state.revisions;
   },
+  async listStaffNames(h) {
+    state.calls.push(["listStaffNames", h]);
+    // educator-a has set a name; the signed-in admin (admin-a) has not, until the audit saves one.
+    return state.staffNames ?? [{ user_id: "educator-a", display_name: "Jordan Lee" }];
+  },
+  async setStaffDisplayName(name) {
+    state.calls.push(["setStaffDisplayName", name]);
+    const clean = String(name ?? "").trim();
+    if (!clean || clean.length > 80) throw new Error("Save your name: name must be 1 to 80 characters");
+    state.staffNames = [
+      ...(state.staffNames ?? [{ user_id: "educator-a", display_name: "Jordan Lee" }]).filter((row) => row.user_id !== "admin-a"),
+      { user_id: "admin-a", display_name: clean },
+    ];
+    return clean;
+  },
   async listEducatorCapacities(h) {
     state.calls.push(["listEducatorCapacities", h]);
     return [

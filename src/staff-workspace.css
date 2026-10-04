@@ -4,3 +4,9 @@
 .staff-case .staff-focus-status{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end}
 #selected-case-heading:focus{outline:none}
 #selected-case-heading:focus-visible{outline:3px solid #75a9ef;outline-offset:3px}
+.staff-name-form{display:grid;gap:6px;margin-top:12px;max-width:420px}
+.staff-name-form label{font-size:13px;font-weight:600;color:#081326}
+.staff-name-form label span{font-weight:400;color:#45566c}
+.staff-name-row{display:flex;gap:8px;flex-wrap:wrap}
+.staff-name-row input{flex:1 1 200px;min-height:44px}
+.staff-name-row button{min-height:44px}

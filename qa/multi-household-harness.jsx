@@ -10,7 +10,7 @@ const repository={
   async listMemberships(){state.calls.push(["listMemberships"]);return memberships},
   listLearners:scoped("listLearners",householdId=>[{id:householdId==="household-family"?"learner-family":"learner-staff",preferred_name:householdId==="household-family"?"Family learner":"Staff learner",grade_label:"Grade 4"}]),
   listCases:scoped("listCases",[]),loadLatestProfile:scoped("loadLatestProfile",null),loadPublishedPlans:scoped("loadPublishedPlans",[]),listLessonActivities:scoped("listLessonActivities",[]),listMessages:scoped("listMessages",[]),listActiveConsents:scoped("listActiveConsents",[]),listPrivacyRequests:scoped("listPrivacyRequests",[]),
-  listStaffProfiles:scoped("listStaffProfiles",[]),listLearningCaptures:scoped("listLearningCaptures",[]),listStaffPlans:scoped("listStaffPlans",[]),listStaffReviews:scoped("listStaffReviews",[]),listStaffRevisions:scoped("listStaffRevisions",[]),listEducatorCapacities:scoped("listEducatorCapacities",[]),listStaffDeliveries:scoped("listStaffDeliveries",[]),listStaffMessages:scoped("listStaffMessages",[]),
+  listStaffProfiles:scoped("listStaffProfiles",[]),listLearningCaptures:scoped("listLearningCaptures",[]),listStaffPlans:scoped("listStaffPlans",[]),listStaffReviews:scoped("listStaffReviews",[]),listStaffRevisions:scoped("listStaffRevisions",[]),listStaffNames:scoped("listStaffNames",[]),listEducatorCapacities:scoped("listEducatorCapacities",[]),listStaffDeliveries:scoped("listStaffDeliveries",[]),listStaffMessages:scoped("listStaffMessages",[]),
   async signOut(){state.calls.push(["signOut"])}
 };
 createRoot(document.getElementById("root")).render(<Workspace repository={repository} session={{user:{id:"user-multi",email:"multi@example.test"}}} privacyNoticeVersion={null}/>);

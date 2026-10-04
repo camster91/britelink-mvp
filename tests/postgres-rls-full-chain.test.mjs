@@ -46,6 +46,7 @@ const NON_HOUSEHOLD_RPCS = new Map([
   ["day_plan_id", "policy helper; as above"],
   ["package_plan_weeks", "pure lookup over package codes; no household data"],
   ["provision_beta_household", "caller-scoped by auth.uid(); covered by its own test below"],
+  ["set_staff_display_name", "writes only the caller's own name row (auth.uid()); covered in review-integrity.test.mjs"],
 ]);
 
 // Which of household B's rows to hand an RPC for each uuid parameter.

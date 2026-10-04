@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   latestForCase,
   loadStaffWorkspaceData,
@@ -153,6 +153,26 @@ export function EducatorWorkspace({
     if (selected?.id && selected.id !== selectedId) setSelectedId(selected.id);
   }, [selected?.id, selectedId]);
   const currentLearners = data.learners?.length ? data.learners : learners;
+  // Names staff set for themselves (057), loaded apart from the case data: they only label
+  // people, so if they cannot load, staff see IDs and every case action keeps working.
+  const [staffNameRows, setStaffNameRows] = useState([]);
+  const loadStaffNames = useCallback(async () => {
+    try {
+      setStaffNameRows((await repository.listStaffNames?.(household.household_id)) ?? []);
+    } catch {
+      setStaffNameRows([]);
+    }
+  }, [household.household_id, repository]);
+  useEffect(() => {
+    loadStaffNames();
+  }, [loadStaffNames]);
+  const staffNames = new Map(
+    staffNameRows.map((row) => [row.user_id, row.display_name]),
+  );
+  const staffLabel = (id) =>
+    id === userId
+      ? "You"
+      : (staffNames.get(id) ?? `Educator ${String(id).slice(0, 8)} (no name yet)`);
 
   useEffect(() => {
     if (!newCaseLearnerId && currentLearners.length) {
@@ -355,6 +375,11 @@ export function EducatorWorkspace({
           <p className="staff-lead">
             Work the highest-priority case first. Queue order is overdue, revision, clarification, then SLA.
           </p>
+          <StaffNameForm
+            current={staffNames.get(userId) ?? ""}
+            repository={repository}
+            onSaved={loadStaffNames}
+          />
         </div>
         <div className="staff-header-actions">
           <span className="case-status">{membership.role}</span>
@@ -652,10 +677,7 @@ export function EducatorWorkspace({
                         key={item.educator_user_id}
                         value={item.educator_user_id}
                       >
-                        {item.educator_user_id === userId
-                          ? "You"
-                          : `Educator ${item.educator_user_id.slice(0, 8)}`}{" "}
-                        ·{" "}
+                        {staffLabel(item.educator_user_id)} ·{" "}
                         {
                           data.cases.filter(
                             (row) =>
@@ -876,7 +898,8 @@ export function EducatorWorkspace({
                           <strong>
                             {message.sender_user_id === userId
                               ? "You"
-                              : "Household"}
+                              : (staffNames.get(message.sender_user_id) ??
+                                "Household")}
                           </strong>
                           <span>
                             {message.resolved_at
@@ -1051,5 +1074,73 @@ export function EducatorWorkspace({
         </div>
       )}
     </section>
+  );
+}
+
+// The name other staff see in the assign list and message thread, instead of a user ID.
+function StaffNameForm({ current, repository, onSaved }) {
+  const id = useId();
+  const [name, setName] = useState(current);
+  const [state, setState] = useState({ status: "idle", message: "" });
+  const inputRef = useRef(null);
+  // The saved name arrives after the first render (and again after a save).
+  useEffect(() => {
+    setName(current);
+  }, [current]);
+  const save = async (event) => {
+    event.preventDefault();
+    if (!name.trim()) {
+      setState({ status: "error", message: "Add your name, as other staff should see it." });
+      inputRef.current?.focus();
+      return;
+    }
+    setState({ status: "loading", message: "Saving…" });
+    try {
+      await repository.setStaffDisplayName(name);
+      setState({ status: "success", message: "Saved. Other staff now see this name." });
+      onSaved?.();
+    } catch (error) {
+      setState({ status: "error", message: error.message });
+      inputRef.current?.focus();
+    }
+  };
+  const invalid = state.status === "error";
+  return (
+    <form className="staff-name-form" onSubmit={save} noValidate>
+      <label htmlFor={`${id}-name`}>
+        Your name, shown to other staff
+        {!current ? <span> (not set yet)</span> : null}
+      </label>
+      <div className="staff-name-row">
+        <input
+          id={`${id}-name`}
+          ref={inputRef}
+          maxLength="80"
+          autoComplete="name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          aria-invalid={invalid ? true : undefined}
+          aria-describedby={invalid ? `${id}-error` : undefined}
+        />
+        <button
+          className="ghost"
+          disabled={
+            state.status === "loading" ||
+            (name.trim() !== "" && name.trim() === current)
+          }
+        >
+          Save name
+        </button>
+      </div>
+      {invalid ? (
+        <p role="alert" id={`${id}-error`} className="form-error-summary">
+          {state.message}
+        </p>
+      ) : state.message ? (
+        <p role="status" className="staff-next-hint">
+          {state.message}
+        </p>
+      ) : null}
+    </form>
   );
 }
