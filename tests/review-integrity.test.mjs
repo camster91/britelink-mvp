@@ -210,3 +210,66 @@ test("migration 053 integrity rules", async (t) => {
     await db.close();
   }
 });
+
+test("migration 057 staff display names", async (t) => {
+  const db = await database();
+  // Runs several statements as one user in one rolled-back transaction, returning each result.
+  const steps = async (userId, sqls) => {
+    await db.exec("begin");
+    try {
+      await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+      const out = [];
+      for (const sql of sqls) out.push((await db.query(sql)).rows);
+      return out;
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const seedName = `insert into public.staff_display_names(user_id, display_name) values ('${users.educatorA}', 'Ms. Rivera');`;
+  try {
+    await t.test("staff set their own name and staff of the same household can read it", async () => {
+      const [[set]] = await steps(users.educatorA, [`select public.set_staff_display_name('  Ms. Rivera ') as name`]);
+      assert.equal(set.name, "Ms. Rivera");
+      await db.exec("begin");
+      try {
+        await db.exec(seedName);
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.adminA}', true);`);
+        const rows = (await db.query(`select display_name from public.staff_display_names where user_id = $1`, [users.educatorA])).rows;
+        assert.deepEqual(rows, [{ display_name: "Ms. Rivera" }]);
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("guardians cannot set a staff name or read staff names", async () => {
+      await assert.rejects(() => steps(users.guardianA, [`select public.set_staff_display_name('Parent')`]), /staff access required/);
+      await db.exec("begin");
+      try {
+        await db.exec(seedName);
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.guardianA}', true);`);
+        assert.equal((await db.query(`select 1 from public.staff_display_names`)).rows.length, 0);
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("another household's staff cannot read the name", async () => {
+      await db.exec("begin");
+      try {
+        await db.exec(seedName);
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.adminB}', true);`);
+        assert.equal((await db.query(`select 1 from public.staff_display_names`)).rows.length, 0);
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("a blank or too-long name is refused, and the table cannot be written directly", async () => {
+      await assert.rejects(() => steps(users.educatorA, [`select public.set_staff_display_name('   ')`]), /1 to 80 characters/);
+      await assert.rejects(() => steps(users.educatorA, [`select public.set_staff_display_name('${"x".repeat(81)}')`]), /1 to 80 characters/);
+      await assert.rejects(() => steps(users.educatorA, [`insert into public.staff_display_names(user_id, display_name) values ('${users.adminA}', 'Not me')`]), /permission denied|row-level security/);
+    });
+  } finally {
+    await db.close();
+  }
+});

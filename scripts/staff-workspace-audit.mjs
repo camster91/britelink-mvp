@@ -31,6 +31,16 @@ try {
     waitUntil: "networkidle",
   });
   await page.getByRole("heading", { name: "Educator workbench" }).waitFor();
+  // Staff name (057): a blank name is refused with a named error; a saved name shows in place of an ID.
+  const nameField = page.getByLabel(/Your name, shown to other staff/);
+  await nameField.fill("   ");
+  await page.getByRole("button", { name: "Save name" }).click();
+  await page.getByText("Add your name, as other staff should see it.").waitFor();
+  if ((await nameField.getAttribute("aria-invalid")) !== "true") throw new Error("blank staff name must mark the field invalid");
+  await nameField.fill("Ms. Rivera");
+  await page.getByRole("button", { name: "Save name" }).click();
+  await page.getByText("Saved. Other staff now see this name.").waitFor();
+  await page.waitForFunction(() => document.querySelector(".staff-name-form input")?.value === "Ms. Rivera" && !document.querySelector(".staff-name-form label span"));
   if (await page.getByRole("heading", { name: /Maya’s plan/ }).count())
     throw new Error("Admin account routed to guardian workspace");
   await page.evaluate(() => {
@@ -232,6 +242,8 @@ try {
     .getByText("Usable intake acceptance completed and audited.")
     .waitFor();
   await page.locator('select[name="educator"]').selectOption("educator-a");
+  if (!(await page.getByLabel("Educator").locator("option", { hasText: "Jordan Lee" }).count()))
+    throw new Error("assign list must show the educator's saved name, not an ID");
   await page.getByRole("button", { name: "Assign case" }).click();
   await page.getByText("Case assignment completed and audited.").waitFor();
   await page
