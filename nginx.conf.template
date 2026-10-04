@@ -64,6 +64,11 @@ server {
     # fonts.googleapis.com, which this policy blocked -- the browser silently fell back to system
     # fonts and logged a CSP violation on every load).
     add_header Content-Security-Policy "default-src 'self'; connect-src 'self' ${BRITELINK_API_ORIGIN}; img-src 'self' data:; style-src 'self'; script-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+    # The page itself (index.html, every app route, /version.json) must be revalidated on each
+    # visit. A deploy replaces the hashed /assets files; a browser that kept an old index.html
+    # would ask for scripts that no longer exist and show a blank app. Hashed assets keep their
+    # own long-lived Cache-Control in the static location below, which overrides this one.
+    add_header Cache-Control "no-cache" always;
 
     location / {
         try_files $uri $uri/ /index.html;

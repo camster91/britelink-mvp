@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Bring an existing BriteLink database up to date: apply whichever of migrations 039-054 it is
+# Bring an existing BriteLink database up to date: apply whichever of migrations 039 onward it is
 # missing, in order, each in its own transaction, after a pg_dump backup.
 #
 # Why this exists: supabase/selfhosted up.sh applies every migration once, at bootstrap, and
@@ -50,8 +50,19 @@ declare -A check=(
 )
 # Re-runnable files (create or replace / drop if exists / revoke / grant): safe to apply when
 # missing even if a later migration is present, so they are exempt from the ordering check.
-rerunnable=" 039 040 041 042 045 053 054 "
+rerunnable=" 039 040 041 042 045 053 054 055 056 057 "
 file_for() { local hit; for hit in "$migrations"/202608280"$1"_*.sql; do [ -f "$hit" ] && { echo "$hit"; return; }; done; }
+
+# Every migration file after 038 must be registered above. Without this, a new file that nobody
+# added to order/check would be silently ignored and this script would report "Up to date".
+for f in "$migrations"/202608280*_*.sql; do
+  n="$(basename "$f")"; n="${n:9:3}"
+  [ "$((10#$n))" -gt 38 ] || continue
+  if [[ " ${order[*]} " != *" $n "* ]] || [ -z "${check[$n]:-}" ]; then
+    echo "FAIL: $(basename "$f") is not registered in this script; add it to order and check before applying anything." >&2
+    exit 1
+  fi
+done
 
 echo "== database: container ${container} =="
 if [ "$(probe "to_regprocedure('public.guardian_add_learner(uuid,text,text,text,text)') is not null")" != "1" ]; then
@@ -85,12 +96,17 @@ if [ "$mode" != "--apply" ]; then
   exit 0
 fi
 
-mkdir -p "$backup_dir"
+# The backup holds every family's data: readable by root only, and never left half-written under
+# a name that looks complete.
+umask 077
+mkdir -p "$backup_dir"; chmod 700 "$backup_dir"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dump="$backup_dir/pre-migrate-${stamp}.dump"
+partial="${dump}.partial"
 echo "== backing up to ${dump} =="
-docker exec "$container" pg_dump -U postgres -d postgres -Fc >"$dump"
-[ -s "$dump" ] || { echo "FAIL: the backup is empty; nothing was applied." >&2; exit 1; }
+docker exec "$container" pg_dump -U postgres -d postgres -Fc >"$partial" || { rm -f "$partial"; echo "FAIL: the backup failed; nothing was applied." >&2; exit 1; }
+[ -s "$partial" ] || { rm -f "$partial"; echo "FAIL: the backup is empty; nothing was applied." >&2; exit 1; }
+mv -- "$partial" "$dump"
 echo "  ok   $(du -h "$dump" | cut -f1) (restore: docker exec -i ${container} pg_restore -U postgres -d postgres --clean --if-exists < ${dump})"
 
 echo "== applying ${#missing[@]} migration(s), each in its own transaction =="

@@ -117,7 +117,7 @@ restore) is a measurement of an empty database, not an RTO.
 
 `.github/workflows/backup.yml` runs `scripts/backup-production.sh` on the VPS every night at 07:43 UTC. Each run:
 
-1. writes a full `pg_dump` (custom format; public, auth and storage) to `/root/britelink-backups/nightly-<time>.dump`, mode `0600`, after checking there is disk room;
+1. writes a full `pg_dump` (custom format; public, auth and storage) to `/root/britelink-backups/nightly-<time>.dump.unverified`, mode `0600`, after checking there is disk room. It becomes `nightly-<time>.dump` only after the restore check below passes, so every `nightly-*.dump` is a proven backup. A file still ending in `.unverified` failed its check: never restore from it without investigating, and it is not counted or removed by retention;
 2. restores it into a throwaway, network-less container of the **same** image as production;
 3. requires identical row counts in every public table and in `auth.users`;
 4. keeps the newest 14 nightly dumps.
