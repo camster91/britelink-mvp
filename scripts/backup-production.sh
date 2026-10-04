@@ -20,7 +20,22 @@ CHECK_CONTAINER="britelink-backup-restore-check"
 
 fail() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
 project="$(docker inspect "$DB_CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
-[ "$project" = "britelink-production" ] || fail "$DB_CONTAINER is not the britelink-production database (project: ${project:-none})"
+if [ "$project" != "britelink-production" ]; then
+  [[ "$project" =~ ^[a-z0-9]{20,40}$ ]] || fail "database project is not a supported production owner"
+  application_id="$(docker inspect "$DB_CONTAINER" --format '{{index .Config.Labels "coolify.applicationId"}}')"
+  [[ "$application_id" =~ ^[0-9]+$ ]] || fail "database lacks a Coolify application owner"
+  ownership="$(docker exec coolify php -r '
+    try {
+      require "/var/www/html/vendor/autoload.php";
+      $app=require "/var/www/html/bootstrap/app.php";
+      $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+      $r=App\Models\Application::findOrFail($argv[1]);
+      if($r->uuid!==$argv[2] || $r->git_repository!=="camster91/britelink-mvp" || $r->git_branch!=="main" || $r->docker_compose_location!=="/docker-compose.coolify-backend-production.json") exit(1);
+      echo "verified";
+    } catch(Throwable $e) { exit(1); }
+  ' "$application_id" "$project")" || fail "Coolify production ownership rejected"
+  [ "$ownership" = verified ] || fail "Coolify production ownership unconfirmed"
+fi
 image="$(docker inspect "$DB_CONTAINER" --format '{{.Config.Image}}')"
 psql_prod() { docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -tA -U postgres -d postgres "$@"; }
 
