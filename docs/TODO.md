@@ -10,7 +10,7 @@ person), **code** (can be built in this repo), or **both**.
 - Production at https://britelink.ashbi.ca runs current `main`. Every merge to `main` deploys
   automatically through GitHub Actions (CI, then Deploy, with a `/version.json` check), per #33.
   Moving deploys to Coolify is a later choice for Cameron.
-- Self-hosted Supabase (`britelink-production` stack on the VPS) has migrations 001-055 (053 review integrity and 054 privacy integrity applied 2026-10-01; 055 revision-requires-request applied 2026-10-02; each after a pre-migrate backup). 056 (revisions end only through complete/decline; overdue marking skips delivered cases and includes internal review) is in the repo and waits for the owner's go to apply through the Migrate workflow. Auth,
+- Self-hosted Supabase (`britelink-production` stack on the VPS) has all 56 migrations (053 review integrity and 054 privacy integrity applied 2026-10-01; 055 revision-requires-request and 056 staff-workflow integrity applied 2026-10-02; each after a pre-migrate backup). Auth,
   database API and storage share the key-signing secret. The site's public key is accepted.
 - The approved privacy notice `2026-09-30` is live, so guardian intake is open.
 - Features shipped: flexible week, day-aware next action, calm lesson completion with undo,

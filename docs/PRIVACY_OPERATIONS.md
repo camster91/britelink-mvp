@@ -18,6 +18,13 @@ Status: implementation baseline pending qualified Canadian privacy counsel appro
 4. Corrections create a new version and preserve the audit history; do not silently rewrite reviewed plans or consent history.
 5. Deletion creates a pending request. An independent admin verifies identity, co-guardian impact, legal holds, and the approved retention basis before scheduling it at least 24 hours ahead. The schedule remains cancellable and does not itself erase data or disable access.
 6. A separately authorized service job disables access and performs physical deletion only after the scheduled eligibility time, then reconciles primary data, derived files, search indexes, delivery artifacts, and backup expiry. That service job is not implemented or approved yet.
+   - **Sign-in accounts are removed by hand, not by the job** (owner decision, 2026-10-04). Erasing a household deletes its data but leaves each guardian's email sign-in in place. Automatic removal is deliberately not built.
+     1. *Before* erasure, write down the user IDs of the household's guardians. Membership rows disappear with the household.
+        `select user_id from public.memberships where household_id = '<household>' and role = 'guardian';`
+     2. After erasure, check each ID still has no membership anywhere. Any row means the person belongs to another family or does staff work, so **keep their sign-in**.
+        `select household_id, role from public.memberships where user_id = '<user>';`
+     3. For each ID with no rows, delete the user in Supabase Studio under Authentication → Users. Never delete a staff account this way.
+     4. Note in the privacy request's resolution which sign-ins were removed and which were kept, and why.
 7. Deliver exports and confirmations through the secure portal and record guardian acknowledgement.
 
 ## Consent and retention
