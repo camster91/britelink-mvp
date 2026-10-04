@@ -3,7 +3,10 @@
 # .github/workflows/backup.yml. Nothing here writes to the production database.
 #
 #   1. pg_dump (custom format) of the whole production database -- public, auth and storage schemas
-#      -- to $BACKUP_DIR/nightly-<UTC time>.dump, mode 0600, after checking there is disk room.
+#      -- to $BACKUP_DIR/nightly-<UTC time>.dump.unverified, mode 0600, after checking there is disk
+#      room. It is renamed to nightly-<UTC time>.dump only after step 3 passes, so every file named
+#      nightly-*.dump has been proven to restore. A dump that failed verification stays as
+#      .unverified for inspection and never counts toward, or is removed by, retention.
 #   2. Records row counts of every public table and auth.users at dump time.
 #   3. Restores the dump into a throwaway container of the SAME image as production (no network,
 #      removed on exit) and requires the same row counts there. A dump that cannot be restored, or
@@ -50,6 +53,7 @@ COUNT_SQL="select string_agg(format('%s %s', t, n), E'\n' order by t) from (
 mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dump="$BACKUP_DIR/nightly-$stamp.dump"
+pending="$dump.unverified"
 
 db_bytes="$(psql_prod -c "select pg_database_size('postgres')")"
 free_bytes="$(df -PB1 "$BACKUP_DIR" | awk 'NR==2 {print $4}')"
@@ -67,11 +71,11 @@ read -r -t 30 snapshot <&"${SNAP[0]}" || true
 release_snapshot() { if [ -n "${SNAP_PID:-}" ]; then echo "commit;" >&"${SNAP[1]}" 2>/dev/null || true; exec {SNAP[1]}>&- 2>/dev/null || true; wait "$SNAP_PID" 2>/dev/null || true; fi; }
 before="$(psql_prod -q -c "begin isolation level repeatable read read only" -c "set transaction snapshot '$snapshot'" -c "$COUNT_SQL" -c "commit")"
 umask 077
-docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres -Fc --snapshot="$snapshot" > "$dump" || { release_snapshot; rm -f "$dump"; fail "pg_dump failed"; }
+docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres -Fc --snapshot="$snapshot" > "$pending" || { release_snapshot; rm -f "$pending"; fail "pg_dump failed"; }
 release_snapshot
-[ -s "$dump" ] || { rm -f "$dump"; fail "the dump is empty"; }
-entries="$(docker exec -i "$DB_CONTAINER" pg_restore --list < "$dump" | grep -vc '^;' || true)"
-echo "  ok   $dump ($(du -h "$dump" | cut -f1), $entries archive entries)"
+[ -s "$pending" ] || { rm -f "$pending"; fail "the dump is empty"; }
+entries="$(docker exec -i "$DB_CONTAINER" pg_restore --list < "$pending" | grep -vc '^;' || true)"
+echo "  ok   $pending ($(du -h "$pending" | cut -f1), $entries archive entries)"
 echo "  tables and rows at dump time: $(printf '%s\n' "$before" | wc -l) tables, $(printf '%s\n' "$before" | awk '{s+=$2} END {print s+0}') rows"
 
 echo "== restore check (throwaway $image, no network) =="
@@ -91,17 +95,19 @@ done
 # --clean --if-exists replaces what the image's own init created with the backup's version. Some
 # "already exists"/ownership notices are expected against a fresh Supabase image; the row counts
 # below are the verdict, not pg_restore's exit status.
-docker exec -i "$CHECK_CONTAINER" pg_restore -U postgres -h 127.0.0.1 -d postgres --clean --if-exists --no-owner < "$dump" \
+docker exec -i "$CHECK_CONTAINER" pg_restore -U postgres -h 127.0.0.1 -d postgres --clean --if-exists --no-owner < "$pending" \
   > /dev/null 2> "$BACKUP_DIR/.restore-check-$stamp.log" || true
 after="$(docker exec -i "$CHECK_CONTAINER" psql -X -tA -U postgres -h 127.0.0.1 -d postgres -c "$COUNT_SQL" 2>/dev/null || true)"
 if [ -n "$after" ] && [ "$before" = "$after" ]; then
   echo "  ok   restored copy has identical row counts in every table"
   rm -f "$BACKUP_DIR/.restore-check-$stamp.log"
+  mv -- "$pending" "$dump"
+  echo "  ok   verified: $(basename "$dump")"
 else
   echo "  row count differences (table live restored):"
   join -a1 -a2 -e missing -o 0,1.2,2.2 <(printf '%s\n' "$before" | sort) <(printf '%s\n' "$after" | sort) | awk '$2 != $3' | head -20 | sed 's/^/    /'
   echo "  pg_restore messages: $BACKUP_DIR/.restore-check-$stamp.log ($(wc -l < "$BACKUP_DIR/.restore-check-$stamp.log") lines)"
-  fail "the backup did not restore to identical data" 2
+  fail "the backup did not restore to identical data; kept as $(basename "$pending")" 2
 fi
 
 echo "== retention (keep newest $KEEP) =="

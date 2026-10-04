@@ -110,16 +110,25 @@ await check("api-key", async () => {
   const response = await get(`https://${API}/rest/v1/rpc/calendar_feed?token=${DUMMY_TOKEN}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}`, Accept: "text/calendar" },
   });
-  const code = (await response.json().catch(() => ({}))).code ?? "";
+  const body = await response.json().catch(() => ({}));
+  const code = body.code ?? "";
   if (/^PGRST30/.test(code)) throw new Error(`the API rejects the site's key (HTTP ${response.status} ${code})`);
-  if (response.status >= 500) throw new Error(`API error HTTP ${response.status} ${code}`);
-  return `key accepted (HTTP ${response.status} ${code || "no code"})`;
+  // The only healthy answer is the database itself refusing the dummy token. Anything else -- a
+  // proxy's "404 page not found", an HTML error page, a bare 401/403 -- means the request never
+  // reached PostgREST with the key accepted, even though it is not a 5xx.
+  if (code !== "42501" || !/calendar feed not found/.test(body.message ?? ""))
+    throw new Error(`unexpected API answer HTTP ${response.status} ${code || "no code"}: ${JSON.stringify(body).slice(0, 120)}`);
+  return `key accepted; the database refused the dummy feed (HTTP ${response.status} ${code})`;
 });
 
 await check("feed-route", async () => {
   const response = await get(`https://${SITE}/feed/${DUMMY_TOKEN}.ics`);
   if (response.status !== 404) throw new Error(`a dummy feed link answered HTTP ${response.status}, expected 404`);
-  return "dummy link answers 404";
+  // A missing route also answers 404 (from Traefik, without our headers); the feed's own
+  // fallback location always sends HSTS and nosniff.
+  const missing = ["strict-transport-security", "x-content-type-options"].filter((h) => !response.headers.get(h));
+  if (missing.length) throw new Error(`the 404 did not come from the feed route (missing ${missing.join(", ")})`);
+  return "dummy link answers the feed route's own 404";
 });
 
 for (const host of [SITE, API]) {

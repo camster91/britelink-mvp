@@ -65,6 +65,10 @@ If you have already run them, the script still applies the rest of 042 correctly
   schema- and grant-identical to a fresh 51-migration build.
 - The same holds when the anon revokes were run by hand first.
 - It refuses an out-of-order database and a database older than 038.
+- Since 2026-10-04 it also refuses to run when any migration file after 038 is not registered in its
+  `order` and `check` lists. Every new migration needs a detection line there, or the Migrate
+  workflow fails before touching the database. Its pre-migrate backup is written privately
+  (`umask 077`) and only gets its final name once `pg_dump` has finished.
 - A second run applies nothing, and the backup is a valid `pg_dump` archive.
 
 ## Ops check (anon key, Traefik access log)

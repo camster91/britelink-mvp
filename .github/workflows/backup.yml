@@ -12,8 +12,13 @@ on:
 permissions:
   contents: read
 
+# Its own queue. GitHub keeps only ONE pending run per concurrency group and silently cancels the
+# older one, so sharing deploy-britelink-web let a deploy, migrate, ops check or staging run that
+# was queued at the same time drop tonight's backup (or the backup drop them) with no alert.
+# Running alongside those is safe: this script only reads production and restores into its own
+# throwaway container.
 concurrency:
-  group: deploy-britelink-web
+  group: backup-britelink
   cancel-in-progress: false
 
 env:

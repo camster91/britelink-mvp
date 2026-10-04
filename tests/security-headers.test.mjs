@@ -80,3 +80,11 @@ test("no source file emits an inline style attribute", () => {
   const app = readFileSync(path.join(root, "src", "App.jsx"), "utf8");
   assert.doesNotMatch(app, /\sstyle="/, "src/App.jsx must not use inline style attributes");
 });
+
+test("nginx makes browsers revalidate the page so a deploy never strands an old index.html", () => {
+  // Server-level, before the first location: applies to index.html, app routes and /version.json.
+  const serverLevel = nginx.slice(0, nginx.indexOf("location / {"));
+  assert.match(serverLevel, /add_header Cache-Control "no-cache" always;/);
+  // Hashed assets keep their own long-lived caching in the static location.
+  assert.match(nginx, /add_header Cache-Control "public, immutable" always;/);
+});
