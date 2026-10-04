@@ -14,6 +14,11 @@ NAMES = {role: 'britelink-production-' + role + '-1' for role in ROLES}
 VOLUMES = {'db': 'britelink-production_db-data', 'storage': 'britelink-production_storage-data'}
 
 
+def validate_receipt(receipt, application, digest, now):
+    if receipt.get('application') != application or receipt.get('configDigest') != digest or not 0 <= now - receipt.get('verifiedAt', 0) <= 1800:
+        raise RuntimeError('Current deployment lacks a fresh verified backup')
+
+
 def validate_config(config, baseline, application, application_id):
     if set(config['services']) != set(ROLES):
         raise RuntimeError('Unexpected production services')
@@ -69,6 +74,9 @@ def main():
     if str(folder) != '/data/coolify/applications/' + application or folder.is_symlink() or folder.stat().st_uid != 0:
         raise RuntimeError('Unexpected production workdir')
     folder.chmod(0o700)
+    import fcntl
+    lock = open(folder / 'production-deployment.lock', 'a')
+    fcntl.flock(lock, fcntl.LOCK_EX)
     env_file = folder / '.env'
     if env_file.is_symlink() or env_file.stat().st_uid != 0:
         raise RuntimeError('Unexpected production environment file')
@@ -124,7 +132,7 @@ def main():
     if operation == 'backup':
         if not all(c and c['State']['Running'] for c in current.values()):
             raise RuntimeError('Production backup requires all services running')
-        proof = json.loads(run(['python3', str(folder / 'deploy/coolify-backend/backup.py'), application]))
+        proof = json.loads(run(['bash', str(folder / 'deploy/coolify-backend/before-deploy.sh'), application]))
         required = ('allRestoredTableHashesMatch', 'fullRolePrivilegesQualified', 'databaseAndExtensionCatalogMatch', 'schemaOwnershipAndGrantsMatch', 'fileHashesModesOwnersAndLinksMatch', 'allDockerVolumesRetained')
         if proof.get('application') != application or not all(proof.get(k) is True for k in required):
             raise RuntimeError('Production recovery qualification incomplete')
@@ -136,8 +144,7 @@ def main():
     if receipt_file.is_symlink() or receipt_file.stat().st_uid != 0 or receipt_file.stat().st_mode & 0o077:
         raise RuntimeError('Production backup receipt permissions changed')
     receipt = json.loads(receipt_file.read_text())
-    if receipt['application'] != application or receipt['configDigest'] != digest or not 0 <= time.time() - receipt['verifiedAt'] <= 1800:
-        raise RuntimeError('Current deployment lacks a fresh verified backup')
+    validate_receipt(receipt, application, digest, time.time())
     legacy = [c for c in current.values() if c and c['Config']['Labels'].get('com.docker.compose.project') == 'britelink-production']
     if legacy:
         if len(legacy) != len(ROLES):

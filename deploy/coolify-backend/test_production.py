@@ -84,5 +84,17 @@ class ProductionBoundaryTests(unittest.TestCase):
         for owner in [{'repository':'camster91/britelink-mvp','compose':'/docker-compose.coolify-development.json','branch':'main'}, {'repository':'other/repo','compose':'/docker-compose.coolify-backend-production.json','branch':'main'}]:
             with self.assertRaises(RuntimeError): backup.validate_owner(owner)
 
+    def test_fresh_backup_receipt(self):
+        production.validate_receipt({'application':'approved','configDigest':'exact','verifiedAt':100},'approved','exact',101)
+
+    def test_stale_future_wrong_owner_and_changed_config_receipts(self):
+        for receipt in [
+            {'application':'approved','configDigest':'exact','verifiedAt':0},
+            {'application':'approved','configDigest':'exact','verifiedAt':3000},
+            {'application':'candidate','configDigest':'exact','verifiedAt':1999},
+            {'application':'approved','configDigest':'other','verifiedAt':1999},
+        ]:
+            with self.assertRaises(RuntimeError): production.validate_receipt(receipt,'approved','exact',2000)
+
 
 if __name__ == '__main__': unittest.main()
