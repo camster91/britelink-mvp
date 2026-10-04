@@ -20,6 +20,11 @@ Use the newly registered UUID in these exact commands:
 * Custom build: `bash deploy/coolify-backend/helper-production.sh <UUID> backup`
 * Custom start: `bash deploy/coolify-backend/helper-production.sh <UUID> start`
 
+Before the first queue, prepare the owning host workdir `.env` privately from the same
+verified Coolify variables (mode 0600). Custom build runs before Coolify writes its runtime
+env file; the backup hook requires this initial host file. Keep values on the server and
+verify the generated configuration against the original runtime before startup.
+
 Start with automatic deployment disabled. Enable the existing main webhook only after
 the first actual production queue, public/runtime checks and rollback rehearsal pass.
 The separately disabled SSH Deploy workflow stays disabled. Backend images do not build

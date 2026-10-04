@@ -95,7 +95,6 @@
         "GOTRUE_JWT_SECRET": "${BRITELINK_PROD_AUTH_GOTRUE_JWT_SECRET}",
         "PATH": "${BRITELINK_PROD_AUTH_PATH}"
       },
-      "volumes": [],
       "command": [
         "auth"
       ],
@@ -131,7 +130,6 @@
         "PGRST_JWT_SECRET": "${BRITELINK_PROD_REST_PGRST_JWT_SECRET}",
         "PGRST_DB_USE_LEGACY_GUCS": "${BRITELINK_PROD_REST_PGRST_DB_USE_LEGACY_GUCS}"
       },
-      "volumes": [],
       "command": [
         "/bin/postgrest"
       ],
