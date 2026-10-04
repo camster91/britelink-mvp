@@ -66,6 +66,13 @@ class ProductionBoundaryTests(unittest.TestCase):
         self.config['services']['db']['privileged'] = True
         with self.assertRaises(RuntimeError): self.validate()
 
+    def test_resource_limits_preserved_and_drift_rejected(self):
+        self.baseline['db']['HostConfig'] = {'Memory':1073741824,'MemorySwap':2147483648,'NanoCpus':1500000000}
+        self.config['services']['db'].update({'mem_limit':'1073741824','memswap_limit':'2147483648','cpus':1.5})
+        self.validate()
+        self.config['services']['db']['mem_limit'] = 0
+        with self.assertRaises(RuntimeError): self.validate()
+
     def test_changed_command(self):
         self.config['services']['auth']['command'] = ['different']
         with self.assertRaises(RuntimeError): self.validate()

@@ -28,6 +28,9 @@ def validate_config(config, baseline, application, application_id):
         original = baseline[role]
         if service.get('privileged') or service.get('cap_add') or service.get('devices') or service.get('pid') or service.get('ipc') or service.get('volumes_from'):
             raise RuntimeError('Production service privileges changed')
+        limits = original.get('HostConfig', {})
+        if int(service.get('mem_limit', 0)) != limits.get('Memory', 0) or int(service.get('memswap_limit', 0)) != limits.get('MemorySwap', 0) or float(service.get('cpus', 0)) != limits.get('NanoCpus', 0) / 1_000_000_000:
+            raise RuntimeError('Production resource limits changed')
         if service['image'] != original['Image'] or service.get('build') or service.get('pull_policy') != 'never':
             raise RuntimeError('Production image or build policy changed')
         if service.get('container_name') != NAMES[role] or set(service.get('networks', {})) != {'backend'} or service.get('network_mode'):
@@ -139,7 +142,7 @@ def main():
         if not baseline_file.exists():
             baseline_file.write_text(json.dumps(baseline))
         receipt_file.write_text(json.dumps({'application': application, 'configDigest': digest, 'verifiedAt': time.time(), 'proof': proof}))
-        print(json.dumps({'verifiedProductionBackup': True, 'application': application, 'backupDirectory': proof['recoveryDirectory'], 'tables': proof['allApplicationTables']}))
+        print(json.dumps({'verifiedProductionBackup': True, 'application': application, 'backupDirectory': proof['backupDirectory'], 'tables': proof['allApplicationTables']}))
         return
     if receipt_file.is_symlink() or receipt_file.stat().st_uid != 0 or receipt_file.stat().st_mode & 0o077:
         raise RuntimeError('Production backup receipt permissions changed')

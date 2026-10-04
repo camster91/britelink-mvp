@@ -55,7 +55,10 @@
           "max-size": "10m"
         }
       },
-      "container_name": "britelink-production-db-1"
+      "container_name": "britelink-production-db-1",
+      "mem_limit": 1073741824,
+      "memswap_limit": 2147483648,
+      "cpus": 1.5
     },
     "auth": {
       "image": "sha256:0cfa54e096dcae4ed30162811fa8794f7c443708c41973329e07f7d44c1cc3e7",
@@ -110,7 +113,9 @@
           "condition": "service_healthy"
         }
       },
-      "container_name": "britelink-production-auth-1"
+      "container_name": "britelink-production-auth-1",
+      "mem_limit": 268435456,
+      "memswap_limit": 536870912
     },
     "rest": {
       "image": "sha256:729bf65c733b73f5b52777f0e4b853f22ed73aa67a22d38269d289779b0a8401",
@@ -143,7 +148,9 @@
           "condition": "service_healthy"
         }
       },
-      "container_name": "britelink-production-rest-1"
+      "container_name": "britelink-production-rest-1",
+      "mem_limit": 268435456,
+      "memswap_limit": 536870912
     },
     "storage": {
       "image": "sha256:1e85dad48e8b3e85890a555e5114dc7ee48c2e8be4cfd97dd4e3564b4f104fcd",
@@ -197,7 +204,9 @@
           "condition": "service_healthy"
         }
       },
-      "container_name": "britelink-production-storage-1"
+      "container_name": "britelink-production-storage-1",
+      "mem_limit": 402653184,
+      "memswap_limit": 805306368
     },
     "gateway": {
       "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
@@ -251,7 +260,9 @@
           "condition": "service_healthy"
         }
       },
-      "container_name": "britelink-production-gateway-1"
+      "container_name": "britelink-production-gateway-1",
+      "mem_limit": 67108864,
+      "memswap_limit": 134217728
     }
   },
   "volumes": {

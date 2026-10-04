@@ -288,6 +288,10 @@ def main():
                 if info['kind']=='file':assert member.isfile() and hashlib.sha256(archive.extractfile(member).read()).hexdigest()==info['sha256']
                 elif info['kind']=='link':assert member.issym() and member.linkname==info['target']
                 else:assert member.isdir()
+    # The image loop ends at gateway; the top-level DB recovery fields must select DB.
+    databaseRetained = next(item for item in retained if item['role'] == 'db')
+    protected = json.loads(run(['docker','image','inspect',databaseRetained['protectedImage']]))[0]
+    tag = databaseRetained['protectedTag']
     storagePath=pathlib.Path(next(m['Source'] for m in records['storage']['Mounts'] if m['Destination']=='/var/lib/storage'))
     storageManifest=next(expected for path,expected in mounts if path==storagePath)
     sourceStorageEmpty=all(info['kind']=='directory' for info in storageManifest.values())
