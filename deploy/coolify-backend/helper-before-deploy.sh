@@ -4,6 +4,7 @@ set -euo pipefail
 [[ ${1:-} =~ ^[a-z0-9]{20,40}$ ]] || exit 2
 docker exec -i coolify php /dev/stdin "$1" <<'PHP'
 <?php
+try {
 require '/var/www/html/vendor/autoload.php';
 $app = require '/var/www/html/bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
@@ -20,7 +21,6 @@ if ($uuid !== '38sgm88gj9urzcihoai9lqjx'
     throw new RuntimeException('Backup hook refuses an unexpected or public resource');
 }
 $command = 'bash /opt/britelink-backend-candidate-'.$uuid.'/deploy/coolify-backend/before-deploy.sh '.$uuid;
-try {
     $output = instant_remote_process([$command], $resource->destination->server, true, false, 300);
     $proof = json_decode($output, true, 512, JSON_THROW_ON_ERROR);
     foreach (['allRestoredTableHashesMatch', 'fullRolePrivilegesQualified',
