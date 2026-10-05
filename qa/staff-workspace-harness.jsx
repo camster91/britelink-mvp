@@ -450,6 +450,12 @@ const repository = {
       .sort((a, b) => b.version - a.version)[0].status = "published";
     return { revision_id: revision.id };
   },
+  async closeHeldCase(input) {
+    state.calls.push(["closeHeldCase", input.householdId, input.caseId]);
+    const item = state.cases.find((row) => row.id === input.caseId);
+    item.status = "closed";
+    return now;
+  },
   async recordStaffAbsence(input) {
     state.calls.push(["recordStaffAbsence", input.householdId, input.caseId]);
     const item = state.cases.find((entry) => entry.id === input.caseId);

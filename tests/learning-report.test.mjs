@@ -44,3 +44,22 @@ test("a completed lesson is dated by its first completion, not by a later note e
   });
   assert.equal(october.rows.length, 0);
 });
+
+test("lessons finished on an earlier plan version stay in the report after a revision", async () => {
+  const { recordWeeks } = await import("../src/authenticated-workspace.js");
+  const plan = (id, status, lessonId, title) => ({
+    id, status, version: id === "p1" ? 1 : 2,
+    plan_weeks: [{ id: `${id}-w`, week_number: 1, plan_days: [{ id: `${id}-d`, day_number: 1, lessons: [{ id: lessonId, position: 1, subject: "Math", title }] }] }],
+  });
+  const plans = [plan("p1", "archived", "old-lesson", "Counting to 20"), plan("p2", "published", "new-lesson", "Counting to 50"), { ...plan("p3", "draft", "draft-lesson", "Not given yet"), version: 3 }];
+  const report = learningReport({
+    weeks: recordWeeks(plans),
+    activities: [
+      { lesson_id: "old-lesson", status: "completed", first_completed_at: "2026-10-01T15:00:00Z" },
+      { lesson_id: "draft-lesson", status: "completed", first_completed_at: "2026-10-01T15:00:00Z" },
+    ],
+    from: "2026-10-01", to: "2026-10-31",
+    toLocalDate: (iso) => iso.slice(0, 10),
+  });
+  assert.deepEqual(report.rows.map((row) => row.title), ["Counting to 20"], "the archived version counts; a draft never does");
+});

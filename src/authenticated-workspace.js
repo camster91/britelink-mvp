@@ -13,6 +13,14 @@ export function latestPublishedPlan(plans) {
     .sort((a, b) => (b.version ?? 0) - (a.version ?? 0))[0] ?? null;
 }
 
+// Every week of every plan version the family was given (current and archived), so lessons finished
+// on an earlier version stay in the weekly story and the learning report after a revision.
+export function recordWeeks(plans) {
+  return (plans ?? [])
+    .filter((plan) => plan?.status === "published" || plan?.status === "archived")
+    .flatMap((plan) => orderedPlanWeeks(plan));
+}
+
 export function orderedPlanWeeks(plan) {
   return [...(plan?.plan_weeks ?? [])]
     .sort((a, b) => a.week_number - b.week_number)

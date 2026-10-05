@@ -25,7 +25,7 @@ psql_do() { docker exec -i "$container" psql -X -v ON_ERROR_STOP=1 -q -U postgre
 probe() { psql_do -tA -c "select ($1)::int" | tr -d '[:space:]'; }
 
 # Migration number -> a boolean SQL expression that is true once that migration has been applied.
-order=(039 040 041 042 043 044 045 046 047 048 049 050 051 052 053 054 055 056 057 058)
+order=(039 040 041 042 043 044 045 046 047 048 049 050 051 052 053 054 055 056 057 058 059)
 declare -A check=(
   [039]="to_regprocedure('public.diagnose_caller_identity(uuid)') is not null"
   [040]="exists(select 1 from pg_policies where schemaname='public' and tablename='lesson_activities' and policyname='activities_member_select' and qual ilike '%is null%')"
@@ -48,10 +48,11 @@ declare -A check=(
   [056]="to_regprocedure('public.enforce_revision_outcome()') is not null"
   [057]="to_regclass('public.staff_display_names') is not null"
   [058]="to_regclass('public.notification_outbox') is not null"
+  [059]="to_regprocedure('public.staff_close_held_case(uuid,uuid,text)') is not null"
 )
 # Re-runnable files (create or replace / drop if exists / revoke / grant): safe to apply when
 # missing even if a later migration is present, so they are exempt from the ordering check.
-rerunnable=" 039 040 041 042 045 053 054 055 056 057 058 "
+rerunnable=" 039 040 041 042 045 053 054 055 056 057 058 059 "
 file_for() { local hit; for hit in "$migrations"/202608280"$1"_*.sql; do [ -f "$hit" ] && { echo "$hit"; return; }; done; }
 
 # Every migration file after 038 must be registered above. Without this, a new file that nobody

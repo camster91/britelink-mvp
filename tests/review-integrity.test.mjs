@@ -375,3 +375,78 @@ test("migration 058 email notifications", async (t) => {
     await db.close();
   }
 });
+
+test("migration 059 review follow-ups", async (t) => {
+  const db = await database();
+  const house = "5eed0000-0000-4000-8000-0000000000a1";
+  const inTx = async (fn) => {
+    await db.exec("begin");
+    try {
+      return await fn();
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  try {
+    await t.test("a family still sees a plan version that a revision archived, with its lessons", async () => {
+      await inTx(async () => {
+        await db.query(`update public.plans set status = 'archived' where id = $1`, [PLAN_A]);
+        await actAs(users.guardianA);
+        assert.equal((await db.query(`select 1 from public.plans where id = $1`, [PLAN_A])).rows.length, 1);
+        assert.ok((await db.query(`select 1 from public.lessons where id = $1`, [LESSON_A])).rows.length === 1, "its lessons stay readable");
+      });
+    });
+
+    await t.test("drafts and plans under review stay hidden from the family", async () => {
+      for (const status of ["draft", "internal_review"]) {
+        await inTx(async () => {
+          await db.query(`update public.plans set status = $2, published_at = null where id = $1`, [PLAN_A, status]);
+          await actAs(users.guardianA);
+          assert.equal((await db.query(`select 1 from public.plans where id = $1`, [PLAN_A])).rows.length, 0, status);
+          assert.equal((await db.query(`select 1 from public.lessons where id = $1`, [LESSON_A])).rows.length, 0, `${status} lessons`);
+        });
+      }
+    });
+
+    await t.test("an admin can close a case on hold, with a reason, and it is audited", async () => {
+      await inTx(async () => {
+        await db.query(`update public.service_cases set status = 'on_hold' where id = $1`, [CASE_A]);
+        await actAs(users.adminA);
+        await db.query(`select public.staff_close_held_case($1, $2, 'Family withdrew consent')`, [house, CASE_A]);
+        await db.exec("reset role");
+        const row = (await db.query(`select status, closed_at is not null as closed, previous_operational_status as prior from public.service_cases where id = $1`, [CASE_A])).rows[0];
+        assert.deepEqual(row, { status: "closed", closed: true, prior: "on_hold" });
+        assert.equal((await db.query(`select 1 from public.audit_events where event_type = 'case.closed_from_hold' and subject_id = $1`, [CASE_A])).rows.length, 1);
+      });
+    });
+
+    await t.test("only a case on hold can be closed this way, only by an admin, and only with a reason", async () => {
+      await inTx(async () => {
+        await actAs(users.adminA);
+        await assert.rejects(() => db.query(`select public.staff_close_held_case($1, $2, 'Not on hold')`, [house, CASE_A]), /only a case on hold/);
+      });
+      await inTx(async () => {
+        await db.query(`update public.service_cases set status = 'on_hold' where id = $1`, [CASE_A]);
+        await actAs(users.educatorA);
+        await assert.rejects(() => db.query(`select public.staff_close_held_case($1, $2, 'Reason')`, [house, CASE_A]), /admin access required/);
+      });
+      await inTx(async () => {
+        await db.query(`update public.service_cases set status = 'on_hold' where id = $1`, [CASE_A]);
+        await actAs(users.adminA);
+        await assert.rejects(() => db.query(`select public.staff_close_held_case($1, $2, '  ')`, [house, CASE_A]), /reason for closing/);
+      });
+    });
+
+    await t.test("assignment still respects the educator's capacity", async () => {
+      await inTx(async () => {
+        await db.query(`update public.service_cases set status = 'triage', assigned_educator_id = null where id = $1`, [CASE_A]);
+        await db.query(`update public.educator_capacities set max_active_cases = 0 where household_id = $1 and educator_user_id = $2`, [house, users.educatorA]);
+        await actAs(users.adminA);
+        await assert.rejects(() => db.query(`select * from public.staff_assign_case($1, $2, $3)`, [house, CASE_A, users.educatorA]), /capacity/);
+      });
+    });
+  } finally {
+    await db.close();
+  }
+});

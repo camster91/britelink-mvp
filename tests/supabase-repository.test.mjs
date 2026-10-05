@@ -64,7 +64,9 @@ test("published plans are scoped to household and learner", async () => {
   await new SupabaseBriteLinkRepository(client).loadPublishedPlans("household-a", "learner-a");
   assert.ok(calls.some((call) => call[0] === "eq" && call[1] === "household_id" && call[2] === "household-a"));
   assert.ok(calls.some((call) => call[0] === "eq" && call[1] === "learner_id" && call[2] === "learner-a"));
-  assert.ok(calls.some((call) => call[0] === "eq" && call[1] === "status" && call[2] === "published"));
+  // Every version the family was given (059): the current plan and archived earlier versions, never
+  // drafts or plans still under review.
+  assert.ok(calls.some((call) => call[0] === "in" && call[1] === "status" && JSON.stringify(call[2]) === JSON.stringify(["published", "archived"])));
 });
 
 test("latest intake read is household and learner scoped",async()=>{
