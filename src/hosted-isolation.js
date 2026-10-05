@@ -58,6 +58,7 @@ export const SEALED_TABLES = [
   "attachment_object_observations", // written by the service-role reconciler (023); RLS, no policy
   "attachment_object_deletions", // service-role deletion queue (027); no client grant
   "retention_execution_ledger", // executor ledger (022); RLS, no policy; opaque household_ref
+  "notification_outbox", // email notices waiting to send (058); RLS, no policy; operator job only
 ];
 
 const INTENTIONALLY_UNSWEPT = [

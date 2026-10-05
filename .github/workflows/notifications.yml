@@ -1,0 +1,63 @@
+name: Notifications
+
+# Sends waiting email notices (new plan, new message, revision answer; migration 058, issue #99)
+# by running scripts/send-notifications.sh from the commit on main, over the same SSH path as
+# Backup. OFF until the owner sets the repository variable NOTIFICATIONS_ENABLED to "true", which
+# waits on counsel approving the email wording. While off, notices still queue in the database; the
+# sender never emails anything older than two days, so switching on never sends a stale backlog.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Its own queue, so a deploy, migrate or backup never cancels a send (or the reverse).
+concurrency:
+  group: notifications-britelink
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 187.77.26.99
+  VPS_USER: root
+
+jobs:
+  send:
+    if: ${{ vars.NOTIFICATIONS_ENABLED == 'true' && github.ref == 'refs/heads/main' }}
+    environment: production
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 8
+    steps:
+      - name: Install SSH key and pin host key
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/britelink_deploy"
+          chmod 600 "$HOME/.ssh/britelink_deploy"
+          printf '%s\n' "$KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Send waiting notices on the VPS
+        env:
+          OPS_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 -o ServerAliveInterval=30 "${VPS_USER}@${VPS_HOST}" "bash -s -- '$OPS_SHA'" <<'REMOTE'
+          set -euo pipefail
+          SHA="$1"
+          work="$(mktemp -d /root/bl-notify.XXXXXX)"
+          trap 'rm -rf "$work"' EXIT
+          cd /docker/britelink-web
+          git fetch --depth=1 origin "$SHA"
+          git archive "$SHA" scripts/send-notifications.sh | tar -x -C "$work"
+          bash "$work/scripts/send-notifications.sh"
+          REMOTE
+
+      - name: Remove the deploy key from the runner
+        if: ${{ always() }}
+        run: rm -f "$HOME/.ssh/britelink_deploy" "$HOME/.ssh/known_hosts"

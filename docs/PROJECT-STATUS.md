@@ -13,6 +13,7 @@
   - A `workflow_dispatch` break-glass run with an explicit SHA works: https://github.com/camster91/britelink-mvp/actions/runs/36676799496
 - **Production runs current `main`.** At the time of writing, `/version.json` reports `0375ae2` and serves HSTS, CSP and nosniff. The approved privacy notice `2026-09-30` is live, so guardian intake is open.
 - **Production database**
+  - 057 (staff display names) applied 2026-10-05 through the Migrate workflow after a pre-migrate backup.
   - All 56 migrations are applied: 001-052 by 2026-09-30; 053 (review integrity, [run](https://github.com/camster91/britelink-mvp/actions/runs/36908951781)) and 054 (privacy integrity, [run](https://github.com/camster91/britelink-mvp/actions/runs/36920564561)) on 2026-10-01; 055 (revision requires a request, [run](https://github.com/camster91/britelink-mvp/actions/runs/37036465471)) and 056 (staff workflow integrity, [run](https://github.com/camster91/britelink-mvp/actions/runs/37051085621)) on 2026-10-02. All went through the Migrate workflow, each after a pre-migrate backup.
   - GoTrue, PostgREST and storage share the key-signing secret (`restore-secret`, #65).
   - The public anon key is accepted.

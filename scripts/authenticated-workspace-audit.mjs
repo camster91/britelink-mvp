@@ -124,6 +124,16 @@ try{
   await page.getByText("Revision request 1 submitted",{exact:false}).waitFor();
   await page.evaluate(()=>{globalThis.qaRejectSensitiveOnce=true});await page.getByRole("button",{name:"Download my data"}).click();await page.getByText("requires a fresh sign-in",{exact:false}).waitFor();await page.getByRole("button",{name:"Send fresh sign-in link"}).click();await page.getByText("Fresh sign-in link sent",{exact:false}).waitFor();const freshCalls=await page.evaluate(()=>globalThis.qaState.calls.filter(item=>item[0]==="requestFreshSignIn"));if(freshCalls.length!==1||freshCalls[0][1]!=="guardian@example.ca")throw new Error("Sensitive action did not request a fresh invited-account sign-in");const downloadPromise=page.waitForEvent("download");await page.getByRole("button",{name:"Download my data"}).click();const download=await downloadPromise;if(!download.suggestedFilename().startsWith("britelink-household-export-"))throw new Error("Household export did not create the expected download after fresh sign-in");
   await page.getByText("Household export saved",{exact:false}).waitFor();
+  // Email updates: on by default; a failed change is undone and says so; turning it off sticks.
+  const emailSwitch=page.getByRole("checkbox",{name:"Email me about updates"});
+  if(!(await emailSwitch.isChecked()))throw new Error("email updates must default to on");
+  await page.evaluate(()=>{globalThis.qaFailEmailSettingOnce=true});
+  await emailSwitch.click();
+  await page.getByText("Not changed: Save your email setting: temporarily unavailable").waitFor();
+  if(!(await emailSwitch.isChecked()))throw new Error("a failed email setting change must revert");
+  await emailSwitch.uncheck();
+  await page.getByText("Email updates are off.",{exact:false}).waitFor();
+  if((await page.evaluate(()=>globalThis.qaState.emailEnabled))!==false)throw new Error("email setting was not saved");
   const deletion=page.locator("article.service-delete");await deletion.getByLabel("Reason").fill("Finished using the service.");await deletion.getByRole("checkbox").check();await page.evaluate(()=>{globalThis.qaFailPrivacyReads=4});await deletion.getByRole("button",{name:"Request household deletion"}).click();await page.getByText("Deletion request is pending",{exact:false}).waitFor();await page.getByText("latest records could not be refreshed",{exact:false}).waitFor();if((await page.evaluate(()=>globalThis.qaState.privacyRequests.length))!==1)throw new Error("Successful deletion write was lost when its refresh failed");await page.getByRole("button",{name:"Retry refresh"}).click();await page.getByText("A deletion request is already pending",{exact:false}).waitFor();
   await page.getByLabel("Status").selectOption("completed");
   await page.getByLabel("Reason").selectOption("illness");

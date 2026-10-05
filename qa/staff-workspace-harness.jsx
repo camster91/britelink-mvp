@@ -174,6 +174,13 @@ const repository = {
     state.calls.push(["listStaffRevisions", h]);
     return state.revisions;
   },
+  async getEmailNotifications() {
+    return state.emailEnabled ?? true;
+  },
+  async setEmailNotifications(enabled) {
+    state.emailEnabled = enabled;
+    return enabled;
+  },
   async listStaffNames(h) {
     state.calls.push(["listStaffNames", h]);
     // educator-a has set a name; the signed-in admin (admin-a) has not, until the audit saves one.

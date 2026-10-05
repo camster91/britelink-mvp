@@ -40,6 +40,8 @@ try {
   await nameField.fill("Ms. Rivera");
   await page.getByRole("button", { name: "Save name" }).click();
   await page.getByText("Saved. Other staff now see this name.").waitFor();
+  await page.getByRole("checkbox", { name: "Email me about updates" }).waitFor();
+  await page.getByText("A short email when a family sends you a message.", { exact: false }).waitFor();
   await page.waitForFunction(() => document.querySelector(".staff-name-form input")?.value === "Ms. Rivera" && !document.querySelector(".staff-name-form label span"));
   if (await page.getByRole("heading", { name: /Maya’s plan/ }).count())
     throw new Error("Admin account routed to guardian workspace");

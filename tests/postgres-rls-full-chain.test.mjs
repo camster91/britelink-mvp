@@ -35,6 +35,7 @@ const actorsA = [["admin A", users.adminA], ["guardian A", users.guardianA], ["e
 // be removed from here (the test enforces that too).
 const UNSEEDED = new Map([
   ["attachment_object_observations", "written only by the service-role reconciler; no client grant"],
+  ["notification_outbox", "sealed: RLS with no policy, so no client ever reads a row; household B's seeded events have no guardian to notify"],
 ]);
 
 // Authenticated-executable SECURITY DEFINER functions that take no target_household. Every other
@@ -47,6 +48,7 @@ const NON_HOUSEHOLD_RPCS = new Map([
   ["package_plan_weeks", "pure lookup over package codes; no household data"],
   ["provision_beta_household", "caller-scoped by auth.uid(); covered by its own test below"],
   ["set_staff_display_name", "writes only the caller's own name row (auth.uid()); covered in review-integrity.test.mjs"],
+  ["set_email_notifications", "writes only the caller's own email setting (auth.uid()); covered in review-integrity.test.mjs"],
 ]);
 
 // Which of household B's rows to hand an RPC for each uuid parameter.
