@@ -23,12 +23,29 @@ const VIEW_TITLES = {
   educator: "Educator demo",
 };
 
+// The demo remembers progress on this device when it can. With storage blocked (Safari "Block all
+// cookies", private modes) or full, reading or writing throws; the demo then simply forgets on reload.
+function readStored(key) {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+function writeStored(key, value) {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch {
+    // Not saved on this device; the page keeps working.
+  }
+}
+
 function useDeviceState(key, fallback) {
-  const [value, setValue] = useState(() => safeParseStored(globalThis.localStorage?.getItem(key), fallback));
+  const [value, setValue] = useState(() => safeParseStored(readStored(key), fallback));
   const save = (next) => {
     const resolved = typeof next === "function" ? next(value) : next;
     setValue(resolved);
-    globalThis.localStorage?.setItem(key, JSON.stringify(resolved));
+    writeStored(key, JSON.stringify(resolved));
     return resolved;
   };
   return [value, save];

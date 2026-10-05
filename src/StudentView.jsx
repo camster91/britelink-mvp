@@ -12,6 +12,9 @@ export function StudentView({ learnerName, lessons, onDone, onExit }) {
   const headingId = useId();
   const dialogRef = useRef(null);
   const [saving, setSaving] = useState(null);
+  // Today's list is fixed when the view opens. Recomputing it after each "I did it!" pulled in the
+  // next lessons (a family at its own pace has many undated ones), so the list never ended.
+  const [todayList] = useState(() => lessons);
   const [finished, setFinished] = useState([]);
   const [error, setError] = useState("");
   const [holding, setHolding] = useState(false);
@@ -49,7 +52,7 @@ export function StudentView({ learnerName, lessons, onDone, onExit }) {
     setError("");
     try {
       await onDone(lesson);
-      setFinished((items) => [...items, lesson.title]);
+      setFinished((items) => [...items, { id: lesson.id, title: lesson.title }]);
     } catch (failure) {
       setError(`That didn’t save. Ask a grown-up to try again. (${failure.message})`);
     } finally {
@@ -57,6 +60,7 @@ export function StudentView({ learnerName, lessons, onDone, onExit }) {
     }
   };
 
+  const remaining = todayList.filter((lesson) => !finished.some((item) => item.id === lesson.id));
   return createPortal(
     <div className="student-view" role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1} ref={dialogRef}>
       <header>
@@ -84,7 +88,7 @@ export function StudentView({ learnerName, lessons, onDone, onExit }) {
       </header>
       {finished.length ? (
         <p className="student-finished" role="status">
-          Done today: {finished.join(", ")}
+          Done today: {finished.map((item) => item.title).join(", ")}
         </p>
       ) : null}
       {error ? (
@@ -92,9 +96,9 @@ export function StudentView({ learnerName, lessons, onDone, onExit }) {
           {error}
         </p>
       ) : null}
-      {lessons.length ? (
+      {remaining.length ? (
         <ol className="student-lessons">
-          {lessons.map((lesson) => (
+          {remaining.map((lesson) => (
             <li key={lesson.id}>
               <span>{lesson.subject}</span>
               <h2>{lesson.title}</h2>

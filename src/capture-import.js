@@ -38,6 +38,13 @@ export function parseCsv(text) {
   return rows.filter((cells) => cells.some((cell) => cell.trim()));
 }
 
+// 2026-02-30 has the right shape but is not a day; the save would fail part-way through an import.
+function isCalendarDate(value) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
 export function captureRowsFromCsv(text, today) {
   const rows = parseCsv(text);
   if (!rows.length) return { ready: [], problems: ["The file is empty."] };
@@ -57,6 +64,7 @@ export function captureRowsFromCsv(text, today) {
     const subjects = column("subjects") < 0 ? [] : (cells[column("subjects")] ?? "").split(";").map((item) => item.trim()).filter(Boolean);
     const unknownSubject = subjects.find((subject) => !INTAKE_SUBJECTS.includes(subject));
     const issue = !/^\d{4}-\d{2}-\d{2}$/.test(date) ? "date must look like 2026-10-05"
+      : !isCalendarDate(date) ? `${date} is not a real date`
       : date > today ? "date is in the future"
       : !kind || !CAPTURE_KINDS.includes(kind) ? "kind is not one of book, outing, activity, co-op, tutor, note"
       : unknownSubject ? `"${unknownSubject}" is not a subject BriteLink tracks`

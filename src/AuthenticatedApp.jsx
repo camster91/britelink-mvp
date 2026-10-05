@@ -38,6 +38,8 @@ import { CalendarFeed } from "./CalendarFeed.jsx";
 import { planCalendarIcs } from "./calendar-export.js";
 import { downloadTextFile } from "./browser-download.js";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
+import { signInLinkProblem } from "./sign-in-link.js";
+import { checkRequired, clearFixedField } from "./form-errors.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
 // link: the details they typed on the join form come back as signup metadata, so the household is
@@ -373,10 +375,19 @@ const toDraft = (schedule) => ({
   daysOff: schedule?.days_off ?? [],
 });
 
+const linkProblemOnLoad = signInLinkProblem();
+if (linkProblemOnLoad) {
+  try {
+    globalThis.history?.replaceState(null, "", globalThis.location.pathname);
+  } catch {
+    // Leaving the URL as it is only means the note shows again after a reload.
+  }
+}
+
 function SignIn({ repository }) {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState("idle");
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState(linkProblemOnLoad ? "error" : "idle");
+  const [message, setMessage] = useState(linkProblemOnLoad);
   // Beta signup fields. Optional: an invited family signs in without them.
   const [joining, setJoining] = useState(false);
   const [learnerName, setLearnerName] = useState("");
@@ -497,7 +508,7 @@ function SignIn({ repository }) {
   );
 }
 
-function OperationNotice({ operation, retry }) {
+function OperationNotice({ operation, retry, id }) {
   if (!operation.message) return null;
   const failure = ["offline", "conflict", "session_expired", "error"].includes(
     operation.status,
@@ -505,6 +516,7 @@ function OperationNotice({ operation, retry }) {
   const retryAction = operation.onRetry ?? retry;
   return (
     <div
+      id={id}
       className={`live-operation ${failure ? "failure" : "success"}`}
       role={failure ? "alert" : "status"}
     >
@@ -919,6 +931,11 @@ function ParentWorkspace({
   };
   const sendMessage = async (event) => {
     event.preventDefault();
+    const problem = checkRequired(event.currentTarget, "message-status");
+    if (problem) {
+      setMessageOperation({ status: "error", message: problem, canRetry: false });
+      return;
+    }
     const body = messageBody;
     const files = messageFiles;
     setMessageOperation({
@@ -1519,8 +1536,15 @@ function ParentWorkspace({
                 >
                   <summary>Need to move this day?</summary>
                   <form
+                    noValidate
+                    onChange={clearFixedField}
                     onSubmit={(event) => {
                       event.preventDefault();
+                      const problem = checkRequired(event.currentTarget, "day-move-status");
+                      if (problem) {
+                        setDayMoveOperation({ status: "error", message: problem, canRetry: false });
+                        return;
+                      }
                       moveDay();
                     }}
                   >
@@ -1567,7 +1591,7 @@ function ParentWorkspace({
                         Move unfinished lessons
                       </button>
                     </fieldset>
-                    <OperationNotice operation={dayMoveOperation} />
+                    <OperationNotice id="day-move-status" operation={dayMoveOperation} />
                   </form>
                 </details>
               ) : null}
@@ -1929,7 +1953,7 @@ function ParentWorkspace({
                   </p>
                 )}
               </div>
-              <form onSubmit={sendMessage}>
+              <form noValidate onSubmit={sendMessage} onChange={clearFixedField}>
                 <label>
                   New secure message
                   <textarea
@@ -1972,6 +1996,7 @@ function ParentWorkspace({
                 </button>
               </form>
               <OperationNotice
+                id="message-status"
                 operation={messageOperation}
                 retry={
                   messageBody
