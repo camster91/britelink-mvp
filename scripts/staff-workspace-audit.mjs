@@ -253,6 +253,12 @@ try {
     .fill("Assigned educator is unavailable; reassignment required.");
   await page.getByRole("button", { name: "Record absence and hold" }).click();
   await page.getByText("Educator absence completed and audited.").waitFor();
+  // A case on hold can be closed by an admin (059); a missing reason is named before anything runs.
+  await page.getByRole("heading", { name: "Close this paused case" }).waitFor();
+  await page.getByRole("button", { name: "Close case" }).click();
+  await page.getByText("Please complete this answer: Reason for closing.").waitFor();
+  if ((await page.getByLabel("Reason for closing").getAttribute("aria-invalid")) !== "true")
+    throw new Error("a missing closing reason must mark the field invalid");
   const state = await page.evaluate(() => globalThis.staffQaState);
   const taggedLessons =
     (state.planDocuments ?? [])

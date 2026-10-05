@@ -16,6 +16,7 @@ import { MessageAttachments } from "./MessageAttachments.jsx";
 import { StaffSharedActivities, StaffWeeklyNote } from "./StaffFamilyTools.jsx";
 import { localDateString } from "./authenticated-workspace.js";
 import { validateAttachmentFile } from "./input-validation.js";
+import { checkRequired, clearFixedField } from "./form-errors.js";
 
 function StaffNotice({ state }) {
   if (!state.message) return null;
@@ -77,7 +78,13 @@ export function EducatorWorkspace({
   const [changeSummary, setChangeSummary] = useState("");
   const [messageBody, setMessageBody] = useState("");
   const [messageFiles, setMessageFiles] = useState([]);
+  // Remounts the file picker whenever the chosen files are cleared, so it never shows stale names.
+  const [fileInputKey, setFileInputKey] = useState(0);
+  useEffect(() => {
+    if (!messageFiles.length) setFileInputKey((value) => value + 1);
+  }, [messageFiles]);
   const [absenceReason, setAbsenceReason] = useState("");
+  const [closeReason, setCloseReason] = useState("");
   const staffAttachmentRecovery = useRef(null);
   const workspaceRequest = useRef(0);
   const operationInFlight = useRef(false);
@@ -137,6 +144,7 @@ export function EducatorWorkspace({
     setMessageFiles([]);
     staffAttachmentRecovery.current = null;
     setAbsenceReason("");
+    setCloseReason("");
   }, [selectedId]);
   useEffect(() => {
     load().catch(() => {});
@@ -259,7 +267,7 @@ export function EducatorWorkspace({
               messageId: recovery.messageId,
               remainingFiles: pending.slice(index + 1),
             };
-            setMessageFiles(pending.slice(index));
+            setMessageFiles([]);
             setOperation({
               status: "error",
               message: `Message remains sent. ${pending.length - index} attachment${pending.length - index === 1 ? "" : "s"} still require upload; retrying will not duplicate the message.`,
@@ -336,7 +344,8 @@ export function EducatorWorkspace({
           messageId: error.attachmentRetry.messageId,
           remainingFiles: messageFiles.slice(failedIndex + 1),
         };
-        setMessageFiles(messageFiles.slice(failedIndex));
+        // The failed files live in the recovery record for their retry; a new message starts empty.
+        setMessageFiles([]);
         await load();
         setOperation({
           status: "error",
@@ -728,6 +737,47 @@ export function EducatorWorkspace({
                 <button className="ghost">Record absence and hold</button>
               </form>
             ) : null}
+            {membership.role === "admin" && selected.status === "on_hold" ? (
+              <form
+                noValidate
+                onChange={clearFixedField}
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const problem = checkRequired(event.currentTarget, "close-held-status");
+                  if (problem) {
+                    setOperation({ status: "error", message: problem });
+                    return;
+                  }
+                  // Closing is final for this case, so it is confirmed first.
+                  if (!globalThis.confirm?.("Close this case? The family's records are kept; the case moves to closed and stops being worked.")) return;
+                  act("Case closing", () =>
+                    repository.closeHeldCase({
+                      householdId: household.household_id,
+                      caseId: selected.id,
+                      reason: closeReason,
+                    }),
+                  );
+                }}
+              >
+                <h4>Close this paused case</h4>
+                <p id="close-held-status" className="staff-next-hint">
+                  For a case that will not resume, for example after the family withdrew consent.
+                  It moves to closed, so it can follow the retention schedule.
+                </p>
+                <label>
+                  Reason for closing
+                  <input
+                    required
+                    maxLength="500"
+                    value={closeReason}
+                    onChange={(event) => setCloseReason(event.target.value)}
+                  />
+                </label>
+                <button className="ghost" disabled={operation.status === "loading"}>
+                  Close case
+                </button>
+              </form>
+            ) : null}
             {plan && ["draft", "internal_review"].includes(plan.status) ? (
               plan.authored_by === userId ? (
                 <section className="review-separation" role="note">
@@ -1020,6 +1070,7 @@ export function EducatorWorkspace({
                   <label>
                     Attachments <span>(optional)</span>
                     <input
+                      key={fileInputKey}
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
                       multiple

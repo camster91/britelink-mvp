@@ -12,6 +12,7 @@ import {
   messageIsUnread,
   nextLessonForToday,
   orderedPlanWeeks,
+  recordWeeks,
   planDayDates,
   planDayMove,
   planProgress,
@@ -609,6 +610,8 @@ function ParentWorkspace({
   const [messageBody, setMessageBody] = useState("");
   const [messageFiles, setMessageFiles] = useState([]);
   const [attachmentRecovery, setAttachmentRecovery] = useState([]);
+  // Bumped to clear the file picker, which the browser does not let React set directly.
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [messageOperation, setMessageOperation] = useState({
     status: "idle",
     message: "",
@@ -706,6 +709,8 @@ function ParentWorkspace({
     ? (plan.plan_schedules[0] ?? null)
     : (plan?.plan_schedules ?? null);
   const weeks = useMemo(() => orderedPlanWeeks(plan), [plan]);
+  // The record (weekly story, learning report) spans every version the family was given.
+  const allPlanWeeks = useMemo(() => recordWeeks(planState.plans), [planState.plans]);
   const week = weeks[weekIndex] ?? weeks[0];
   const day = week?.plan_days?.[dayIndex] ?? week?.plan_days?.[0];
   const activities = useMemo(
@@ -977,20 +982,25 @@ function ParentWorkspace({
       }
     }
     await loadMessages();
+    // The failed files belong to the message just sent and are kept only for its retry, never
+    // carried into the next new message; the file picker is reset either way.
+    setMessageFiles([]);
+    setFileInputKey((value) => value + 1);
     if (failed.length) {
-      attachmentRecoveryRef.current = failed;
-      setAttachmentRecovery(failed);
-      setMessageFiles(failed.map((item) => item.file));
+      const retryable = failed.every((item) => item.attachmentId);
+      attachmentRecoveryRef.current = retryable ? failed : [];
+      setAttachmentRecovery(retryable ? failed : []);
       setMessageOperation({
         status: "error",
-        message: `Message sent once. ${failed.length} attachment upload${failed.length === 1 ? "" : "s"} failed. Retry attachments only; the message will not be resent.`,
-        canRetry: failed.every((item) => item.attachmentId),
+        message: retryable
+          ? `Message sent once. ${failed.length} attachment upload${failed.length === 1 ? "" : "s"} failed. Retry attachments only; the message will not be resent.`
+          : `Message sent once, but ${failed.length === 1 ? "a file" : `${failed.length} files`} could not be attached. Add ${failed.length === 1 ? "it" : "them"} again to a new message.`,
+        canRetry: retryable,
         onRetry: retryAttachments,
       });
     } else {
       attachmentRecoveryRef.current = [];
       setAttachmentRecovery([]);
-      setMessageFiles([]);
       setMessageOperation({
         status: "success",
         message: files.length
@@ -1023,7 +1033,6 @@ function ParentWorkspace({
     await loadMessages();
     attachmentRecoveryRef.current = failed;
     setAttachmentRecovery(failed);
-    setMessageFiles(failed.map((item) => item.file));
     setMessageOperation(
       failed.length
         ? {
@@ -1851,7 +1860,7 @@ function ParentWorkspace({
             offsetWeeks={storyOffset}
             onOffset={setStoryOffset}
             story={weeklyStory({
-              weeks,
+              weeks: allPlanWeeks,
               activities: planState.activities,
               captures: captures ?? [],
               schedule,
@@ -1861,7 +1870,7 @@ function ParentWorkspace({
             report={
               <LearningReport
                 learnerName={selectedLearner.preferred_name}
-                weeks={weeks}
+                weeks={allPlanWeeks}
                 activities={planState.activities}
                 captures={captures ?? []}
                 capturesUnavailable={captures === null}
@@ -1968,6 +1977,7 @@ function ParentWorkspace({
                   <label>
                     Attachments <span>(optional)</span>
                     <input
+                      key={fileInputKey}
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png,.txt,application/pdf,image/jpeg,image/png,text/plain"
                       multiple
