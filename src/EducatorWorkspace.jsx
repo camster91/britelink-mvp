@@ -10,6 +10,7 @@ import {
 } from "./staff-workspace.js";
 import "./staff-workspace.css";
 import { StaffAuthoring } from "./StaffAuthoring.jsx";
+import { EmailUpdates } from "./EmailUpdates.jsx";
 import "./staff-operations.css";
 import { MessageAttachments } from "./MessageAttachments.jsx";
 import { StaffSharedActivities, StaffWeeklyNote } from "./StaffFamilyTools.jsx";
@@ -380,6 +381,7 @@ export function EducatorWorkspace({
             repository={repository}
             onSaved={loadStaffNames}
           />
+          <EmailUpdates repository={repository} audience="staff" />
         </div>
         <div className="staff-header-actions">
           <span className="case-status">{membership.role}</span>

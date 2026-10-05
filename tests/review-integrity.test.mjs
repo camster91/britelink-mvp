@@ -273,3 +273,105 @@ test("migration 057 staff display names", async (t) => {
     await db.close();
   }
 });
+
+test("migration 058 email notifications", async (t) => {
+  const db = await database();
+  const house = "5eed0000-0000-4000-8000-0000000000a1";
+  // Runs fn inside a transaction that is always rolled back.
+  const inTx = async (fn) => {
+    await db.exec("begin");
+    try {
+      return await fn();
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const outbox = async (subject) =>
+    (await db.query(`select recipient_user_id as who, kind from public.notification_outbox where subject_id = $1 order by 1`, [subject])).rows;
+  try {
+    await t.test("a parent's message notifies the assigned educator, not the parent", async () => {
+      // Seeded message a70 was written by guardian A on case A, assigned to educator A.
+      assert.deepEqual(await outbox(id("a70")), [{ who: users.educatorA, kind: "message_to_staff" }]);
+    });
+
+    await t.test("with no educator assigned, a parent's message goes to the household's admins", async () => {
+      await inTx(async () => {
+        await db.query(`update public.service_cases set assigned_educator_id = null where id = $1`, [CASE_A]);
+        await db.query(`insert into public.case_messages(id, household_id, case_id, sender_user_id, body) values ('5eed0000-0000-4000-8000-0000000000d1', $1, $2, $3, 'Hello')`, [house, CASE_A, users.guardianA]);
+        assert.deepEqual(await outbox("5eed0000-0000-4000-8000-0000000000d1"), [{ who: users.adminA, kind: "message_to_staff" }]);
+      });
+    });
+
+    await t.test("a staff message notifies every guardian of the household", async () => {
+      await inTx(async () => {
+        await db.query(`insert into public.case_messages(id, household_id, case_id, sender_user_id, body) values ('5eed0000-0000-4000-8000-0000000000d2', $1, $2, $3, 'Plan update')`, [house, CASE_A, users.educatorA]);
+        assert.deepEqual(await outbox("5eed0000-0000-4000-8000-0000000000d2"), [{ who: users.guardianA, kind: "message_to_guardian" }]);
+      });
+    });
+
+    await t.test("a sent delivery notifies guardians once, even when the send is retried", async () => {
+      // Seeded delivery aa0 was inserted as sent.
+      assert.deepEqual(await outbox(id("aa0")), [{ who: users.guardianA, kind: "plan_delivered" }]);
+      await inTx(async () => {
+        await db.query(`update public.deliveries set status = 'failed' where id = $1`, [id("aa0")]);
+        await db.query(`update public.deliveries set status = 'sent' where id = $1`, [id("aa0")]);
+        assert.equal((await outbox(id("aa0"))).length, 1);
+      });
+    });
+
+    await t.test("a revision decision notifies the guardian who asked", async () => {
+      await inTx(async () => {
+        await db.query(`update public.revision_requests set status = 'accepted' where id = $1`, [id("ab0")]);
+        const rows = (await db.query(`select recipient_user_id as who from public.notification_outbox where kind = 'revision_decided'`)).rows;
+        assert.deepEqual(rows, [{ who: users.guardianA }]);
+      });
+    });
+
+    await t.test("the sender skips people who opted out and anything older than two days, then records the result", async () => {
+      await inTx(async () => {
+        await db.query(`insert into auth.users(id, email) values ($1, 'educator-a@example.test') on conflict (id) do update set email = excluded.email`, [users.educatorA]).catch(() => {});
+        await db.query(`update auth.users set email = 'educator-a@example.test' where id = $1`, [users.educatorA]);
+        await db.query(`insert into public.notification_preferences(user_id, email_enabled) values ($1, false)`, [users.guardianA]);
+        await db.query(`insert into public.case_messages(id, household_id, case_id, sender_user_id, body) values ('5eed0000-0000-4000-8000-0000000000d3', $1, $2, $3, 'Old one')`, [house, CASE_A, users.guardianA]);
+        await db.query(`update public.notification_outbox set created_at = now() - interval '3 days' where subject_id = '5eed0000-0000-4000-8000-0000000000d3'`);
+        const claimed = (await db.query(`select * from public.notification_claim(50)`)).rows;
+        assert.deepEqual(claimed.map((row) => [row.notice_kind, row.recipient_email]), [["message_to_staff", "educator-a@example.test"]], "only the fresh notice to the educator who did not opt out");
+        const skipped = (await db.query(`select status, last_error from public.notification_outbox where status = 'skipped' order by last_error`)).rows;
+        assert.deepEqual(skipped.map((row) => row.last_error), ["expired before sending", "recipient turned emails off"]);
+        await db.query(`select public.notification_finish($1, true)`, [claimed[0].notice_id]);
+        assert.equal((await db.query(`select status from public.notification_outbox where id = $1`, [claimed[0].notice_id])).rows[0].status, "sent");
+      });
+    });
+
+    await t.test("a failed send is retried, then stops after three attempts", async () => {
+      await inTx(async () => {
+        const notice = (await db.query(`select id from public.notification_outbox where subject_id = $1`, [id("a70")])).rows[0].id;
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          await db.query(`update public.notification_outbox set status = 'sending', attempts = $2 where id = $1`, [notice, attempt]);
+          await db.query(`select public.notification_finish($1, false, 'mailbox unavailable')`, [notice]);
+        }
+        assert.equal((await db.query(`select status from public.notification_outbox where id = $1`, [notice])).rows[0].status, "failed");
+      });
+    });
+
+    await t.test("people manage only their own setting, and no one can read the outbox or run the sender", async () => {
+      await inTx(async () => {
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.guardianA}', true);`);
+        assert.equal((await db.query(`select public.set_email_notifications(false) as on`)).rows[0].on, false);
+        assert.deepEqual((await db.query(`select email_enabled from public.notification_preferences`)).rows, [{ email_enabled: false }]);
+        assert.equal((await db.query(`select 1 from public.notification_outbox`)).rows.length, 0, "the outbox is sealed");
+      });
+      await inTx(async () => {
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.guardianA}', true);`);
+        await assert.rejects(() => db.query(`select * from public.notification_claim(5)`), /permission denied/);
+      });
+      await inTx(async () => {
+        await db.query(`insert into public.notification_preferences(user_id, email_enabled) values ($1, false)`, [users.guardianA]);
+        await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${users.adminA}', true);`);
+        assert.equal((await db.query(`select 1 from public.notification_preferences`)).rows.length, 0, "an admin cannot read a parent's setting");
+      });
+    });
+  } finally {
+    await db.close();
+  }
+});

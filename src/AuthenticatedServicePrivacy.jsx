@@ -4,6 +4,7 @@ import { createHouseholdExportFile, deliveryPresentation, newestByCreatedAt } fr
 import { loadPrivacyWorkspaceData } from "./privacy-workspace.js";
 import { downloadTextFile } from "./browser-download.js";
 import { checkRequired, clearFixedField } from "./form-errors.js";
+import { EmailUpdates } from "./EmailUpdates.jsx";
 
 const IDLE={status:"idle",message:"",canRetry:false};
 function failure(error,action){const status=classifyOperationError(error);return{status,message:status==="offline"?`${action} is unavailable while you are offline.`:status==="session_expired"?"Your session expired. Sign in again before continuing.":status==="conflict"?`${action} conflicted with a newer change. Reload before trying again.`:error.message,canRetry:status==="offline"||status==="error"}}
@@ -29,6 +30,7 @@ export function AuthenticatedServicePrivacy({householdId,learner,serviceCase,use
     </div></div>
     <div className="service-group"><h3>Your data</h3><p>Export, consent, and deletion are household-wide. Use them only when you intend the change. BriteLink will not erase data from a request on this page.</p><div className="service-grid">
     <article><h3>Portable household export</h3><p>Download the household’s BriteLink records as structured JSON. The file may contain sensitive learner information; store it securely.</p><button className="ghost" disabled={operation.status==="loading"} onClick={exportData}>Download my data</button></article>
+    <article><h3>Email updates</h3><EmailUpdates repository={repository} /></article>
     <article><h3>Consent</h3>{data.consents.length?<><p>Active notice: {data.consents[0].notice_version}</p><label className="service-confirm"><input type="checkbox" checked={withdrawConfirmed} onChange={event=>setWithdrawConfirmed(event.target.checked)} /> I understand this pauses active service and ends educator access when no other active consent exists.</label><button className="danger" disabled={!withdrawConfirmed||operation.status==="loading"} onClick={withdraw}>Withdraw my active consent</button></>:<p>No active consent attributed to this signed-in guardian.</p>}</article>
     <article className="service-delete"><h3>Request household deletion</h3>{openDeletion?<p className="service-complete">A deletion request is already {openDeletion.status}. No duplicate request is needed.</p>:<form onSubmit={requestDeletion}><p>This creates a review request; it does not immediately erase records. BriteLink must verify identity, other guardians, legal/financial retention, backups, and deletion scope.</p><label>Reason <span>(optional)</span><textarea maxLength="1000" value={deletionReason} onChange={event=>setDeletionReason(event.target.value)} /></label><label className="service-confirm"><input type="checkbox" checked={deleteConfirmed} onChange={event=>setDeleteConfirmed(event.target.checked)} /> I understand this is a household-wide request subject to identity and retention review.</label><button className="danger" disabled={!deleteConfirmed||operation.status==="loading"}>Request household deletion</button></form>}</article>
     </div></div></>}<Notice state={operation}/></section>;

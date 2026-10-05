@@ -53,7 +53,7 @@ test("hosted isolation checks every private table in both directions and the buc
   assert.equal(report.tableCount, PRIVATE_TABLES.length);
   assert.equal(PRIVATE_TABLES.length, 31);
   assert.equal(report.sealedTableCount, SEALED_TABLES.length);
-  assert.equal(SEALED_TABLES.length, 3);
+  assert.equal(SEALED_TABLES.length, 4);
   // checkCount = four table checks per table, plus four bucket checks (two actors x
   // own-prefix visible / foreign-prefix denied). The bucket contribution is additive and
   // was previously folded into a hardcoded 104, which hid the arithmetic.
