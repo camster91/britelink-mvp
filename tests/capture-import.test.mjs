@@ -33,3 +33,11 @@ test("a file without the right columns, or too many rows, says so plainly", () =
   assert.equal(result.ready.length, IMPORT_LIMIT);
   assert.match(result.problems[0], /Only the first 50 rows/);
 });
+
+test("a date with the right shape that is not a real day is reported, not saved", () => {
+  const csv = "date,kind,subjects,note\n2026-02-30,book,,Read a chapter\n2026-02-28,book,,Read another\n";
+  const { ready, problems } = captureRowsFromCsv(csv, "2026-10-10");
+  assert.deepEqual(problems, ["Row 2: 2026-02-30 is not a real date."]);
+  assert.equal(ready.length, 1);
+  assert.equal(ready[0].capturedOn, "2026-02-28");
+});

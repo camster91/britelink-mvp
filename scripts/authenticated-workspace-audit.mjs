@@ -74,11 +74,15 @@ try{
   if(!await page.evaluate(()=>document.getElementById("root").inert))throw new Error("the app behind the student view must be inert");
   const studentAxe=await new AxeBuilder({page}).include(".student-view").withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze();
   if(studentAxe.violations.length)throw new Error(`student view accessibility: ${studentAxe.violations.map(v=>v.id).join(", ")}`);
+  const listBefore=await student.getByRole("button",{name:"I did it!"}).count();
   await page.evaluate(()=>{globalThis.qaFailLessonSaveOnce=true});
   await student.getByRole("button",{name:"I did it!"}).first().click();
   await student.getByRole("alert").getByText("That didn’t save. Ask a grown-up to try again.",{exact:false}).waitFor();
   await student.getByRole("button",{name:"I did it!"}).first().click();
   await student.getByText("Done today: Build a sound map").waitFor();
+  // The list is fixed when the view opens: finishing one shortens it instead of pulling in more.
+  const listAfter=await student.getByRole("button",{name:"I did it!"}).count();
+  if(listAfter!==listBefore-1)throw new Error(`student list should shrink by one after "I did it!" (${listBefore} -> ${listAfter})`);
   await student.getByRole("button",{name:/press and hold to leave/}).focus();
   await page.keyboard.down("Enter");await page.waitForTimeout(400);await page.keyboard.up("Enter");
   if(!await student.isVisible())throw new Error("a short press must not leave the student view");
@@ -91,6 +95,14 @@ try{
   await page.getByText("Lesson activity saved securely.").waitFor();
   await page.getByRole("heading",{name:"Instructions"}).waitFor();await page.getByText("Choose five familiar words.").waitFor();await page.getByText("Paper",{exact:true}).waitFor();await page.getByText("Read each instruction aloud.").waitFor();await page.getByText("Adult help:",{exact:false}).waitFor();await page.getByText("Printable sound cards").waitFor();
   await page.getByRole("button",{name:/Count a collection/}).click();await page.getByText("Choose a small collection.").waitFor();await page.getByText("Household objects").waitFor();await page.getByText("No external resources are required.").waitFor();await page.getByRole("button",{name:/Build a sound map/}).click();
+  // Submitting an empty intake names every missing answer, marks the fields and focuses the first.
+  await page.getByRole("button",{name:"Submit new intake version"}).click();
+  await page.locator("section.live-intake").getByText(/Please complete these \d+ answers: Subjects to prioritize/).waitFor();
+  for (const name of ["Current learning starting point","Goals for this plan","Learning language"]) {
+    if (!(await page.locator("section.live-intake footer .live-operation").getByText(name,{exact:false}).count())) throw new Error(`intake summary must name ${name}`);
+  }
+  if ((await page.getByLabel("Current learning starting point").getAttribute("aria-invalid"))!=="true") throw new Error("missing intake answers must be aria-invalid");
+  if (!(await page.evaluate(()=>document.activeElement?.closest(".intake-subjects")))) throw new Error("focus must move to the first missing answer");
   await page.locator("section.live-intake").getByRole("checkbox",{name:"Language",exact:true}).check();
   await page.getByRole("radio",{name:/Weekly goals/}).check();
   await page.getByLabel("Current learning starting point").fill("Reads short paragraphs and counts to 100.");

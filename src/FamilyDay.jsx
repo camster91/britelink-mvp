@@ -43,7 +43,8 @@ export function FamilyDay({ repository, householdId, learners, today }) {
     <details
       className="family-day"
       onToggle={(event) => {
-        if (event.currentTarget.open && state.status === "idle") load();
+        // Reload on every open: lessons may have been marked done since it was last shown.
+        if (event.currentTarget.open && state.status !== "loading") load();
       }}
     >
       <summary>Whole family today</summary>

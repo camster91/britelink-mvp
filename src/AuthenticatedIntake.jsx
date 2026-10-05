@@ -9,6 +9,7 @@ const PLANNING_OPTIONS = [
   ["capture_after", "We’ll record as we go", "We learn our own way and note what happened."],
 ];
 import { classifyOperationError } from "./operation-state.js";
+import { clearFixedField, markMissing, missingFields, missingMessage } from "./form-errors.js";
 
 const EMPTY = {
   subjects: [],
@@ -54,8 +55,10 @@ export function AuthenticatedIntake({
     message: "",
     canRetry: false,
   });
-  const load = useCallback(async () => {
-    setState((previous) => ({ ...previous, status: "loading", error: null }));
+  // quiet: refresh after a submit without swapping the form for "Loading…", so the success
+  // message stays on screen (and is announced) and a failed refresh does not hide it.
+  const load = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setState((previous) => ({ ...previous, status: "loading", error: null }));
     try {
       const profile = await repository.loadLatestProfile(
         householdId,
@@ -64,6 +67,7 @@ export function AuthenticatedIntake({
       setState({ status: "success", profile, error: null });
       setDraft(draftFromProfile(profile));
     } catch (error) {
+      if (quiet) throw error;
       setState((previous) => ({
         ...previous,
         status: "error",
@@ -93,16 +97,26 @@ export function AuthenticatedIntake({
         : value.subjects.filter((item) => item !== subjectName),
     }));
   };
+  // Required answers are checked by src/form-errors.js rather than the browser's own bubbles, so the
+  // summary names every missing answer, each field is marked aria-invalid, and focus moves to it.
+  const formRef = useRef(null);
   const submit = async (event) => {
     event.preventDefault();
-    if (!draft.subjects.length) {
-      setSubjectsInvalid(true);
+    const missing = missingFields(formRef.current);
+    markMissing(formRef.current, missing, `${formId}-status`);
+    const names = [
+      ...(draft.subjects.length ? [] : ["Subjects to prioritize (choose at least one)"]),
+      ...missing.map((item) => item.label),
+    ];
+    if (names.length) {
+      setSubjectsInvalid(!draft.subjects.length);
       setOperation({
         status: "error",
-        message: "Subjects to prioritize: choose at least one subject.",
+        message: missingMessage(names),
         canRetry: false,
       });
-      firstSubjectRef.current?.focus();
+      if (!draft.subjects.length) firstSubjectRef.current?.focus();
+      else missing[0].element.focus();
       return;
     }
     setOperation({
@@ -118,11 +132,19 @@ export function AuthenticatedIntake({
         guardianConsent: draft.guardianConsent,
         ...draft,
       });
-      await load();
+      const submitted = `Intake version ${result?.profile_version ?? "new"} submitted with consent record ${privacyNoticeVersion}.`;
+      let refreshed = true;
+      try {
+        await load({ quiet: true });
+      } catch {
+        refreshed = false;
+      }
       onSubmitted?.();
       setOperation({
         status: "success",
-        message: `Intake version ${result?.profile_version ?? "new"} submitted with consent record ${privacyNoticeVersion}.`,
+        message: refreshed
+          ? submitted
+          : `${submitted} The page could not refresh; it is saved, so do not submit it again.`,
         canRetry: false,
       });
     } catch (error) {
@@ -179,12 +201,18 @@ export function AuthenticatedIntake({
       ) : state.status === "error" ? (
         <div className="plan-state">
           <p role="alert">{state.error}</p>
-          <button className="ghost" onClick={load}>
+          <button className="ghost" onClick={() => load()}>
             Try again
           </button>
         </div>
       ) : (
-        <form onSubmit={submit} aria-describedby={`${formId}-status`}>
+        <form
+          ref={formRef}
+          noValidate
+          onSubmit={submit}
+          onChange={clearFixedField}
+          aria-describedby={`${formId}-status`}
+        >
           <p className="intake-guidance">
             Share practical learning context only. Do not include a diagnosis,
             IEP, school name, address, health card, or unnecessary medical
@@ -206,6 +234,7 @@ export function AuthenticatedIntake({
                   type="checkbox"
                   checked={draft.subjects.includes(item)}
                   onChange={subject(item)}
+                  data-error-managed="react"
                   aria-invalid={subjectsInvalid || undefined}
                   aria-describedby={
                     subjectsInvalid ? `${formId}-subjects-error` : undefined
@@ -381,6 +410,7 @@ export function AuthenticatedIntake({
             <label htmlFor={`${formId}-consent`}>
               <input
                 id={`${formId}-consent`}
+                data-error-label="Guardian consent"
                 type="checkbox"
                 required
                 checked={draft.guardianConsent}
