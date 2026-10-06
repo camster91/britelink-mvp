@@ -201,7 +201,7 @@ test("authentication rejects unsafe redirect URLs before calling Supabase", asyn
   await repository.signInWithEmail(" Guardian@Example.ca ","https://app.britelink.org/auth");
   assert.equal(calls[0].email,"guardian@example.ca");
   assert.equal(calls[0].options.emailRedirectTo,"https://app.britelink.org/auth");
-  assert.equal(calls[0].options.shouldCreateUser,false);
+  assert.equal(calls[0].options.shouldCreateUser,true,"open beta: a new email gets an account");
   await repository.requestFreshSignIn("guardian@example.ca","https://app.britelink.org");
   assert.equal(calls[1].email,"guardian@example.ca");assert.equal(calls[1].options.shouldCreateUser,false);
 });

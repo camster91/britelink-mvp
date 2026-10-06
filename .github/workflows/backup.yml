@@ -3,7 +3,8 @@ name: Backup
 # Nightly production database backup with a restore check (#8), over the deploy SSH path. Runs
 # scripts/backup-production.sh from the commit on main: pg_dump to /root/britelink-backups on the
 # VPS, restore into a throwaway container of the same image, require identical row counts, keep
-# the newest 14. A failed run makes GitHub email the repository owner.
+# the newest 14. Then an encrypted copy of that verified dump goes to the owner's Google Drive (once
+# its two secrets are set). A failed run makes GitHub email the repository owner.
 on:
   schedule:
     - cron: "43 7 * * *" # 07:43 UTC, ~03:43 Toronto
@@ -60,6 +61,49 @@ jobs:
           git archive "$SHA" scripts/backup-production.sh | tar -x -C "$work"
           bash "$work/scripts/backup-production.sh"
           REMOTE
+
+      # Off-site copy (#8): the newest verified dump, encrypted, to the owner's Google Drive. Skipped
+      # (with a notice) until both secrets exist; once they do, a failed copy fails the run, which
+      # emails the owner. The dump streams from the VPS straight into gpg, so the unencrypted data
+      # is never written to the runner's disk. Setup and restore: docs/RECOVERY_OPERATIONS.md.
+      - name: Copy the verified backup to Google Drive (encrypted)
+        env:
+          RCLONE_CONF: ${{ secrets.GDRIVE_RCLONE_CONFIG }}
+          PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+          DRIVE_FOLDER: BriteLink backups
+          KEEP_DAYS: "30"
+        run: |
+          set -euo pipefail
+          if [ -z "$RCLONE_CONF" ] || [ -z "$PASSPHRASE" ]; then
+            echo "::notice::Off-site copy skipped: GDRIVE_RCLONE_CONFIG and BACKUP_ENCRYPTION_PASSPHRASE are not both set."
+            exit 0
+          fi
+          [ "${#PASSPHRASE}" -ge 20 ] || { echo "FAIL: BACKUP_ENCRYPTION_PASSPHRASE must be at least 20 characters" >&2; exit 1; }
+          command -v rclone >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq rclone >/dev/null; }
+          work="$(mktemp -d)"; chmod 700 "$work"
+          trap 'rm -rf "$work"' EXIT
+          ( umask 077; printf '%s\n' "$RCLONE_CONF" > "$work/rclone.conf"; printf '%s' "$PASSPHRASE" > "$work/passphrase" )
+          export RCLONE_CONFIG="$work/rclone.conf"
+          # A throwaway keyring: nothing from this run outlives it.
+          export GNUPGHOME="$work/gnupg"; install -d -m 700 "$GNUPGHOME"
+          rclone listremotes | grep -qx 'gdrive:' || { echo "FAIL: GDRIVE_RCLONE_CONFIG has no remote named gdrive" >&2; exit 1; }
+          vps() { ssh -i "$HOME/.ssh/britelink_deploy" -o IdentitiesOnly=yes -o BatchMode=yes \
+              -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/known_hosts" \
+              -o ConnectTimeout=15 -o ServerAliveInterval=30 "${VPS_USER}@${VPS_HOST}" "$@"; }
+          name="$(vps 'ls -1t /root/britelink-backups/nightly-*.dump 2>/dev/null | head -n 1 | xargs -r basename')"
+          [[ "$name" =~ ^nightly-[0-9]{8}T[0-9]{6}Z\.dump$ ]] || { echo "FAIL: no verified nightly dump on the VPS" >&2; exit 1; }
+          vps "cat '/root/britelink-backups/$name'" \
+            | gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-file "$work/passphrase" \
+                  --symmetric --cipher-algo AES256 --output "$work/$name.gpg"
+          [ -s "$work/$name.gpg" ] || { echo "FAIL: the encrypted copy is empty" >&2; exit 1; }
+          rclone copyto "$work/$name.gpg" "gdrive:$DRIVE_FOLDER/$name.gpg"
+          local_size="$(stat -c %s "$work/$name.gpg")"
+          remote_size="$(rclone size --json "gdrive:$DRIVE_FOLDER/$name.gpg" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bytes"])')"
+          [ "$local_size" = "$remote_size" ] || { echo "FAIL: Drive holds $remote_size bytes, expected $local_size" >&2; exit 1; }
+          echo "  ok   $name.gpg ($local_size bytes) in Google Drive folder \"$DRIVE_FOLDER\""
+          # Retention: only this job's own files (nightly-*.dump.gpg) older than KEEP_DAYS.
+          rclone delete --min-age "${KEEP_DAYS}d" --include 'nightly-*.dump.gpg' "gdrive:$DRIVE_FOLDER"
+          echo "  ok   $(rclone lsf --include 'nightly-*.dump.gpg' "gdrive:$DRIVE_FOLDER" | wc -l) encrypted copies kept off-site (newest ${KEEP_DAYS} days)"
 
       - name: Remove the deploy key from the runner
         if: ${{ always() }}
