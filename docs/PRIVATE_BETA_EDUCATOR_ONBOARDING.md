@@ -55,23 +55,22 @@ BriteLink plans are **designed for parents to execute with their children**, not
 
 ### 1. Account Setup
 
-Cameron will create your staff account and send you a magic link invitation.
+1. Cameron sends you a BriteLink invitation by email. Open it and sign in once with your work
+   email. Don't fill in the family form: it is for parents.
+2. Tell Cameron you have signed in. He adds you to the staff team with the **Staff** workflow
+   (`docs/STAFF_TEAM.md`).
+3. Sign in again. You now see the staff workspace, and a **Workspace** list to pick a family.
 
 **Your account includes:**
 - Staff role with access to the educator workbench
-- Case assignment permissions
 - Access to the governed resource library
-- Secure messaging for assigned cases only
+- Secure messaging with the families you work with
 
-**You can only see:**
-- Cases assigned to you (as author or reviewer)
-- Your own authored plans (even if unassigned)
-- Household data for your assigned cases only
+**What you can see:** every family on BriteLink is shared with the whole staff team, so you can
+open any family's workspace. Open only the families you are working with or have been asked to
+help, and never copy family details outside BriteLink.
 
-**You cannot see:**
-- Other educators' cases (unless assigned as reviewer)
-- Other households' data
-- System-wide case lists or reports (admin only)
+**What stays admin-only:** case assignment, the audit history, privacy requests and system reports.
 
 ### 2. Workbench Overview
 
