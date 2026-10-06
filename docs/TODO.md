@@ -36,8 +36,11 @@ person), **code** (can be built in this repo), or **both**.
 3. **Staff team and the invite path** (both). Migration 060 adds a staff team: everyone on it is
    added to every family automatically, so staff can see new families (before it, nobody on staff
    could). 060 is in the repo and waits for the owner's go; then add each person with the Staff
-   workflow (`STAFF_TEAM.md`). Still open (Cameron): how invitations are sent, for staff and
-   families, since sign-up is invite-only and the repo has no invite tool.
+   workflow (`STAFF_TEAM.md`). Decided 2026-10-06: open free beta, anyone can join. The app's "Join the
+   free beta" form already creates accounts; the sign-in service still refuses new emails
+   (`GOTRUE_DISABLE_SIGNUP=true`). After 060 is live, set it to `false` on the backend's auth
+   service in Coolify and redeploy it. Staff then join the same way and are added with the Staff
+   workflow.
 4. **Educator content sign-off** (#11, Cameron). A credentialed educator reviews curriculum,
    safeguarding and resource rights before plans reach families.
 5. **Support model** (#55, Cameron). Hours, who answers, and what happens when a plan is wrong.
@@ -53,8 +56,9 @@ person), **code** (can be built in this repo), or **both**.
 - **Payments** (#5, #52, #54, Cameron then code). Choose the provider and prices first. The
   signed webhook, checkout and cancellation follow from that. The database models one-off
   package orders today, not subscriptions.
-- **Off-site backup copy and point-in-time recovery** (#8, both). Nightly dumps live on the VPS
-  only.
+- **Off-site backup copy** (#8, Cameron). Built: each verified nightly dump is copied, encrypted,
+  to your Google Drive. It switches on once you add the two secrets in
+  `RECOVERY_OPERATIONS.md` → "Off-site copy in Google Drive". Point-in-time recovery is still open.
 - **Named alert owner and a test alert** (#7, Cameron).
 - **Staging rebuild and deployed proof** (#38, #39, #3, #37). `Staging` workflow → rebuild-and-verify.
   It wipes staging's synthetic data, then runs the isolation matrix (D1/D2) and the parent and

@@ -15,7 +15,10 @@ export class SupabaseBriteLinkRepository {
   constructor(client) { if (!client) throw new Error("Supabase client is required"); this.client = client; }
 
   async session() { const result = await this.client.auth.getSession(); return unwrap(result, "Read session")?.session ?? null; }
-  async signInWithEmail(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Sign-in redirect URL"), shouldCreateUser: false } }), "Send sign-in link"); }
+  // Open free beta (2026-10-06): a new email gets an account too, and lands on "Set up your
+  // household" (or, for staff, is added with the Staff workflow). The sign-in service's own
+  // GOTRUE_DISABLE_SIGNUP still decides whether new accounts are allowed at all.
+  async signInWithEmail(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Sign-in redirect URL"), shouldCreateUser: true } }), "Send sign-in link"); }
   // The learner details ride along as signup metadata. Nothing is provisioned until the family
   // follows the link: provision_beta_household (migration 041) only serves a signed-in,
   // email-confirmed caller, so an unauthenticated visitor can no longer create or look up accounts.

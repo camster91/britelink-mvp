@@ -17,10 +17,10 @@ it, and remove people when they leave.
 
 ## Add someone
 
-1. They need a BriteLink sign-in account first. Sign-up on the live site is invite-only
-   (`GOTRUE_DISABLE_SIGNUP=true`), so the account is created the same way as a family's: an
-   invitation from the sign-in service. There is no invite button or workflow in this repository
-   yet; that is an open decision (issue #100). Once invited, they sign in once.
+1. They go to https://britelink.ashbi.ca, enter their work email, press **Email me a sign-in
+   link**, and open the link. That creates their account. They then see "Set up your household":
+   they should **not** fill it in (it is for parents); they sign out. (This needs sign-up switched
+   on in the sign-in service; see `TODO.md` item 3.)
 2. GitHub → **Actions → Staff → Run workflow**:
    - action: `add`
    - email: their sign-in email
@@ -29,7 +29,7 @@ it, and remove people when they leave.
 3. The run says how many existing families were shared with them. They sign in again and see the
    staff workspace.
 
-If the run says "no BriteLink account with that email yet", do step 1 first.
+If the run says "no BriteLink account with that email yet", they haven't finished step 1.
 
 ## Remove someone
 

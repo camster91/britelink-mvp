@@ -126,4 +126,38 @@ A failed run makes GitHub email the owner. Restoring a dump into production is a
 
 `docker exec -i britelink-production-db-1 pg_restore -U postgres -d postgres --clean --if-exists < /root/britelink-backups/nightly-<time>.dump`
 
-The dumps live on the VPS only. An encrypted off-site copy is still open under #8.
+### Off-site copy in Google Drive
+
+After the restore check passes, the same run encrypts that verified dump and puts it in the
+**BriteLink backups** folder of the owner's Google Drive as `nightly-<time>.dump.gpg`. Copies older
+than 30 days are removed (to Drive's trash). The dump streams from the VPS straight into `gpg`
+(AES-256, with a passphrase), so the unencrypted data is never written anywhere but the VPS. Google
+only ever holds the encrypted file.
+
+Until both secrets below exist, this step is skipped with a notice, and the backup itself still
+runs. Once they exist, a failed copy fails the run, which emails the owner.
+
+**One-time setup (owner, about 10 minutes):**
+
+1. **Passphrase.** Make a long random passphrase (at least 20 characters) and save it in your
+   password manager. **Without it the Drive copies cannot be opened. Nobody can recover it for
+   you.** Then add it in GitHub: Settings → Environments → `production` → Add secret, named
+   `BACKUP_ENCRYPTION_PASSPHRASE`.
+2. **Drive access.** On your own computer, install rclone (https://rclone.org/install/), then run:
+   `rclone config create gdrive drive scope=drive.file`
+   A browser opens: sign in with the Google account whose Drive should hold the backups, and allow
+   access. `drive.file` lets rclone see only the files it creates, not the rest of your Drive.
+3. Run `rclone config show gdrive`. Copy everything it prints, from the `[gdrive]` line down, into
+   a second secret in the same place, named `GDRIVE_RCLONE_CONFIG`.
+4. Actions → **Backup** → Run workflow. The last step should end with
+   `ok … encrypted copies kept off-site`, and the folder **BriteLink backups** appears in your Drive.
+
+**Restoring from a Drive copy:**
+
+1. Download the `.gpg` file from Drive.
+2. `gpg --decrypt nightly-<time>.dump.gpg > nightly-<time>.dump` (it asks for the passphrase).
+3. Restore it as above, with `pg_restore … --clean --if-exists`, into the database you are
+   rebuilding.
+
+If you revoke rclone's access in your Google account, or change the passphrase, update the matching
+secret. A new passphrase applies to new copies only: keep the old one for older copies.

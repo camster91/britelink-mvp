@@ -497,8 +497,8 @@ function SignIn({ repository }) {
           </span>
         </form>
         <p className="auth-recovery">
-          Already invited? Use the same form — it signs you in and never creates
-          a duplicate account.
+          Already have an account? Use the same form. It signs you in and never
+          creates a duplicate account.
         </p>
         <small>
           Do not send child, health, school, diagnosis, or IEP information by

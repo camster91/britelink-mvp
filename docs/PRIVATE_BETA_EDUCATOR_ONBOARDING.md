@@ -55,8 +55,8 @@ BriteLink plans are **designed for parents to execute with their children**, not
 
 ### 1. Account Setup
 
-1. Cameron sends you a BriteLink invitation by email. Open it and sign in once with your work
-   email. Don't fill in the family form: it is for parents.
+1. Go to the BriteLink site, enter your work email, press **Email me a sign-in link**, and open
+   the link. When you see "Set up your household", don't fill it in (it is for parents): sign out.
 2. Tell Cameron you have signed in. He adds you to the staff team with the **Staff** workflow
    (`docs/STAFF_TEAM.md`).
 3. Sign in again. You now see the staff workspace, and a **Workspace** list to pick a family.
