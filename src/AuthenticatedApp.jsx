@@ -2200,7 +2200,7 @@ export function Workspace({
         <div className="live-notice" role="note">
           <strong>Private to your family</strong>
           <span>
-            Only you and the educator working with your child can see what's here.
+            Only you and the BriteLink staff team can see what's here.
             If you step away, we sign you out after 15 minutes to keep it safe.
           </span>
         </div>

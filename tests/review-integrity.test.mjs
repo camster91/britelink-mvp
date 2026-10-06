@@ -450,3 +450,104 @@ test("migration 059 review follow-ups", async (t) => {
     await db.close();
   }
 });
+
+test("migration 060 staff team", async (t) => {
+  const db = await database();
+  const houseA = "5eed0000-0000-4000-8000-0000000000a1";
+  const person = "5eed0000-0000-4000-8000-00000000ad60";
+  const inTx = async (fn) => {
+    await db.exec("begin");
+    try {
+      await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'new-staff@britelink.invalid', now())`, [person]);
+      return await fn();
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  // An expected failure, rolled back to a savepoint so the test's transaction carries on.
+  const refuses = async (sql, pattern, params = []) => {
+    await db.exec("savepoint expected_failure");
+    await assert.rejects(() => db.query(sql, params), pattern);
+    await db.exec("rollback to savepoint expected_failure");
+  };
+  const roleIn = async (household, userId) =>
+    (await db.query(`select role from public.memberships where household_id = $1 and user_id = $2`, [household, userId])).rows[0]?.role;
+  try {
+    await t.test("adding someone shares every existing family with them, with an educator's case limit", async () => {
+      await inTx(async () => {
+        const shared = (await db.query(`select public.staff_team_add('New-Staff@britelink.invalid', 'educator', 4) as n`)).rows[0].n;
+        assert.equal(shared, 1, "household A is the only seeded family with a guardian");
+        assert.equal(await roleIn(houseA, person), "educator");
+        const limit = (await db.query(`select max_active_cases from public.educator_capacities where household_id = $1 and educator_user_id = $2`, [houseA, person])).rows[0];
+        assert.deepEqual(limit, { max_active_cases: 4 });
+        // Running it again changes nothing but the limit.
+        assert.equal((await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator', 6) as n`)).rows[0].n, 0);
+      });
+    });
+
+    await t.test("a new family is shared with the whole team the moment it signs up", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'admin')`);
+        const parent = "5eed0000-0000-4000-8000-00000000ad61";
+        await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'parent@britelink.invalid', now())`, [parent]);
+        await actAs(parent);
+        const family = (await db.query(`select household_id, created from public.provision_beta_household('Ada', 'Grade 3', 'Ontario')`)).rows[0];
+        await db.exec("reset role");
+        assert.equal(family.created, true);
+        assert.equal(await roleIn(family.household_id, parent), "guardian");
+        assert.equal(await roleIn(family.household_id, person), "admin");
+      });
+    });
+
+    await t.test("a staff member who signs up as a parent gets their own family, not someone else's", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'admin')`);
+        assert.equal(await roleIn(houseA, person), "admin");
+        await actAs(person);
+        const family = (await db.query(`select household_id, created from public.provision_beta_household('Ben', 'Grade 1', 'Ontario')`)).rows[0];
+        await db.exec("reset role");
+        assert.equal(family.created, true);
+        assert.notEqual(family.household_id, houseA);
+        assert.equal(await roleIn(family.household_id, person), "guardian", "they stay their own family's guardian");
+      });
+    });
+
+    await t.test("adding refuses an unknown email, a bad role and a role change", async () => {
+      await inTx(async () => {
+        await refuses(`select public.staff_team_add('nobody@britelink.invalid', 'educator')`, /invite them first/);
+        await refuses(`select public.staff_team_add('new-staff@britelink.invalid', 'guardian')`, /educator or admin/);
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator')`);
+        await refuses(`select public.staff_team_add('new-staff@britelink.invalid', 'admin')`, /remove them first/);
+      });
+    });
+
+    await t.test("removing refuses while they hold an open case, then removes only staff access", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator')`);
+        await db.query(`update public.service_cases set assigned_educator_id = $2, status = 'assigned' where id = $1`, [CASE_A, person]);
+        await refuses(`select public.staff_team_remove('new-staff@britelink.invalid')`, /reassign those first/);
+        await db.query(`update public.service_cases set assigned_educator_id = null, status = 'triage' where id = $1`, [CASE_A]);
+        assert.equal((await db.query(`select public.staff_team_remove('new-staff@britelink.invalid') as n`)).rows[0].n, 1);
+        assert.equal(await roleIn(houseA, person), undefined);
+        assert.equal((await db.query(`select count(*)::int as n from public.educator_capacities where educator_user_id = $1`, [person])).rows[0].n, 0);
+        assert.equal(await roleIn(houseA, users.guardianA), "guardian");
+      });
+    });
+
+    await t.test("no client can read the team or run the team functions", async () => {
+      for (const sql of [
+        `select * from public.staff_team`,
+        `select * from public.staff_team_list()`,
+        `select public.staff_team_add('seed-guardian-a@britelink.invalid', 'admin')`,
+        `select public.staff_team_remove('seed-admin-a@britelink.invalid')`,
+        `select public.share_household_with_staff('${houseA}')`,
+      ]) {
+        const { error } = await asUser(db, users.adminA, sql);
+        assert.match(error?.message ?? "", /permission denied/, sql);
+      }
+    });
+  } finally {
+    await db.close();
+  }
+});

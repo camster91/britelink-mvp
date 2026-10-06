@@ -33,8 +33,11 @@ person), **code** (can be built in this repo), or **both**.
      recorded under it. Production has 2 households and 4 accounts.
    - Counsel decides whether that guardian must re-consent under `2026-09-30`.
    - Ops check "consent records" shows the counts.
-3. **Staff accounts and the invite path** (Cameron). Create the educator/admin accounts and decide
-   who sends family invites, following `PRIVATE_BETA_EDUCATOR_ONBOARDING.md`.
+3. **Staff team and the invite path** (both). Migration 060 adds a staff team: everyone on it is
+   added to every family automatically, so staff can see new families (before it, nobody on staff
+   could). 060 is in the repo and waits for the owner's go; then add each person with the Staff
+   workflow (`STAFF_TEAM.md`). Still open (Cameron): how invitations are sent, for staff and
+   families, since sign-up is invite-only and the repo has no invite tool.
 4. **Educator content sign-off** (#11, Cameron). A credentialed educator reviews curriculum,
    safeguarding and resource rights before plans reach families.
 5. **Support model** (#55, Cameron). Hours, who answers, and what happens when a plan is wrong.
