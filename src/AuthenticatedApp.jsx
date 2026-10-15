@@ -187,8 +187,9 @@ function StaffWaiting({ profile, repository, onCheckAgain }) {
       <section className="auth-card">
         <h1 id="staff-waiting-heading">You're on the BriteLink staff team</h1>
         <p>
-          You don't have a family yet. When an admin assigns you a family's
-          case, it will appear here.
+          {profile.role === "admin"
+            ? "No family has joined BriteLink yet. Each family appears here as soon as it signs up."
+            : "You don't have a family yet. When an admin assigns you a family's case, it will appear here."}
         </p>
         <StaffNameForm
           current={name}
@@ -2177,13 +2178,9 @@ export function Workspace({
       if (request !== workspaceRequest.current) return;
       if (!memberships.length) {
         // An educator on the staff team joins a family only when an admin assigns them a case
-        // (migration 061). Until then they must not be offered "set up your family".
-        let staffProfile = null;
-        try {
-          staffProfile = (await repository.getMyStaffProfile?.()) ?? null;
-        } catch {
-          staffProfile = null;
-        }
+        // (migration 061). Until then they must not be offered "set up your family". A failed
+        // check falls through to the error screen and its "Try again", never to family setup.
+        const staffProfile = (await repository.getMyStaffProfile?.()) ?? null;
         if (request !== workspaceRequest.current) return;
         if (staffProfile) {
           setState({

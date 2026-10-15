@@ -258,3 +258,11 @@ test("sign-out reports failure only when even the local clear fails", async () =
   const client = { auth: { async signOut() { return { error: { message: "storage unavailable" } }; } } };
   await assert.rejects(() => new SupabaseBriteLinkRepository(client).signOut(), /Sign out: storage unavailable/);
 });
+
+test("staff profile: a database without 061 means not staff; any other failure is an error, never a guess", async () => {
+  const repo = (result) => new SupabaseBriteLinkRepository({ rpc: async (name) => { assert.equal(name, "my_staff_profile"); return result; } });
+  assert.equal(await repo({ data: null, error: { code: "PGRST202", message: "Could not find the function" } }).getMyStaffProfile(), null);
+  assert.equal(await repo({ data: [] }).getMyStaffProfile(), null);
+  assert.deepEqual(await repo({ data: [{ role: "educator", display_name: null }] }).getMyStaffProfile(), { role: "educator", display_name: null });
+  await assert.rejects(() => repo({ data: null, error: { code: "57014", message: "timeout" } }).getMyStaffProfile(), /Check staff access: timeout/);
+});

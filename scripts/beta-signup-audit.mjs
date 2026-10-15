@@ -79,8 +79,15 @@ try{
     const staffCalls=await calls(page);
     if(staffCalls.filter(([name])=>name==="listMemberships").length<=before)throw new Error("Check again did not reload");
     if(staffCalls.some(([name])=>name==="provisionBetaHousehold"))throw new Error("a staff educator provisioned a household");
+
+    // 6. The staff check fails: an error with Try again, never the family setup form (fail closed).
+    await open("stafffail");
+    await page.getByRole("alert").getByText("temporarily unavailable",{exact:false}).waitFor();
+    if(await page.getByRole("heading",{name:"Set up your household"}).count())throw new Error("a failed staff check fell through to family setup");
+    await page.getByRole("button",{name:"Try again"}).click();
+    await page.getByRole("heading",{name:"Set up your household"}).waitFor();
     await context.close();
   }
   await browser.close();
-  console.log("Beta signup audit passed at 1280px and 375px: no pre-link provisioning, one-shot metadata provisioning, accessible validation and retry, staff waiting screen.");
+  console.log("Beta signup audit passed at 1280px and 375px: no pre-link provisioning, one-shot metadata provisioning, accessible validation and retry, staff waiting screen, staff check fails closed.");
 }finally{server.kill()}
