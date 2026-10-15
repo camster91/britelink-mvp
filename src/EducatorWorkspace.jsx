@@ -1131,7 +1131,7 @@ export function EducatorWorkspace({
 }
 
 // The name other staff see in the assign list and message thread, instead of a user ID.
-function StaffNameForm({ current, repository, onSaved }) {
+export function StaffNameForm({ current, repository, onSaved }) {
   const id = useId();
   const [name, setName] = useState(current);
   const [state, setState] = useState({ status: "idle", message: "" });
@@ -1149,9 +1149,9 @@ function StaffNameForm({ current, repository, onSaved }) {
     }
     setState({ status: "loading", message: "Saving…" });
     try {
-      await repository.setStaffDisplayName(name);
+      const saved = await repository.setStaffDisplayName(name);
       setState({ status: "success", message: "Saved. Other staff now see this name." });
-      onSaved?.();
+      onSaved?.(saved);
     } catch (error) {
       setState({ status: "error", message: error.message });
       inputRef.current?.focus();

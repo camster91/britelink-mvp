@@ -1,43 +1,52 @@
 # Staff team
 
-Everyone who works for BriteLink (you, and each educator) is on the **staff team**. Everyone on
-the team is added to every family automatically (migration 060, issue #100):
+Everyone who works for BriteLink (you, and each educator) is on the **staff team** (migrations 060
+and 061, issue #100). What the team gives each person depends on their role:
 
-- When a family signs up, the whole team is added to that family's household at once.
-- When you add someone to the team, every family already on BriteLink is shared with them.
-- Each educator also gets a case limit (default 10) in each family, which case assignment checks.
+- **Admins** are added to every family automatically: every family already on BriteLink when you
+  add them, and each new family the moment it signs up.
+- **Educators** see a family only once an admin assigns them that family's case. Until then they
+  appear in the admin's **assign** list for every family, but can't open any of them. (Owner
+  decision, 2026-10-15: one stolen educator login should not expose every family.)
+- Each educator has a case limit (default 10) in each family, which case assignment checks.
 
 A staff member opens a family from the **Workspace** list at the top of the staff screen.
 
 ## Who can see what
 
-Anyone on the team can open any family's workspace. Admins also see the audit history, privacy
-requests and system reports, and only admins assign cases. Keep the team to the people who need
-it, and remove people when they leave.
+- Admins can open any family's workspace. They also see the audit history, privacy requests and
+  system reports, and only admins assign cases.
+- An educator can open the families whose case they were assigned. An educator with no family yet
+  sees "You're on the BriteLink staff team" and can set the name other staff see.
+
+Keep the team to the people who need it, and remove people when they leave.
 
 ## Add someone
 
 1. They go to https://britelink.ashbi.ca, enter their work email, press **Email me a sign-in
-   link**, and open the link. That creates their account. They then see "Set up your household":
-   they should **not** fill it in (it is for parents); they sign out. (This needs sign-up switched
-   on in the sign-in service; see `TODO.md` item 3.)
+   link**, and open the link. That creates their account **and confirms their email**. They then
+   see "Set up your household": they should **not** fill it in (it is for parents); they sign out.
+   (This needs sign-up switched on in the sign-in service; see `TODO.md` item 3.)
 2. GitHub → **Actions → Staff → Run workflow**:
    - action: `add`
    - email: their sign-in email
    - role: `educator` or `admin`
    - case limit: how many active cases an educator can hold at once (ignored for admins)
-3. The run says how many existing families were shared with them. They sign in again and see the
-   staff workspace.
+3. For an admin, the run says how many existing families were shared with them. For an educator,
+   it says an admin can now assign them a family. They sign in again and see the staff workspace
+   (an educator sees the waiting screen until their first assignment).
 
-If the run says "no BriteLink account with that email yet", they haven't finished step 1.
+If the run says "no BriteLink account with that email yet" or "has not confirmed its email yet",
+they haven't finished step 1.
 
 ## Remove someone
 
 **Actions → Staff → Run workflow**, action `remove`, with their email. This is refused while they
 still hold an open case as author or reviewer: reassign those first (an admin can record their
 absence, which puts their cases on hold for reassignment). Removing someone takes away their staff
-access to every family. Their sign-in account itself stays; delete it by hand if needed (see
-`PRIVACY_OPERATIONS.md` for how sign-ins are removed).
+access to every family and switches off any calendar link they made in those families. Their
+sign-in account itself stays; delete it by hand if needed (see `PRIVACY_OPERATIONS.md` for how
+sign-ins are removed).
 
 To change someone's role, remove them and add them again.
 
@@ -56,3 +65,7 @@ many families they're in.
   assigned (migration 058), so put at least one admin on the team.
 - Case limits are counted per family, as they always were. With one case per family, that limit
   rarely bites; a limit across all families would be a later change.
+- An educator keeps access to a family after their case there is reassigned to someone else. Taking
+  that access away on reassignment is a possible later change.
+- Anyone leaving a family (staff or a co-parent) has the calendar links they made there switched
+  off, so a link never outlives its maker's access.

@@ -1,11 +1,12 @@
 name: Staff
 
 # Adds, removes or lists BriteLink staff (migration 060, issue #100) by running
-# scripts/staff-team.sh from the commit on main, over the same SSH path as Backup. Everyone on the
-# staff team is added to every family's household. See docs/STAFF_TEAM.md.
+# scripts/staff-team.sh from the commit on main, over the same SSH path as Backup. Admins are added
+# to every family's household; educators join a family when an admin assigns them its case
+# (migration 061). See docs/STAFF_TEAM.md.
 #
-# The repository is public, so this run's log is too: the email is masked from the log at once,
-# and the script prints only masked addresses.
+# The repository is public, so this run's log is too: the email is masked in the first step,
+# before any step's env could print it, and the script prints only masked addresses.
 on:
   workflow_dispatch:
     inputs:
@@ -47,12 +48,15 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Check the inputs
+        # The email is read from the event file, not passed as env: GitHub prints a step's env in
+        # the log before the step runs, which is before ::add-mask:: could hide it. Once masked
+        # here, the later steps' env shows it as ***.
         env:
           ACTION: ${{ inputs.action }}
-          EMAIL: ${{ inputs.email }}
           CASE_LIMIT: ${{ inputs.case_limit }}
         run: |
           set -euo pipefail
+          EMAIL="$(jq -r '.inputs.email // ""' "$GITHUB_EVENT_PATH")"
           if [ -n "$EMAIL" ]; then echo "::add-mask::$EMAIL"; fi
           if [ "$ACTION" != list ]; then
             [[ "$EMAIL" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || { echo "FAIL: enter the person's email address" >&2; exit 1; }

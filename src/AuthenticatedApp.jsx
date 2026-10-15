@@ -27,7 +27,7 @@ import {
 import { classifyOperationError } from "./operation-state.js";
 import { AuthenticatedIntake } from "./AuthenticatedIntake.jsx";
 import { AuthenticatedServicePrivacy } from "./AuthenticatedServicePrivacy.jsx";
-import { EducatorWorkspace } from "./EducatorWorkspace.jsx";
+import { EducatorWorkspace, StaffNameForm } from "./EducatorWorkspace.jsx";
 import { MessageAttachments } from "./MessageAttachments.jsx";
 import { LearningCaptures } from "./LearningCaptures.jsx";
 import { WeeklyStory } from "./WeeklyStory.jsx";
@@ -165,6 +165,37 @@ function BetaHouseholdSetup({ repository, metadata, onReady }) {
           Do not send child, health, school, diagnosis, or IEP information by
           email.
         </small>
+      </section>
+    </main>
+  );
+}
+
+// A staff-team educator before their first assignment (migration 061): they see no family until
+// an admin assigns them a case, so say that plainly instead of offering family setup.
+function StaffWaiting({ profile, repository, onCheckAgain }) {
+  const [name, setName] = useState(profile.display_name ?? "");
+  useEffect(() => {
+    document.title = "Waiting for your first family · BriteLink";
+  }, []);
+  return (
+    <main className="auth-page" aria-labelledby="staff-waiting-heading">
+      <section className="auth-card">
+        <h1 id="staff-waiting-heading">You're on the BriteLink staff team</h1>
+        <p>
+          You don't have a family yet. When an admin assigns you a family's
+          case, it will appear here.
+        </p>
+        <StaffNameForm
+          current={name}
+          repository={repository}
+          onSaved={(saved) => setName(saved ?? "")}
+        />
+        <button className="primary" onClick={onCheckAgain}>
+          Check again
+        </button>
+        <button className="ghost" onClick={() => repository.signOut()}>
+          Sign out
+        </button>
       </section>
     </main>
   );
@@ -2090,6 +2121,27 @@ export function Workspace({
       const memberships = await repository.listMemberships();
       if (request !== workspaceRequest.current) return;
       if (!memberships.length) {
+        // An educator on the staff team joins a family only when an admin assigns them a case
+        // (migration 061). Until then they must not be offered "set up your family".
+        let staffProfile = null;
+        try {
+          staffProfile = (await repository.getMyStaffProfile?.()) ?? null;
+        } catch {
+          staffProfile = null;
+        }
+        if (request !== workspaceRequest.current) return;
+        if (staffProfile) {
+          setState({
+            status: "staff_waiting",
+            staffProfile,
+            memberships,
+            learners: [],
+            cases: [],
+            household: null,
+            error: null,
+          });
+          return;
+        }
         setState({
           status: "empty",
           memberships,
@@ -2173,6 +2225,14 @@ export function Workspace({
           </button>
         </section>
       </main>
+    );
+  if (state.status === "staff_waiting")
+    return (
+      <StaffWaiting
+        profile={state.staffProfile}
+        repository={repository}
+        onCheckAgain={load}
+      />
     );
   if (state.status === "empty")
     return (

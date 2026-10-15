@@ -215,6 +215,8 @@ export class SupabaseBriteLinkRepository {
   async listStaffRevisions(householdId){requireIdentifier(householdId,"Household ID");return unwrap(await this.client.from("revision_requests").select("id, case_id, requested_by, reason, entitlement_index, status, disposition_reason, change_summary, created_at, completed_at").eq("household_id",householdId).order("created_at",{ascending:false}),"Load staff revisions")}
   // Names staff chose for themselves (057); RLS returns only names of staff in the caller's households.
   async listStaffNames(householdId){requireIdentifier(householdId,"Household ID");return unwrap(await this.client.from("staff_display_names").select("user_id, display_name"),"Load staff names")}
+  // Migration 061: the caller's own staff role and name, or null when they are not on the team.
+  async getMyStaffProfile(){const rows=unwrap(await this.client.rpc("my_staff_profile"),"Check staff access");return rows?.[0]??null}
   async setStaffDisplayName(name){const clean=String(name??"").trim();if(!clean||clean.length>80)throw new Error("Your name must be 1 to 80 characters.");return unwrap(await this.client.rpc("set_staff_display_name",{new_name:clean}),"Save your name")}
   // Email notices on or off for the signed-in person (058). No row yet means on.
   async getEmailNotifications(){const rows=unwrap(await this.client.from("notification_preferences").select("email_enabled").limit(1),"Load your email setting");return rows?.[0]?.email_enabled??true}
