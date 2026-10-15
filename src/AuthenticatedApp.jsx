@@ -46,6 +46,13 @@ import { checkRequired, clearFixedField } from "./form-errors.js";
 // link: the details they typed on the join form come back as signup metadata, so the household is
 // created once, now that the email is proven. Anyone else (for example a staff member whose
 // invitation is not set up yet) sees the same form, prefilled with nothing, plus a way out.
+// Each signed-in screen names itself in the browser tab and to screen readers (AGENTS.md).
+function usePageTitle(title) {
+  useEffect(() => {
+    if (title) document.title = `${title} · BriteLink`;
+  }, [title]);
+}
+
 function BetaHouseholdSetup({ repository, metadata, onReady }) {
   const [learnerName, setLearnerName] = useState(
     String(metadata?.beta_learner_name ?? ""),
@@ -174,9 +181,7 @@ function BetaHouseholdSetup({ repository, metadata, onReady }) {
 // an admin assigns them a case, so say that plainly instead of offering family setup.
 function StaffWaiting({ profile, repository, onCheckAgain }) {
   const [name, setName] = useState(profile.display_name ?? "");
-  useEffect(() => {
-    document.title = "Waiting for your first family · BriteLink";
-  }, []);
+  usePageTitle("Waiting for your first family");
   return (
     <main className="auth-page" aria-labelledby="staff-waiting-heading">
       <section className="auth-card">
@@ -426,6 +431,12 @@ function SignIn({ repository }) {
   const [learnerGrade, setLearnerGrade] = useState("");
   const submit = async (event) => {
     event.preventDefault();
+    const problem = checkRequired(event.currentTarget, "signin-message");
+    if (problem) {
+      setStatus("error");
+      setMessage(problem);
+      return;
+    }
     setStatus("loading");
     setMessage("");
     try {
@@ -456,7 +467,7 @@ function SignIn({ repository }) {
     }
   };
   return (
-    <main className="auth-page">
+    <main className="auth-page" aria-labelledby="auth-heading">
       <section className="auth-card">
         <img src="/assets/britelink-logo.png" alt="BriteLink" />
         <span className="eyebrow">Secure family and educator workspace</span>
@@ -465,7 +476,7 @@ function SignIn({ repository }) {
           Enter your email and we'll send you a secure sign-in link. New families
           can join the free beta from this same form.
         </p>
-        <form onSubmit={submit}>
+        <form noValidate onChange={clearFixedField} onSubmit={submit}>
           <label>
             Email address
             <input
@@ -520,8 +531,9 @@ function SignIn({ repository }) {
               : "New here? Join the free beta"}
           </button>
           <span
-            role="status"
-            aria-live="polite"
+            id="signin-message"
+            role={status === "error" ? "alert" : "status"}
+            aria-live={status === "error" ? "assertive" : "polite"}
             className={status === "error" ? "error" : ""}
           >
             {message}
@@ -652,9 +664,14 @@ function ParentWorkspace({
   const planRequest = useRef(0);
   const messageRequest = useRef(0);
   const attachmentRecoveryRef = useRef([]);
+  const messageFormRef = useRef(null);
   const selectedLearner =
     learners.find((item) => item.id === learnerId) ?? learners[0];
   const selectedCase = caseForLearner(cases, selectedLearner?.id);
+  // The case on screen now. A send or retry that finishes after the parent switched learners
+  // must not touch the new learner's thread.
+  const shownCaseId = useRef(selectedCase?.id);
+  shownCaseId.current = selectedCase?.id;
   // Learning notes belong to one learner. Clear them on a switch so the weekly story and report
   // never show the previous child's notes while (or if) the new learner's notes fail to load.
   useEffect(() => {
@@ -755,6 +772,10 @@ function ParentWorkspace({
   // Set when a save fails, so the rollback below does not overwrite what the parent typed;
   // "Try again" then resends their words, not the old ones.
   const keepDraft = useRef(false);
+  // What the form was last filled with from the server, per lesson. When the same lesson's saved
+  // record changes underneath the form (moving the day, the student view), only the fields the
+  // parent has not touched are refreshed, so nothing they typed is thrown away.
+  const seededDraft = useRef({ lessonId: null, values: null });
   useEffect(() => {
     if (!selectedLesson) return;
     if (keepDraft.current) {
@@ -762,13 +783,26 @@ function ParentWorkspace({
       return;
     }
     const activity = activities[selectedLesson.id];
-    setSelectedLessonId(selectedLesson.id);
-    setDraft({
+    const fresh = {
       status: activity?.status ?? "not_started",
       note: activity?.caregiver_note ?? "",
       scheduleReason: activity?.schedule_reason ?? "",
       scheduledFor: activity?.scheduled_for ?? "",
-    });
+    };
+    const seeded = seededDraft.current;
+    const sameLesson = seeded.lessonId === selectedLesson.id;
+    seededDraft.current = { lessonId: selectedLesson.id, values: fresh };
+    setSelectedLessonId(selectedLesson.id);
+    setDraft((current) =>
+      sameLesson && seeded.values
+        ? Object.fromEntries(
+            Object.keys(fresh).map((field) => [
+              field,
+              current[field] === seeded.values[field] ? fresh[field] : current[field],
+            ]),
+          )
+        : fresh,
+    );
   }, [selectedLesson?.id, activities]);
 
   const operationFailure = (error, action) => {
@@ -974,6 +1008,8 @@ function ParentWorkspace({
     }
     const body = messageBody;
     const files = messageFiles;
+    const caseId = selectedCase.id;
+    const stillShown = () => shownCaseId.current === caseId;
     setMessageOperation({
       status: "loading",
       message: files.length
@@ -985,14 +1021,20 @@ function ParentWorkspace({
     try {
       saved = await repository.sendMessage({
         householdId: household.household_id,
-        caseId: selectedCase.id,
+        caseId,
         userId,
         body,
       });
     } catch (error) {
-      setMessageOperation(operationFailure(error, "Message"));
+      if (!stillShown()) return;
+      // Resubmits the form, so it sends what is in the box now and checks it again.
+      setMessageOperation({
+        ...operationFailure(error, "Message"),
+        onRetry: () => messageFormRef.current?.requestSubmit(),
+      });
       return;
     }
+    if (!stillShown()) return;
     setMessages((state) => ({
       ...state,
       status: "success",
@@ -1012,6 +1054,7 @@ function ParentWorkspace({
         else failed.push({ attachmentId: null, file, error: error.message });
       }
     }
+    if (!stillShown()) return;
     await loadMessages();
     // The failed files belong to the message just sent and are kept only for its retry, never
     // carried into the next new message; the file picker is reset either way.
@@ -1044,6 +1087,7 @@ function ParentWorkspace({
   const retryAttachments = async () => {
     const pending = attachmentRecoveryRef.current;
     if (!pending.length) return;
+    const caseId = shownCaseId.current;
     setMessageOperation({
       status: "loading",
       message: "Retrying failed attachments without resending the message…",
@@ -1061,6 +1105,7 @@ function ParentWorkspace({
         failed.push(error.attachmentRetry ?? retry);
       }
     }
+    if (shownCaseId.current !== caseId) return;
     await loadMessages();
     attachmentRecoveryRef.current = failed;
     setAttachmentRecovery(failed);
@@ -1109,7 +1154,10 @@ function ParentWorkspace({
         canRetry: false,
       });
     } catch (error) {
-      setMessageOperation(operationFailure(error, "Read acknowledgement"));
+      setMessageOperation({
+        ...operationFailure(error, "Read acknowledgement"),
+        onRetry: () => markRead(message),
+      });
     }
   };
 
@@ -1665,8 +1713,15 @@ function ParentWorkspace({
                   </div>
                   {selectedLesson ? (
                     <form
+                      noValidate
+                      onChange={clearFixedField}
                       onSubmit={(event) => {
                         event.preventDefault();
+                        const problem = checkRequired(event.currentTarget, "activity-status");
+                        if (problem) {
+                          setActivityOperation({ status: "error", message: problem, canRetry: false });
+                          return;
+                        }
                         saveActivity();
                       }}
                       className="live-activity"
@@ -1872,6 +1927,7 @@ function ParentWorkspace({
                         </div>
                       ) : (
                         <OperationNotice
+                          id="activity-status"
                           operation={activityOperation}
                           retry={saveActivity}
                         />
@@ -1993,7 +2049,12 @@ function ParentWorkspace({
                   </p>
                 )}
               </div>
-              <form noValidate onSubmit={sendMessage} onChange={clearFixedField}>
+              <form
+                ref={messageFormRef}
+                noValidate
+                onSubmit={sendMessage}
+                onChange={clearFixedField}
+              >
                 <label>
                   New secure message
                   <textarea
@@ -2036,15 +2097,9 @@ function ParentWorkspace({
                   Send message
                 </button>
               </form>
-              <OperationNotice
-                id="message-status"
-                operation={messageOperation}
-                retry={
-                  messageBody
-                    ? () => sendMessage({ preventDefault() {} })
-                    : null
-                }
-              />
+              {/* Each failure brings its own retry (onRetry). There is no shared fallback: a failed
+                  download or read receipt must never offer to send the unfinished message. */}
+              <OperationNotice id="message-status" operation={messageOperation} />
             </>
           )}
         </section>
@@ -2194,28 +2249,56 @@ export function Workspace({
   useEffect(() => {
     load();
   }, [load]);
+  // A minute's notice before the automatic sign-out, so nothing typed is lost to it.
+  const [idleWarning, setIdleWarning] = useState(false);
   useEffect(
     () =>
       startInactivityMonitor({
         timeoutMs: inactivityMs,
+        onWarn: () => setIdleWarning(true),
+        onActive: () => setIdleWarning(false),
         onTimeout: () => repository.signOut(),
       }),
     [inactivityMs, repository],
   );
+  const idleNotice = idleWarning ? (
+    <div className="idle-warning" role="alert">
+      <span>
+        For your family's privacy, you'll be signed out in about a minute.
+        Anything you haven't saved will be lost.
+      </span>
+      <button type="button" onClick={() => setIdleWarning(false)}>
+        Stay signed in
+      </button>
+    </div>
+  ) : null;
+  // The staff waiting screen names itself (null here, so this effect does not overwrite it).
+  const screenTitles = {
+    loading: "Loading your workspace",
+    error: "Workspace unavailable",
+    staff_waiting: null,
+    empty: "Set up your household",
+  };
+  const workspaceName = ["educator", "admin"].includes(state.household?.role)
+    ? "Staff workspace"
+    : "Household workspace";
+  usePageTitle(
+    state.status in screenTitles ? screenTitles[state.status] : workspaceName,
+  );
   if (state.status === "loading")
     return (
-      <main className="auth-page">
+      <main className="auth-page" aria-labelledby="workspace-heading">
         <section className="auth-card" role="status">
-          <h1>Loading your secure workspace…</h1>
+          <h1 id="workspace-heading">Loading your secure workspace…</h1>
           <p>Checking household access and current case data.</p>
         </section>
       </main>
     );
   if (state.status === "error")
     return (
-      <main className="auth-page">
+      <main className="auth-page" aria-labelledby="workspace-heading">
         <section className="auth-card">
-          <h1>We couldn’t load your workspace</h1>
+          <h1 id="workspace-heading">We couldn’t load your workspace</h1>
           <p role="alert">{state.error}</p>
           <button className="primary" onClick={load}>
             Try again
@@ -2228,19 +2311,25 @@ export function Workspace({
     );
   if (state.status === "staff_waiting")
     return (
-      <StaffWaiting
-        profile={state.staffProfile}
-        repository={repository}
-        onCheckAgain={load}
-      />
+      <>
+        {idleNotice}
+        <StaffWaiting
+          profile={state.staffProfile}
+          repository={repository}
+          onCheckAgain={load}
+        />
+      </>
     );
   if (state.status === "empty")
     return (
-      <BetaHouseholdSetup
-        repository={repository}
-        metadata={session?.user?.user_metadata}
-        onReady={load}
-      />
+      <>
+        {idleNotice}
+        <BetaHouseholdSetup
+          repository={repository}
+          metadata={session?.user?.user_metadata}
+          onReady={load}
+        />
+      </>
     );
   const isStaff = ["educator", "admin"].includes(state.household.role);
   return (
@@ -2248,6 +2337,7 @@ export function Workspace({
       <a className="skip-link" href="#live-main">
         Skip to main content
       </a>
+      {idleNotice}
       <header>
         <img src="/assets/britelink-logo.png" alt="BriteLink" />
         <div>
@@ -2256,7 +2346,7 @@ export function Workspace({
           <button onClick={() => repository.signOut()}>Sign out</button>
         </div>
       </header>
-      <main id="live-main">
+      <main id="live-main" aria-label={workspaceName}>
         <div className="live-notice" role="note">
           <strong>Private to your family</strong>
           <span>
@@ -2368,19 +2458,28 @@ export function AuthenticatedApp({
       data.subscription.unsubscribe();
     };
   }, [client, repository]);
+  usePageTitle(
+    auth.status === "loading"
+      ? "Checking your session"
+      : auth.status === "error"
+        ? "Sign-in unavailable"
+        : auth.session
+          ? null
+          : "Sign in",
+  );
   if (auth.status === "loading")
     return (
-      <main className="auth-page">
+      <main className="auth-page" aria-labelledby="session-heading">
         <section className="auth-card" role="status">
-          <h1>Checking your session…</h1>
+          <h1 id="session-heading">Checking your session…</h1>
         </section>
       </main>
     );
   if (auth.status === "error")
     return (
-      <main className="auth-page">
+      <main className="auth-page" aria-labelledby="session-heading">
         <section className="auth-card">
-          <h1>Secure sign-in is unavailable</h1>
+          <h1 id="session-heading">Secure sign-in is unavailable</h1>
           <p role="alert">{auth.error}</p>
           <button
             className="primary"

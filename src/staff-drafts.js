@@ -4,9 +4,13 @@ export const emptyDay=number=>({number,plannedDate:"",lessons:[emptyLesson()]});
 export const emptyWeek=number=>({number,theme:"",days:[emptyDay(1)]});
 
 export function staffDraftKey({householdId,caseId,userId}){return`britelink:staff-plan-draft:${householdId}:${caseId}:${userId}`}
+// Reading sessionStorage itself throws when the browser blocks site data, so every access is guarded:
+// a missing backup must never take the authoring screen down with it.
+export function browserSessionStorage(){try{return globalThis.sessionStorage??null}catch{return null}}
 export function loadStaffDraft(storage,key){try{const value=JSON.parse(storage?.getItem(key)??"null");return Array.isArray(value?.weeks)&&value.weeks.length?value:null}catch{return null}}
-export function saveStaffDraft(storage,key,weeks){storage?.setItem(key,JSON.stringify({version:1,weeks,savedAt:new Date().toISOString()}))}
-export function discardStaffDraft(storage,key){storage?.removeItem(key)}
+// Returns false when the backup could not be written (no storage, blocked, or over quota).
+export function saveStaffDraft(storage,key,weeks){if(!storage)return false;try{storage.setItem(key,JSON.stringify({version:1,weeks,savedAt:new Date().toISOString()}));return true}catch{return false}}
+export function discardStaffDraft(storage,key){try{storage?.removeItem(key)}catch{}}
 
 export function planToAuthoringWeeks(plan){
  if(!plan?.plan_weeks?.length)return[emptyWeek(1)];

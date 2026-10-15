@@ -30,3 +30,15 @@ test("returning to a tab before the timeout does not count as activity",()=>{
 test("activity in another tab keeps this tab signed in",()=>{
  const h=harness();h.advance(50000);h.storage.set(LAST_ACTIVITY_KEY,String(h.clock));h.advance(10000);assert.equal(h.expired,0,"another tab was used 10s ago");h.advance(50000);assert.equal(h.expired,1);
 });
+
+test("with a warning, the family hears a minute before sign-out, and activity takes it back",()=>{
+ const listeners=new Map(),timers=new Map();let next=0,clock=0;const calls=[];
+ const target={addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name),document:{visibilityState:"visible",addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)}};
+ const advance=ms=>{clock+=ms;for(const[id,timer]of[...timers]){if(timer.at<=clock){timers.delete(id);timer.fn()}}};
+ startInactivityMonitor({target,timeoutMs:120000,warnMs:60000,onWarn:()=>calls.push("warn"),onActive:()=>calls.push("active"),onTimeout:()=>calls.push("out"),setTimer:(fn,delay)=>{const id=++next;timers.set(id,{fn,at:clock+delay});return id},clearTimer:id=>timers.delete(id),now:()=>clock,storage:null});
+ advance(59000);assert.deepEqual(calls,[]);
+ advance(1000);assert.deepEqual(calls,["warn"]);
+ listeners.get("keydown")();assert.deepEqual(calls,["warn","active"],"pressing a key keeps them signed in");
+ advance(60000);assert.deepEqual(calls,["warn","active","warn"]);
+ advance(60000);assert.deepEqual(calls,["warn","active","warn","out"]);
+});

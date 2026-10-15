@@ -22,6 +22,7 @@ function StaffNotice({ state }) {
   if (!state.message) return null;
   return (
     <div
+      id="staff-operation-status"
       className={state.status === "error" ? "error" : "live-operation success"}
       role={state.status === "error" ? "alert" : "status"}
     >
@@ -313,6 +314,14 @@ export function EducatorWorkspace({
       await load();
     }
   };
+  // Every staff form checks its own required answers the accessible way (AGENTS.md): name the
+  // fields, mark them invalid, focus the first, and announce it in the operation notice.
+  const formIsComplete = (event) => {
+    event.preventDefault();
+    const problem = checkRequired(event.currentTarget, "staff-operation-status");
+    if (problem) setOperation({ status: "error", message: problem });
+    return !problem;
+  };
   const act = async (label, work) => {
     if (operationInFlight.current) return null;
     if (data.warnings.length) {
@@ -568,7 +577,7 @@ export function EducatorWorkspace({
                     </p>
                     <p>
                       {plan.plan_weeks?.length ?? 0} week(s) · authored by{" "}
-                      {plan.authored_by}
+                      {staffLabel(plan.authored_by)}
                     </p>
                   </>
                 ) : (
@@ -600,8 +609,10 @@ export function EducatorWorkspace({
             ) : null}
             {allowed.length ? (
               <form
+                noValidate
+                onChange={clearFixedField}
                 onSubmit={(event) => {
-                  event.preventDefault();
+                  if (!formIsComplete(event)) return;
                   const status = nextStatus;
                   if (!status) return;
                   act("Case transition", () =>
@@ -664,8 +675,10 @@ export function EducatorWorkspace({
             {membership.role === "admin" &&
             ["triage", "assigned", "on_hold"].includes(selected.status) ? (
               <form
+                noValidate
+                onChange={clearFixedField}
                 onSubmit={(event) => {
-                  event.preventDefault();
+                  if (!formIsComplete(event)) return;
                   const educatorId = new FormData(event.currentTarget).get(
                     "educator",
                   );
@@ -709,8 +722,10 @@ export function EducatorWorkspace({
               selected.status,
             ) ? (
               <form
+                noValidate
+                onChange={clearFixedField}
                 onSubmit={(event) => {
-                  event.preventDefault();
+                  if (!formIsComplete(event)) return;
                   act("Educator absence", () =>
                     repository.recordStaffAbsence({
                       householdId: household.household_id,
@@ -900,8 +915,10 @@ export function EducatorWorkspace({
               </form>
             ) : revision?.status === "accepted" ? (
               <form
+                noValidate
+                onChange={clearFixedField}
                 onSubmit={(event) => {
-                  event.preventDefault();
+                  if (!formIsComplete(event)) return;
                   act("Revision completion", () =>
                     repository.completeStaffRevision({
                       householdId: household.household_id,
@@ -1023,8 +1040,10 @@ export function EducatorWorkspace({
                 )}
               </div>
               <form
+                noValidate
+                onChange={clearFixedField}
                 onSubmit={(event) => {
-                  event.preventDefault();
+                  if (!formIsComplete(event)) return;
                   act("Secure message", async () => {
                     // Reject unusable files before the message exists, so a bad file can never
                     // leave a sent message behind that a second submit would duplicate.
@@ -1112,6 +1131,7 @@ export function EducatorWorkspace({
               />
             ) : null}
             <StaffAuthoring
+              formIsComplete={formIsComplete}
               key={selected.id}
               householdId={household.household_id}
               userId={userId}

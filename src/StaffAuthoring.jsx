@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import "./staff-authoring.css";
+import { clearFixedField } from "./form-errors.js";
 import {
+  browserSessionStorage,
   discardStaffDraft,
   emptyDay as day,
   emptyLesson as lesson,
@@ -24,6 +26,7 @@ export function StaffAuthoring({
   deliveries,
   repository,
   act,
+  formIsComplete,
   revisionAccepted = false,
   planApproved = false,
 }) {
@@ -32,7 +35,7 @@ export function StaffAuthoring({
     [householdId, serviceCase.id, userId],
   );
   const recovered = useMemo(
-    () => loadStaffDraft(globalThis.sessionStorage, draftKey),
+    () => loadStaffDraft(browserSessionStorage(), draftKey),
     [draftKey],
   );
   const [weeks, setWeeks] = useState(recovered?.weeks ?? [week(1)]);
@@ -54,8 +57,9 @@ export function StaffAuthoring({
   const [resourceLessonId, setResourceLessonId] = useState("");
   useEffect(() => {
     if (draftState === "clean") return;
-    saveStaffDraft(globalThis.sessionStorage, draftKey, weeks);
-    if (draftState !== "saved") setDraftState("saved");
+    const kept = saveStaffDraft(browserSessionStorage(), draftKey, weeks);
+    const next = kept ? "saved" : "unprotected";
+    if (draftState !== next) setDraftState(next);
   }, [draftKey, draftState, weeks]);
   const updateWeeks = (updater) => {
     setWeeks(updater);
@@ -203,7 +207,12 @@ export function StaffAuthoring({
               Recovered this case’s unsaved draft from this browser session.
             </p>
           ) : null}
-          {draftState !== "clean" ? (
+          {draftState === "unprotected" ? (
+            <p className="draft-status" role="status">
+              This browser can't keep a backup of this draft. Save the plan
+              before you leave this page.
+            </p>
+          ) : draftState !== "clean" ? (
             <p className="draft-status" role="status">
               Unsaved work protected in this browser session ·{" "}
               {draftState === "changed" ? "saving…" : "saved"}
@@ -233,7 +242,7 @@ export function StaffAuthoring({
                 if (
                   globalThis.confirm?.("Discard this case’s unsaved draft?")
                 ) {
-                  discardStaffDraft(globalThis.sessionStorage, draftKey);
+                  discardStaffDraft(browserSessionStorage(), draftKey);
                   setWeeks([week(1)]);
                   setDraftState("clean");
                 }
@@ -246,8 +255,10 @@ export function StaffAuthoring({
       ) : null}
       {editable ? (
         <form
+          noValidate
+          onChange={clearFixedField}
           onSubmit={async (event) => {
-            event.preventDefault();
+            if (!formIsComplete(event)) return;
             const saved = await act("Plan version", () =>
               repository.createStaffPlanVersion({
                 householdId,
@@ -256,7 +267,7 @@ export function StaffAuthoring({
               }),
             );
             if (saved) {
-              discardStaffDraft(globalThis.sessionStorage, draftKey);
+              discardStaffDraft(browserSessionStorage(), draftKey);
               setDraftState("clean");
             }
           }}
@@ -273,6 +284,7 @@ export function StaffAuthoring({
                 Theme
                 <input
                   required
+                  data-error-label={`Week ${wi + 1} theme`}
                   maxLength="200"
                   value={w.theme}
                   onChange={(e) => updateWeek(wi, "theme", e.target.value)}
@@ -298,6 +310,7 @@ export function StaffAuthoring({
                         Subject
                         <input
                           required
+                          data-error-label={`Week ${wi + 1}, day ${di + 1}, lesson ${li + 1} subject`}
                           maxLength="100"
                           value={l.subject}
                           onChange={(e) =>
@@ -309,6 +322,7 @@ export function StaffAuthoring({
                         Title
                         <input
                           required
+                          data-error-label={`Week ${wi + 1}, day ${di + 1}, lesson ${li + 1} title`}
                           maxLength="200"
                           value={l.title}
                           onChange={(e) =>
@@ -320,6 +334,7 @@ export function StaffAuthoring({
                         Objective
                         <textarea
                           required
+                          data-error-label={`Week ${wi + 1}, day ${di + 1}, lesson ${li + 1} objective`}
                           maxLength="1000"
                           value={l.objective}
                           onChange={(e) =>
@@ -337,6 +352,7 @@ export function StaffAuthoring({
                         Instructions <span>(one per line)</span>
                         <textarea
                           required
+                          data-error-label={`Week ${wi + 1}, day ${di + 1}, lesson ${li + 1} instructions`}
                           value={l.instructions}
                           onChange={(e) =>
                             updateLesson(
@@ -524,8 +540,10 @@ export function StaffAuthoring({
       {resourceLessonChooser}
       {firstLesson && resourcesOpen ? (
         <form
+          noValidate
+          onChange={clearFixedField}
           onSubmit={(event) => {
-            event.preventDefault();
+            if (!formIsComplete(event)) return;
             const timestamp = resource.reviewed
               ? new Date().toISOString()
               : null;
