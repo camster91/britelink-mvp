@@ -6,3 +6,21 @@ qa/**/*.tmp
 qa/**/*.log
 *.private.json
 *.private.log
+
+# Browser-audit output, rewritten on every run. CI keeps each run's copy as a workflow artifact.
+# The restore-drill reports in qa/operations/ stay tracked: the recovery docs cite them as evidence.
+qa/accessibility/*.png
+qa/accessibility/report.json
+qa/operations/*.png
+qa/operations/authenticated-workspace-report.json
+qa/operations/staff-workspace-report.json
+qa/print/
+qa/staging/
+
+# Tool and OS leftovers
+__pycache__/
+.DS_Store
+Thumbs.db
+coverage/
+test-results/
+playwright-report/

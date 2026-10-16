@@ -6,10 +6,8 @@ This document describes how to run the BriteLink MVP locally for development, te
 
 ### Prerequisites
 
-- **Node.js**: Version 22.12 or newer. This is not a preference — it is the intersection of what
-  the dependencies declare: `@supabase/supabase-js@2.112.4` requires `>=22.0.0`, and
-  `@vitejs/plugin-react@5.0.4` requires `^20.19.0 || >=22.12.0`. Node 18 is not merely
-  untested, it is outside every one of their ranges, and CI runs Node 22.
+- **Node.js**: Version 22.12 or newer (`engines` in `package.json`). Older versions are outside
+  what the dependencies support, and CI runs Node 22.
 - **npm**: Installed with Node.js
 
 ### Install and Run
@@ -24,16 +22,10 @@ npm run dev
 
 The app will be available at `http://localhost:5173` (or the port shown in the terminal).
 
-## Self-host on vps.ashbi.ca (no cloud vendors)
+## Run the production image yourself
 
-> **Current (2026-09-30):** production runs a **self-hosted Supabase** stack on this VPS
-> (`supabase/selfhosted/`, project `britelink-production`, API at `britelink-api.ashbi.ca`). The
-> earlier hosted-Supabase plan is in `docs/archive/SUPABASE_PROVISIONING.md` for history. The web
-> build takes the API URL, anon key, privacy notice version and commit stamp as build args
-> (`Dockerfile`, `docker-compose.yml`), and the CSP origin is derived from the same value. With no
-> `.env` on the host, the build still produces the honest demo.
-
-The intended web runtime is this VPS, not Stripe or OpenAI Sites. Unconfigured builds stay in interactive demo mode (device-only sample data). A local Postgres 16 container already runs on the VPS at `/docker/britelink-postgres` with nightly dumps under `/opt/backups/britelink`.
+Production is deployed by Coolify; where it runs is in `docs/AGENT_HANDOFF.md` → "How production
+works". To run the same nginx image on any machine:
 
 ```bash
 npm ci
@@ -41,7 +33,9 @@ npm run build
 docker compose up --build -d
 ```
 
-The image serves `dist/client` with nginx on `127.0.0.1:8088`. Point Coolify/Traefik at that container when you are ready to publish a hostname. Do not set `VITE_SUPABASE_*` unless a backend actually exists to point them at — until then the unconfigured demo is the honest state.
+The image serves `dist/client` with nginx on `127.0.0.1:8088`. The build takes the API URL, anon
+key, privacy notice version and commit stamp as build args (`Dockerfile`, `docker-compose.yml`),
+and the CSP origin is derived from the same URL. With no `.env`, it builds the interactive demo.
 
 ## Available Commands
 
@@ -60,8 +54,11 @@ npm run preview
 
 ### Testing
 
+`npm test` checks the built files too, so build first on a fresh clone:
+
 ```bash
-# Run all domain and integration tests
+# Build, then run all unit and integration tests
+npm run build
 npm test
 
 # Run Sites deployment tests
@@ -78,6 +75,10 @@ npm run test:staff
 
 # Run multi-household tests
 npm run test:households
+
+# Run staff attachment recovery and beta sign-up tests
+npm run test:staff-attachments
+npm run test:beta-signup
 
 # Run local database restore drill
 npm run test:restore
@@ -109,7 +110,7 @@ By default, the app runs as an **interactive browser-only demo** with:
 
 To enable the authenticated workspace with real Supabase backend:
 
-1. Copy `.env.example` to `.env`
+1. Copy `.env.example` to `.env.local` (git ignores it)
 2. Add your Supabase project credentials:
 
 ```env
@@ -117,19 +118,19 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-public-anon-key
 ```
 
-3. Set the privacy notice version (only after counsel approval):
+3. Set the privacy notice version (only a counsel-approved one; production uses `2026-09-30`):
 
 ```env
-VITE_PRIVACY_NOTICE_VERSION=2026-09-01
+VITE_PRIVACY_NOTICE_VERSION=2026-09-30
 ```
 
 **Important**: Never commit real credentials or service-role keys to the repository.
 
 ## What Gets Built
 
-- **Client bundle**: `dist/client/` — Static assets for browser
-- **Server entry**: `dist/server/index.js` — Sites deployment worker
-- **Hosting config**: `dist/.openai/hosting.json` — Sites routing configuration
+- **Client bundle**: `dist/client/` — the static app. This is all production serves.
+- **Server entry**: `dist/server/index.js` and **hosting config** `dist/.openai/hosting.json` — the
+  Sites packaging that `AGENTS.md` asks to keep working. Production does not use them.
 
 ## Project Structure
 
@@ -170,9 +171,9 @@ If port 5173 is busy, Vite will try the next available port. Check the terminal 
 ### Build Fails
 
 ```bash
-# Clean install
-rm -rf node_modules package-lock.json
-npm install
+# Clean install from the lockfile
+rm -rf node_modules
+npm ci
 ```
 
 ### Tests Timeout
@@ -182,7 +183,6 @@ Some tests (especially restore drill) can take 30+ seconds. This is expected.
 ## Next Steps
 
 - Review `docs/TODO.md` for what is left
-- Review `REAL_WORLD_REVIEW.md` for known gaps and blockers
 - Review `docs/RELEASE_READINESS.md` for launch gates
 
 ## Support
