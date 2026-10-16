@@ -8,19 +8,22 @@ Operators can use this page before creating or connecting hosted projects. It do
 - No Supabase credentials, privacy-notice version approval, or real family accounts belong in this repository.
 - VoiceOver and true Chrome 200%/400% zoom evidence remain **human-only** on macOS. Automated axe and viewport-equivalence checks are not substitutes.
 
-## Invited-only Auth (when staging exists)
+## Auth settings
 
-Configure Auth only after explicit infrastructure approval (`docs/archive/GOAL_COMPLETION_PLAN.md` Workstream C):
+Owner decision 2026-10-06: an open free beta, so anyone may create an account (`docs/TODO.md`
+item 3). Configure Auth only after explicit infrastructure approval:
 
 | Setting | Required value |
 | --- | --- |
-| Account creation | Invitation only — no public self-serve signup |
-| Sign-in | Passwordless magic link for invited guardians and staff |
+| Account creation | Open (`GOTRUE_DISABLE_SIGNUP=false`), but only with a confirmed email (`GOTRUE_MAILER_AUTOCONFIRM=false`; Ops check prints "email confirmation: required (safe)") |
+| Sign-in | Passwordless magic link for guardians and staff |
+| Sign-in email rate limit | Per visitor at the gateway (`supabase/selfhosted/gateway.conf`), on top of GoTrue's site-wide email budget |
 | Redirect allowlist | Credential-free HTTPS app origins only |
 | Email templates | Never ask for child, health, school, diagnosis, or IEP details |
-| Session policy | Compatible with 15-minute inactivity sign-out and 10-minute recent-auth for export/deletion |
+| Session policy | Compatible with 15-minute inactivity sign-out (with a one-minute warning) and 10-minute recent-auth for export/deletion |
 
-Uninvited addresses must be refused. Copy for empty household membership already tells invited users to contact support without sending child information.
+A new account with no household sees "Set up your household". A staff educator with no family yet
+sees a waiting screen instead (migration 061).
 
 ## Environment checklist (staging shell only)
 

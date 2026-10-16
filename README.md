@@ -72,8 +72,10 @@ The database schema is defined by the numbered, append-only migrations in `supab
 
 ## Testing
 
+`npm test` also checks the built files, so run `npm run build` first on a fresh clone.
+
 ```bash
-npm test                    # unit and integration tests (node:test)
+npm run build && npm test   # unit and integration tests (node:test)
 npm run test:a11y           # axe WCAG 2 A/AA audit across views and viewports
 npm run test:authenticated  # full parent journey in a real browser
 npm run test:staff          # full educator workbench journey
@@ -96,9 +98,14 @@ CI runs the build, unit tests, migration harness and browser audits on pushes to
 ```
 src/                   React app (App.jsx is the demo, AuthenticatedApp.jsx the real workspace)
 supabase/migrations/   Numbered SQL migrations, the schema's source of truth
+supabase/selfhosted/   Reference copy of the self-hosted Supabase stack (compose, gateway)
 tests/                 Domain, RLS, security schema and repository tests
-scripts/               Browser audits and the migration harness
-docs/                  Product research, privacy and family/educator guides
+scripts/               Browser audits, the migration harness and the ops scripts
+qa/                    Browser-audit harnesses; audit screenshots and reports are written here
+deploy/                Coolify backend adoption hooks and their tests
+.github/               CI and the production workflows (Migrate, Ops check, Staff, Backup, ...)
+worker/                Sites packaging, kept working per AGENTS.md; production does not use it
+docs/                  TODO, status, runbooks, product research and family/educator guides
 ```
 
 ## Product principles

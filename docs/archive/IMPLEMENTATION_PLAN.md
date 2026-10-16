@@ -1,6 +1,6 @@
 # BriteLink MVP Implementation Plan
 
-This plan tracks the active goal against `REAL_WORLD_REVIEW.md`. A checked item means current repository evidence exists; it does not imply production launch approval.
+This plan tracks the active goal against `docs/archive/REAL_WORLD_REVIEW.md`. A checked item means current repository evidence exists; it does not imply production launch approval.
 
 For complete end-to-end ship planning including competitor parity, phased roadmap, and private beta → paid launch path, see `docs/END_TO_END_SHIP_PLAN.md`.
 
@@ -140,7 +140,7 @@ Locally actionable findings retained from the independent real-world review:
 
 - `npm test`: domain and packaging suite.
 - `npm run build`: production/Sites bundle.
-- `qa/p0-integrity/`: browser evidence for honest demo state, scoped plan state, reload persistence, layout, and validated intake.
+- `docs/archive/evidence/p0-integrity/`: browser evidence for honest demo state, scoped plan state, reload persistence, layout, and validated intake.
 - `supabase/migrations/202608280001_core.sql`: proposed secure data foundation; not yet applied to a live environment.
 - `supabase/migrations/202608280002_operations.sql`: proposed paid-case and delivery operations schema; not yet applied to a live environment.
 - `supabase/migrations/202608280003_lesson_scheduling.sql`: paired reason/date scheduling fields on guardian-controlled lesson activity; not yet applied live.
