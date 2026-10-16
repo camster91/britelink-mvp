@@ -3,6 +3,8 @@
 //   auto    - signed in from a join link: learner details arrive as signup metadata
 //   manual  - signed in with no household and no metadata (form starts empty)
 //   fail    - as auto, but provisioning fails once
+//   staff   - signed in with no household, on the staff team as an educator (migration 061)
+//   stafffail - as manual, but the staff check fails once (must offer a retry, not family setup)
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { AuthenticatedApp, Workspace } from "/src/AuthenticatedApp.jsx";
@@ -25,6 +27,8 @@ const repository={
   async listLearners(){return[{id:"learner-beta",preferred_name:"Riley",grade_label:"Grade 3"}]},
   async listCases(){return[]},async loadLatestProfile(){return null},async loadPublishedPlans(){return[]},async listLessonActivities(){return[]},
   async listMessages(){return[]},async listActiveConsents(){return[]},async listPrivacyRequests(){return[]},
+  async getMyStaffProfile(){state.calls.push(["getMyStaffProfile"]);if(mode==="stafffail"&&!state.staffFailed){state.staffFailed=true;throw new Error("Check staff access: temporarily unavailable")}return mode==="staff"?{role:"educator",display_name:null}:null},
+  async setStaffDisplayName(name){state.calls.push(["setStaffDisplayName",name]);return name.trim()},
 };
 const client={auth:{onAuthStateChange(){return{data:{subscription:{unsubscribe(){}}}}}}};
 const metadata=mode==="auto"||mode==="fail"?{beta_learner_name:"Riley",beta_learner_grade:"Grade 3"}:{};

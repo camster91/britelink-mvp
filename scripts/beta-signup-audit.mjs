@@ -62,8 +62,32 @@ try{
     await axe(page,"setup failure");
     await page.getByRole("button",{name:"Start the free beta"}).click();
     await page.getByRole("heading",{name:/Riley/}).first().waitFor();
+
+    // 5. An educator with no family yet (migration 061): told to wait, never offered family setup.
+    await open("staff");
+    await page.getByRole("heading",{name:"You're on the BriteLink staff team"}).waitFor();
+    if(await page.getByRole("heading",{name:"Set up your household"}).count())throw new Error("a staff educator was offered family setup");
+    if(await page.title()!=="Waiting for your first family · BriteLink")throw new Error(`staff waiting title is "${await page.title()}"`);
+    await axe(page,"staff waiting");
+    for(const name of ["Check again","Sign out","Save name"]){const box=await page.getByRole("button",{name}).boundingBox();if(box.height<44)throw new Error(`${name} is ${box.height}px tall`)}
+    await page.getByLabel("Your name, shown to other staff").fill("Ms. Rivera");
+    await page.getByRole("button",{name:"Save name"}).click();
+    await page.getByText("Saved. Other staff now see this name.").waitFor();
+    const before=(await calls(page)).filter(([name])=>name==="listMemberships").length;
+    await page.getByRole("button",{name:"Check again"}).click();
+    await page.getByRole("heading",{name:"You're on the BriteLink staff team"}).waitFor();
+    const staffCalls=await calls(page);
+    if(staffCalls.filter(([name])=>name==="listMemberships").length<=before)throw new Error("Check again did not reload");
+    if(staffCalls.some(([name])=>name==="provisionBetaHousehold"))throw new Error("a staff educator provisioned a household");
+
+    // 6. The staff check fails: an error with Try again, never the family setup form (fail closed).
+    await open("stafffail");
+    await page.getByRole("alert").getByText("temporarily unavailable",{exact:false}).waitFor();
+    if(await page.getByRole("heading",{name:"Set up your household"}).count())throw new Error("a failed staff check fell through to family setup");
+    await page.getByRole("button",{name:"Try again"}).click();
+    await page.getByRole("heading",{name:"Set up your household"}).waitFor();
     await context.close();
   }
   await browser.close();
-  console.log("Beta signup audit passed at 1280px and 375px: no pre-link provisioning, one-shot metadata provisioning, accessible validation and retry.");
+  console.log("Beta signup audit passed at 1280px and 375px: no pre-link provisioning, one-shot metadata provisioning, accessible validation and retry, staff waiting screen, staff check fails closed.");
 }finally{server.kill()}

@@ -8,18 +8,27 @@ const safeStorage=target=>{try{return target.localStorage??null}catch{return nul
 // Signs out after timeoutMs without a tap, click or key press in any BriteLink tab. Elapsed time is
 // measured on the clock, not by a running timer: an iPad or laptop that slept, or a tab left in the
 // background, is checked against the real time since the last activity when it is used again.
-export function startInactivityMonitor({target=globalThis,timeoutMs=DEFAULT_INACTIVITY_MS,onTimeout,setTimer=setTimeout,clearTimer=clearTimeout,now=()=>Date.now(),storage=safeStorage(target)}){
+// With onWarn, it first calls onWarn() warnMs before signing out, so the family can stay signed in
+// and keep what they typed; onActive() then says the warning no longer applies.
+export const DEFAULT_WARNING_MS=60*1000;
+export function startInactivityMonitor({target=globalThis,timeoutMs=DEFAULT_INACTIVITY_MS,onTimeout,onWarn,onActive,warnMs=DEFAULT_WARNING_MS,setTimer=setTimeout,clearTimer=clearTimeout,now=()=>Date.now(),storage=safeStorage(target)}){
  if(!Number.isFinite(timeoutMs)||timeoutMs<1000)throw new TypeError("Inactivity timeout must be at least one second");
- let timer=null,stopped=false,fired=false,lastActivity=now(),lastWrite=-Infinity;
+ let timer=null,stopped=false,fired=false,warned=false,lastActivity=now(),lastWrite=-Infinity;
+ const warnAt=onWarn?Math.max(0,timeoutMs-warnMs):timeoutMs;
  const shared=()=>{try{const value=Number(storage?.getItem(LAST_ACTIVITY_KEY));return Number.isFinite(value)?value:0}catch{return 0}};
  const latest=()=>Math.max(lastActivity,shared());
  const expire=()=>{if(stopped||fired)return;fired=true;clearTimer(timer);onTimeout()};
  const schedule=delay=>{clearTimer(timer);timer=setTimer(check,Math.max(1000,delay))};
- const check=()=>{if(stopped||fired)return;const idle=now()-latest();if(idle>=timeoutMs)expire();else schedule(timeoutMs-idle)};
- const activity=()=>{if(stopped||fired)return;lastActivity=now();
+ const settle=()=>{if(warned){warned=false;onActive?.()}};
+ const check=()=>{if(stopped||fired)return;const idle=now()-latest();
+  if(idle>=timeoutMs)return expire();
+  if(idle>=warnAt){if(!warned){warned=true;onWarn()}return schedule(timeoutMs-idle)}
+  // Another tab was used meanwhile: this one is no longer about to sign out.
+  settle();schedule(warnAt-idle)};
+ const activity=()=>{if(stopped||fired)return;lastActivity=now();settle();
   // At most one write a second: pointer events can arrive many times a second.
   if(lastActivity-lastWrite>=1000){lastWrite=lastActivity;try{storage?.setItem(LAST_ACTIVITY_KEY,String(lastActivity))}catch{}}
-  schedule(timeoutMs)};
+  schedule(warnAt)};
  for(const event of ["pointerdown","keydown","touchstart"])target.addEventListener?.(event,activity,{passive:true});
  // Coming back to the tab is not activity: it only checks how long the household has been idle.
  const visibility=()=>{if(target.document?.visibilityState==="visible")check()};target.document?.addEventListener?.("visibilitychange",visibility);

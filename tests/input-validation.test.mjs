@@ -121,3 +121,10 @@ test("weekly notes and shared activities are validated before any request", asyn
   assert.throws(() => validateSharedActivity({ householdId: "h", title: "Bake", outcomes: [{ learnerId: "a", outcome: "x" }, { learnerId: "b", outcome: " " }] }), /Expected outcome/);
   assert.throws(() => validateSharedActivity({ householdId: "h", title: " ", outcomes: [{ learnerId: "a", outcome: "x" }, { learnerId: "b", outcome: "y" }] }), /Activity title/);
 });
+
+test("an optional field holding only spaces counts as empty, not as a too-short entry",()=>{
+  const lesson=validateLessonActivityInput({householdId:"house-a",learnerId:"learner-a",lessonId:"lesson-1",userId:"guardian-a",status:"completed",note:"   "});
+  assert.equal(lesson.note,"");
+  assert.equal(validateDeletionRequest({householdId:"house-a",confirmed:true,reason:"  "}).reason,"");
+  assert.throws(()=>validateLessonActivityInput({householdId:"house-a",learnerId:"learner-a",lessonId:"lesson-1",userId:"guardian-a",status:"completed",note:"x".repeat(2001)}),/Caregiver note/);
+});

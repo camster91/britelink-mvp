@@ -42,6 +42,11 @@ export function requireText(value, label, { min = 1, max } = {}) {
   return text;
 }
 
+// An optional field: blank or only spaces counts as empty, anything else must fit the limit.
+export function optionalText(value, label, { max } = {}) {
+  return typeof value === "string" && value.trim() ? requireText(value, label, { max }) : "";
+}
+
 export function requireEnum(value, allowed, label) {
   if (!allowed.includes(value)) throw new TypeError(`${label} is invalid`);
   return value;
@@ -54,7 +59,7 @@ export function validateLessonActivityInput(input) {
   return {
     householdId: requireIdentifier(input.householdId, "Household ID"), learnerId: requireIdentifier(input.learnerId, "Learner ID"), lessonId: requireIdentifier(input.lessonId, "Lesson ID"),
     userId: requireIdentifier(input.userId, "User ID"), status: requireEnum(input.status, ["not_started","in_progress","paused","completed","skipped","rescheduled"], "Lesson status"),
-    note: input.note ? requireText(input.note, "Caregiver note", { max: 2000 }) : "",
+    note: optionalText(input.note, "Caregiver note", { max: 2000 }),
     scheduleReason: hasReason ? requireEnum(input.scheduleReason,["illness","travel","caregiver_schedule","catch_up","other"],"Schedule reason") : null,
     scheduledFor: hasDate ? requireDate(input.scheduledFor,"Scheduled date") : null,
   };
@@ -104,7 +109,7 @@ export function validateGuardianIntake(input) {
   return {
     householdId:requireIdentifier(input.householdId,"Household ID"),learnerId:requireIdentifier(input.learnerId,"Learner ID"),noticeVersion:requireText(input.noticeVersion,"Privacy notice version",{max:80}),
     purposes:["personalized_learning_plan"],
-    context:{subjects,priorAttainment:requireText(input.priorAttainment,"Prior attainment",{max:1000}),strengthsInterests:requireText(input.strengthsInterests,"Strengths and interests",{max:1000}),goals:requireText(input.goals,"Learning goals",{max:1000}),learningSupports:input.learningSupports?requireText(input.learningSupports,"Learning supports",{max:1000}):"",language:requireText(input.language,"Learning language",{max:120}),weeklySchedule:requireText(input.weeklySchedule,"Weekly schedule",{max:500}),caregiverAvailability:requireText(input.caregiverAvailability,"Caregiver availability",{max:500}),deviceAccess:requireEnum(input.deviceAccess,["computer_printer","computer_no_printer","tablet","limited"],"Device access"),resourceBudget:requireEnum(input.resourceBudget,["free_only","up_to_25","up_to_50","discuss"],"Resource budget"),contentConstraints:input.contentConstraints?requireText(input.contentConstraints,"Content constraints",{max:1000}):"",accessibilityNeeds:input.accessibilityNeeds?requireText(input.accessibilityNeeds,"Accessibility needs",{max:1000}):"",planningStructure:requireEnum(input.planningStructure,PLANNING_STRUCTURES,"How you like to plan")}
+    context:{subjects,priorAttainment:requireText(input.priorAttainment,"Prior attainment",{max:1000}),strengthsInterests:requireText(input.strengthsInterests,"Strengths and interests",{max:1000}),goals:requireText(input.goals,"Learning goals",{max:1000}),learningSupports:optionalText(input.learningSupports,"Learning supports",{max:1000}),language:requireText(input.language,"Learning language",{max:120}),weeklySchedule:requireText(input.weeklySchedule,"Weekly schedule",{max:500}),caregiverAvailability:requireText(input.caregiverAvailability,"Caregiver availability",{max:500}),deviceAccess:requireEnum(input.deviceAccess,["computer_printer","computer_no_printer","tablet","limited"],"Device access"),resourceBudget:requireEnum(input.resourceBudget,["free_only","up_to_25","up_to_50","discuss"],"Resource budget"),contentConstraints:optionalText(input.contentConstraints,"Content constraints",{max:1000}),accessibilityNeeds:optionalText(input.accessibilityNeeds,"Accessibility needs",{max:1000}),planningStructure:requireEnum(input.planningStructure,PLANNING_STRUCTURES,"How you like to plan")}
   };
 }
 
@@ -146,7 +151,7 @@ export function validateRevisionRequest(input){
 export function validateDeletionRequest(input){
   if(!input||typeof input!=="object")throw new TypeError("Deletion request is required");
   if(input.confirmed!==true)throw new TypeError("Confirm that you understand deletion requires identity and retention review");
-  return{householdId:requireIdentifier(input.householdId,"Household ID"),reason:input.reason?requireText(input.reason,"Deletion reason",{max:1000}):""};
+  return{householdId:requireIdentifier(input.householdId,"Household ID"),reason:optionalText(input.reason,"Deletion reason",{max:1000})};
 }
 
 export function validateStaffPlanDocument(input){
@@ -157,5 +162,5 @@ export function validateStaffPlanDocument(input){
 export function validateStaffResource(input){
   if(!input||typeof input!=="object")throw new TypeError("Resource is required");let url=null;if(input.url){url=requireHttpUrl(input.url,"Resource URL");if(!url.startsWith("https://"))throw new TypeError("Resource URL must use HTTPS")}
   const cost=input.estimatedCostCents==null||input.estimatedCostCents===""?null:Number(input.estimatedCostCents);if(cost!==null&&(!Number.isInteger(cost)||cost<0||cost>1000000))throw new TypeError("Resource cost is invalid");
-  return{title:requireText(input.title,"Resource title",{max:200}),url,requirement:requireEnum(input.requirement,["required","optional","substitute"],"Resource requirement"),accessType:requireEnum(input.accessType,["free","paid","library","household"],"Resource access"),estimatedCostCents:cost,region:requireText(input.region,"Resource region",{max:120}),edition:input.edition?requireText(input.edition,"Resource edition",{max:120}):null,accountRequired:Boolean(input.accountRequired),adsPresent:Boolean(input.adsPresent),privacyReviewedAt:input.privacyReviewedAt?requireIsoTimestamp(input.privacyReviewedAt,"Privacy review time"):null,rightsReviewedAt:input.rightsReviewedAt?requireIsoTimestamp(input.rightsReviewedAt,"Rights review time"):null,linkCheckedAt:input.linkCheckedAt?requireIsoTimestamp(input.linkCheckedAt,"Link check time"):null,attribution:input.attribution?requireText(input.attribution,"Attribution",{max:500}):null,substituteResourceId:input.substituteResourceId?requireIdentifier(input.substituteResourceId,"Substitute resource ID"):null};
+  return{title:requireText(input.title,"Resource title",{max:200}),url,requirement:requireEnum(input.requirement,["required","optional","substitute"],"Resource requirement"),accessType:requireEnum(input.accessType,["free","paid","library","household"],"Resource access"),estimatedCostCents:cost,region:requireText(input.region,"Resource region",{max:120}),edition:optionalText(input.edition,"Resource edition",{max:120})||null,accountRequired:Boolean(input.accountRequired),adsPresent:Boolean(input.adsPresent),privacyReviewedAt:input.privacyReviewedAt?requireIsoTimestamp(input.privacyReviewedAt,"Privacy review time"):null,rightsReviewedAt:input.rightsReviewedAt?requireIsoTimestamp(input.rightsReviewedAt,"Rights review time"):null,linkCheckedAt:input.linkCheckedAt?requireIsoTimestamp(input.linkCheckedAt,"Link check time"):null,attribution:optionalText(input.attribution,"Attribution",{max:500})||null,substituteResourceId:input.substituteResourceId?requireIdentifier(input.substituteResourceId,"Substitute resource ID"):null};
 }

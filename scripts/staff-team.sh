@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Manages the BriteLink staff team (migration 060, issue #100). Run on the VPS by
-# .github/workflows/staff.yml. Everyone on the team is added to every family's household, so they
-# can see and work on each family's case.
+# Manages the BriteLink staff team (migrations 060 and 061, issue #100). Run on the VPS by
+# .github/workflows/staff.yml. An admin is added to every family's household. An educator joins a
+# family only when an admin assigns them a case there; until then they can be assigned, not read.
 #
 #   staff-team.sh list
 #   staff-team.sh add EMAIL educator|admin [CASE_LIMIT]
 #   staff-team.sh remove EMAIL
 #
-# The person needs a BriteLink sign-in account first (sign-up is invite-only). Removing someone
-# is refused while they still hold an open case; reassign those first.
+# The person needs a BriteLink account they have signed in to once, which confirms their email.
+# Removing someone is refused while they still hold an open case; reassign those first.
 #
 # The repository is public, so its Actions logs are too: this script never prints a full email
 # address, only a masked one (c***@example.com).
@@ -39,7 +39,11 @@ case "$action" in
     # substitutes variables in what it reads from stdin, not in -c.
     shared="$(psql_do -v email="$email" -v role="$role" -v lim="$limit" \
       <<<"select public.staff_team_add(:'email', :'role', :'lim'::integer);")" || fail "could not add them (see the error above)"
-    echo "Added $(printf '%s' "$email" | mask) as ${role}; shared ${shared} existing famil$([ "$shared" = 1 ] && echo y || echo ies) with them."
+    if [ "$role" = admin ]; then
+      echo "Added $(printf '%s' "$email" | mask) as admin; shared ${shared} existing famil$([ "$shared" = 1 ] && echo y || echo ies) with them."
+    else
+      echo "Added $(printf '%s' "$email" | mask) as educator; an admin can now assign them a family."
+    fi
     ;;
   remove)
     email="${2:-}"

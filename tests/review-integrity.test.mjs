@@ -451,7 +451,7 @@ test("migration 059 review follow-ups", async (t) => {
   }
 });
 
-test("migration 060 staff team", async (t) => {
+test("migrations 060 and 061 staff team", async (t) => {
   const db = await database();
   const houseA = "5eed0000-0000-4000-8000-0000000000a1";
   const person = "5eed0000-0000-4000-8000-00000000ad60";
@@ -474,15 +474,105 @@ test("migration 060 staff team", async (t) => {
   const roleIn = async (household, userId) =>
     (await db.query(`select role from public.memberships where household_id = $1 and user_id = $2`, [household, userId])).rows[0]?.role;
   try {
-    await t.test("adding someone shares every existing family with them, with an educator's case limit", async () => {
+    await t.test("adding an admin shares every existing family with them", async () => {
+      await inTx(async () => {
+        const shared = (await db.query(`select public.staff_team_add('New-Staff@britelink.invalid', 'admin') as n`)).rows[0].n;
+        assert.equal(shared, 1, "household A is the only seeded family with a guardian");
+        assert.equal(await roleIn(houseA, person), "admin");
+        // Running it again changes nothing.
+        assert.equal((await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'admin') as n`)).rows[0].n, 0);
+      });
+    });
+
+    await t.test("061: adding an educator makes them assignable in every family, but a member of none", async () => {
       await inTx(async () => {
         const shared = (await db.query(`select public.staff_team_add('New-Staff@britelink.invalid', 'educator', 4) as n`)).rows[0].n;
-        assert.equal(shared, 1, "household A is the only seeded family with a guardian");
-        assert.equal(await roleIn(houseA, person), "educator");
+        assert.equal(shared, 0);
+        assert.equal(await roleIn(houseA, person), undefined, "an unassigned educator cannot read the family");
         const limit = (await db.query(`select max_active_cases from public.educator_capacities where household_id = $1 and educator_user_id = $2`, [houseA, person])).rows[0];
         assert.deepEqual(limit, { max_active_cases: 4 });
         // Running it again changes nothing but the limit.
-        assert.equal((await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator', 6) as n`)).rows[0].n, 0);
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator', 6)`);
+        const updated = (await db.query(`select max_active_cases from public.educator_capacities where household_id = $1 and educator_user_id = $2`, [houseA, person])).rows[0];
+        assert.deepEqual(updated, { max_active_cases: 6 });
+      });
+    });
+
+    await t.test("061: an admin assigning a case is what lets a staff educator into that family", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator', 4)`);
+        await db.query(`update public.service_cases set status = 'triage', assigned_educator_id = null where id = $1`, [CASE_A]);
+        await actAs(users.adminA);
+        const assigned = (await db.query(`select * from public.staff_assign_case($1, $2, $3)`, [houseA, CASE_A, person])).rows[0];
+        await db.exec("reset role");
+        assert.equal(assigned.educator_user_id, person);
+        assert.equal(await roleIn(houseA, person), "educator");
+      });
+    });
+
+    await t.test("061: a new family gets the team's admins as members and its educators as assignable only", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator')`);
+        const admin = "5eed0000-0000-4000-8000-00000000ad62";
+        await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'team-admin@britelink.invalid', now())`, [admin]);
+        await db.query(`select public.staff_team_add('team-admin@britelink.invalid', 'admin')`);
+        const parent = "5eed0000-0000-4000-8000-00000000ad61";
+        await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'parent@britelink.invalid', now())`, [parent]);
+        await actAs(parent);
+        const family = (await db.query(`select household_id from public.provision_beta_household('Ada', 'Grade 3', 'Ontario')`)).rows[0];
+        await db.exec("reset role");
+        assert.equal(await roleIn(family.household_id, admin), "admin");
+        assert.equal(await roleIn(family.household_id, person), undefined);
+        const capacity = (await db.query(`select count(*)::int as n from public.educator_capacities where household_id = $1 and educator_user_id = $2`, [family.household_id, person])).rows[0].n;
+        assert.equal(capacity, 1);
+      });
+    });
+
+    await t.test("061: an account that never confirmed its email cannot be made staff", async () => {
+      await inTx(async () => {
+        await db.query(`insert into auth.users(id, email) values ('5eed0000-0000-4000-8000-00000000ad63', 'unconfirmed@britelink.invalid')`);
+        await refuses(`select public.staff_team_add('unconfirmed@britelink.invalid', 'admin')`, /confirmed its email/);
+        assert.equal((await db.query(`select count(*)::int as n from public.staff_team`)).rows[0].n, 0, "nobody was added");
+      });
+    });
+
+    await t.test("061: staff see an unassigned educator's name in the assign list, and the educator can set it", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator')`);
+        await actAs(person);
+        assert.equal((await db.query(`select public.set_staff_display_name('Ms. Rivera') as n`)).rows[0].n, "Ms. Rivera");
+        assert.deepEqual((await db.query(`select * from public.my_staff_profile()`)).rows, [{ role: "educator", display_name: "Ms. Rivera" }]);
+        await db.exec("reset role");
+        await actAs(users.adminA);
+        const names = (await db.query(`select display_name from public.staff_display_names where user_id = $1`, [person])).rows;
+        assert.deepEqual(names, [{ display_name: "Ms. Rivera" }]);
+        assert.deepEqual((await db.query(`select * from public.my_staff_profile()`)).rows, [], "the seeded admin is not on the team");
+        await db.exec("reset role");
+        await actAs(users.guardianA);
+        const hidden = (await db.query(`select display_name from public.staff_display_names where user_id = $1`, [person])).rows;
+        assert.deepEqual(hidden, [], "a parent does not see staff who are not in their family");
+      });
+    });
+
+    await t.test("061: leaving a family revokes the calendar links that person made there", async () => {
+      await inTx(async () => {
+        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'admin')`);
+        await actAs(person);
+        const feed = (await db.query(`select feed_id from public.create_calendar_feed($1, $2, false)`, [houseA, id("a10")])).rows[0].feed_id;
+        await db.exec("reset role");
+        assert.equal((await db.query(`select public.staff_team_remove('new-staff@britelink.invalid') as n`)).rows[0].n, 1);
+        const revoked = (await db.query(`select revoked_at is not null as r from public.calendar_feeds where id = $1`, [feed])).rows[0].r;
+        assert.equal(revoked, true);
+      });
+    });
+
+    await t.test("061: erasing a household with live calendar links still works", async () => {
+      await inTx(async () => {
+        await actAs(users.guardianA);
+        await db.query(`select feed_id from public.create_calendar_feed($1, $2, false)`, [houseA, id("a10")]);
+        await db.exec("reset role");
+        await db.query(`delete from public.households where id = $1`, [houseA]);
+        assert.equal((await db.query(`select count(*)::int as n from public.calendar_feeds where household_id = $1`, [houseA])).rows[0].n, 0);
       });
     });
 
@@ -525,7 +615,10 @@ test("migration 060 staff team", async (t) => {
     await t.test("removing refuses while they hold an open case, then removes only staff access", async () => {
       await inTx(async () => {
         await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'educator')`);
-        await db.query(`update public.service_cases set assigned_educator_id = $2, status = 'assigned' where id = $1`, [CASE_A, person]);
+        await db.query(`update public.service_cases set status = 'triage', assigned_educator_id = null where id = $1`, [CASE_A]);
+        await actAs(users.adminA);
+        await db.query(`select * from public.staff_assign_case($1, $2, $3)`, [houseA, CASE_A, person]);
+        await db.exec("reset role");
         await refuses(`select public.staff_team_remove('new-staff@britelink.invalid')`, /reassign those first/);
         await db.query(`update public.service_cases set assigned_educator_id = null, status = 'triage' where id = $1`, [CASE_A]);
         assert.equal((await db.query(`select public.staff_team_remove('new-staff@britelink.invalid') as n`)).rows[0].n, 1);

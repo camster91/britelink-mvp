@@ -1,6 +1,6 @@
 import assert from"node:assert/strict";
 import test from"node:test";
-import{discardStaffDraft,loadStaffDraft,planToAuthoringWeeks,saveStaffDraft,staffDraftKey}from"../src/staff-drafts.js";
+import{discardStaffDraft,emptyWeek,loadStaffDraft,planToAuthoringWeeks,saveStaffDraft,staffDraftKey}from"../src/staff-drafts.js";
 
 function memoryStorage(){const values=new Map();return{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)}}
 
@@ -17,4 +17,12 @@ test("latest immutable plan can be cloned into editable authoring fields",()=>{
  // Tagged lessons (044) round-trip into the editor so a revision keeps the educator's tags.
  const tagged=planToAuthoringWeeks({plan_weeks:[{theme:"Space",plan_days:[{lessons:[{subject:"Science",title:"Orbit",objective:"x",instructions:["Read"],estimated_minutes:25,help_level:"independent",needs_screen:false}]}]}]});
  assert.deepEqual([tagged[0].days[0].lessons[0].estimatedMinutes,tagged[0].days[0].lessons[0].helpLevel,tagged[0].days[0].lessons[0].needsScreen],[25,"independent","false"]);
+});
+
+test("a blocked or full browser store never throws; the save reports it was not kept", () => {
+  const blocked = { getItem() { throw new Error("SecurityError"); }, setItem() { throw new Error("QuotaExceededError"); }, removeItem() { throw new Error("SecurityError"); } };
+  assert.equal(saveStaffDraft(blocked, "k", [emptyWeek(1)]), false);
+  assert.equal(saveStaffDraft(null, "k", [emptyWeek(1)]), false);
+  assert.equal(loadStaffDraft(blocked, "k"), null);
+  assert.doesNotThrow(() => discardStaffDraft(blocked, "k"));
 });

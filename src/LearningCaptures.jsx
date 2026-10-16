@@ -87,14 +87,32 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
       });
     }
   };
+  // One tap removes; the confirmation offers Undo, which records the same note again.
   const remove = async (item) => {
     setOperation({ status: "loading", message: "Removing…" });
     try {
       await repository.removeLearningCapture({ householdId, captureId: item.id });
       await load();
-      setOperation({ status: "success", message: "Removed from the learning record." });
+      setOperation({ status: "success", message: "Removed from the learning record.", removed: item });
     } catch (error) {
       setOperation({ status: "error", message: error.message });
+    }
+  };
+  const undoRemove = async (item) => {
+    setOperation({ status: "loading", message: "Putting it back…" });
+    try {
+      await repository.recordLearningCapture({
+        householdId,
+        learnerId: learner.id,
+        capturedOn: item.captured_on,
+        kind: item.kind,
+        subjects: item.subjects ?? [],
+        note: item.note,
+      });
+      await load();
+      setOperation({ status: "success", message: "Put back in the learning record." });
+    } catch (error) {
+      setOperation({ status: "error", message: `Could not put it back: ${error.message}` });
     }
   };
 
@@ -215,6 +233,14 @@ export function LearningCaptures({ repository, householdId, learner, today, onCh
         {operation.status === "success" || operation.status === "loading" ? (
           <p role="status" className="capture-status">
             {operation.message}
+            {operation.removed ? (
+              <>
+                {" "}
+                <button type="button" className="ghost" onClick={() => undoRemove(operation.removed)}>
+                  Undo
+                </button>
+              </>
+            ) : null}
           </p>
         ) : null}
       </form>

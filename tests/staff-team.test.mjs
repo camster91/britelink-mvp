@@ -28,11 +28,17 @@ ${fails ? 'echo "ERROR:  they still hold open cases: reassign those first" >&2; 
 }
 
 test("add passes the email to psql as a quoted variable and reports a masked address", () => {
-  const r = run(["add", "jane.doe@example.test", "educator", "6"], { reply: "3\\n" });
+  const r = run(["add", "jane.doe@example.test", "admin", "6"], { reply: "3\\n" });
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.log, /-v email=jane\.doe@example\.test/);
   assert.match(r.log, /STDIN select public\.staff_team_add\(:'email', :'role', :'lim'::integer\);/);
-  assert.equal(r.stdout.trim(), "Added j***@example.test as educator; shared 3 existing families with them.");
+  assert.equal(r.stdout.trim(), "Added j***@example.test as admin; shared 3 existing families with them.");
+});
+
+test("adding an educator says they join a family when assigned, not now", () => {
+  const r = run(["add", "jane.doe@example.test", "educator", "6"], { reply: "0\\n" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout.trim(), "Added j***@example.test as educator; an admin can now assign them a family.");
 });
 
 test("list masks every address", () => {

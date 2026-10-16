@@ -10,7 +10,8 @@ person), **code** (can be built in this repo), or **both**.
 - Production at https://britelink.ashbi.ca runs current `main`. Every merge to `main` deploys
   automatically through GitHub Actions (CI, then Deploy, with a `/version.json` check), per #33.
   Moving deploys to Coolify is a later choice for Cameron.
-- Self-hosted Supabase (`britelink-production` stack on the VPS) has all 59 migrations (053 review integrity and 054 privacy integrity applied 2026-10-01; 055 revision-requires-request and 056 staff-workflow integrity applied 2026-10-02; 057 staff display names and 058 email notifications applied 2026-10-05; 059 review follow-ups applied 2026-10-06; each after a pre-migrate backup). Notification sending stays off until counsel approves the wording and NOTIFICATIONS_ENABLED is set (docs/EMAIL_NOTIFICATIONS.md, #99). Auth,
+- Self-hosted Supabase (`britelink-production` stack on the VPS) has migrations 001–059; 060 and
+  061 wait for the owner's go (item 3 below). Applied history: (053 review integrity and 054 privacy integrity applied 2026-10-01; 055 revision-requires-request and 056 staff-workflow integrity applied 2026-10-02; 057 staff display names and 058 email notifications applied 2026-10-05; 059 review follow-ups applied 2026-10-06; each after a pre-migrate backup). Notification sending stays off until counsel approves the wording and NOTIFICATIONS_ENABLED is set (docs/EMAIL_NOTIFICATIONS.md, #99). Auth,
   database API and storage share the key-signing secret. The site's public key is accepted.
 - The approved privacy notice `2026-09-30` is live, so guardian intake is open.
 - Features shipped: flexible week, day-aware next action, calm lesson completion with undo,
@@ -33,10 +34,15 @@ person), **code** (can be built in this repo), or **both**.
      recorded under it. Production has 2 households and 4 accounts.
    - Counsel decides whether that guardian must re-consent under `2026-09-30`.
    - Ops check "consent records" shows the counts.
-3. **Staff team and the invite path** (both). Migration 060 adds a staff team: everyone on it is
-   added to every family automatically, so staff can see new families (before it, nobody on staff
-   could). 060 is in the repo and waits for the owner's go; then add each person with the Staff
-   workflow (`STAFF_TEAM.md`). Decided 2026-10-06: open free beta, anyone can join. The app's "Join the
+3. **Staff team and the invite path** (both). Migration 060 adds a staff team, so staff can see
+   new families (before it, nobody on staff could). Migration 061 tightens it: only an account with
+   a confirmed email can be added, admins see every family, educators see a family only once an
+   admin assigns them its case, and a calendar link stops working when its maker leaves the
+   family. 060 and 061 are in the repo and wait for the owner's go; apply them together with the
+   Migrate workflow, then add each person with the Staff workflow (`STAFF_TEAM.md`).
+   Before opening sign-up, check that `GOTRUE_MAILER_AUTOCONFIRM` is `false` on the auth service
+   (Ops check prints "email confirmation: required (safe)"), and copy the updated
+   `supabase/selfhosted/gateway.conf` to the backend so sign-in emails are rate-limited per visitor. Decided 2026-10-06: open free beta, anyone can join. The app's "Join the
    free beta" form already creates accounts; the sign-in service still refuses new emails
    (`GOTRUE_DISABLE_SIGNUP=true`). After 060 is live, set it to `false` on the backend's auth
    service in Coolify and redeploy it. Staff then join the same way and are added with the Staff

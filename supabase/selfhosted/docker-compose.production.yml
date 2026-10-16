@@ -61,11 +61,11 @@ services:
       # email (MAILER_AUTOCONFIRM stays false). The live stack is now managed in Coolify, where the
       # same setting must be flipped; this file is the reference copy.
       GOTRUE_DISABLE_SIGNUP: "false"
-      # Explicit rather than inherited, because "true" is only correct while there is no SMTP: with
-      # no mailer, auto-confirm is the difference between a stack that can be tested and one that
-      # cannot. P5 flips this to "false" in .env at the same moment SMTP is configured, so the two
-      # can never disagree. Confirm it reads false before any real guardian is invited.
-      GOTRUE_MAILER_AUTOCONFIRM: ${MAILER_AUTOCONFIRM:-true}
+      # Must be false while sign-up is open: "true" lets anyone create an already-confirmed account
+      # for any address, which defeats the confirmed-email checks in 041 and 061 (staff_team_add).
+      # SMTP is configured below, so there is no case for true here; the default is the safe value
+      # and Ops check flags anything else.
+      GOTRUE_MAILER_AUTOCONFIRM: ${MAILER_AUTOCONFIRM:-false}
       # Staging runs at warn to keep its noise down; production is the stack whose auth failures
       # matter, and warn would hide the sign-in problems worth seeing.
       GOTRUE_LOG_LEVEL: ${GOTRUE_LOG_LEVEL:-info}
@@ -73,8 +73,8 @@ services:
       #
       # Was a placeholder; now real. Every value comes from .env, so the SMTP password
       # never lands in this file. MAILER_AUTOCONFIRM is false in that same .env, set at the
-      # moment SMTP was configured -- the coupling the note above demanded, so the two cannot
-      # disagree and leave a stack that silently auto-confirms instead of sending.
+      # moment SMTP was configured, so the stack sends a confirmation link instead of silently
+      # auto-confirming.
       #
       # Port 587 + STARTTLS is Mailgun's submission port; the sender is the domain verified in
       # Mailgun, so From and the sending domain agree. ${VAR:?} makes a missing value a startup

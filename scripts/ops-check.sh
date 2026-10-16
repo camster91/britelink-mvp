@@ -243,6 +243,12 @@ for var in API_EXTERNAL_URL GOTRUE_SITE_URL GOTRUE_URI_ALLOW_LIST GOTRUE_DISABLE
   printf '%-34s  %s\n' "$var" "$(env_of "$AUTH_CONTAINER" "$var" | grep . || echo "(unset)")"
 done
 printf '%-34s  %s\n' "GOTRUE_SMTP_USER / _PASS" "$( [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SMTP_USER)" ] && echo user-set || echo user-unset ) / $( [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SMTP_PASS)" ] && echo pass-set || echo pass-unset )"
+# With sign-up open, auto-confirm lets anyone claim any email address (including a future staff
+# member's). Only "false" is safe; an unset value is GoTrue's default, which is also false.
+case "$(env_of "$AUTH_CONTAINER" GOTRUE_MAILER_AUTOCONFIRM)" in
+  ""|false) echo "email confirmation:                 required (safe)" ;;
+  *) echo "email confirmation:                 PROBLEM -- GOTRUE_MAILER_AUTOCONFIRM is on; set it to false on the auth service and redeploy" ;;
+esac
 ext="$(env_of "$AUTH_CONTAINER" API_EXTERNAL_URL)"
 # Probe the exact address a sign-in email links to, with a dummy token: GoTrue answers 303 (redirect
 # to the site with "link expired"); a 404 means the link would never reach GoTrue.

@@ -49,6 +49,7 @@ const NON_HOUSEHOLD_RPCS = new Map([
   ["provision_beta_household", "caller-scoped by auth.uid(); covered by its own test below"],
   ["set_staff_display_name", "writes only the caller's own name row (auth.uid()); covered in review-integrity.test.mjs"],
   ["set_email_notifications", "writes only the caller's own email setting (auth.uid()); covered in review-integrity.test.mjs"],
+  ["my_staff_profile", "reads only the caller's own staff role and name (auth.uid()); covered in review-integrity.test.mjs"],
 ]);
 
 // Which of household B's rows to hand an RPC for each uuid parameter.
