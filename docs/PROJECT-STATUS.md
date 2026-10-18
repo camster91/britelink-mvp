@@ -42,7 +42,7 @@ completion-pass status is archived in `docs/archive/PROJECT-STATUS-2026-09-21.md
 
 ## Repository checks (2026-10-15)
 
-- `npm test`: 344 pass, 0 fail (2026-10-18, after the old Sites packaging and its 6 tests were removed). It no longer needs a build first.
+- `npm test`: 351 pass, 0 fail (2026-10-18). It no longer needs a build first.
 - CI on `main` runs the build and tests, the migration harness on real PostgreSQL, all browser
   audits, and the saved-image runtime checks.
 - A full-repo review on 2026-10-15 found no way for one family to read or write another family's

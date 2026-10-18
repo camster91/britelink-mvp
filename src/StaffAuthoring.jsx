@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import "./staff-authoring.css";
 import { clearFixedField } from "./form-errors.js";
+import { browserLocalStorage } from "./form-drafts.js";
 import {
-  browserSessionStorage,
   discardStaffDraft,
   emptyDay as day,
   emptyLesson as lesson,
@@ -35,7 +35,7 @@ export function StaffAuthoring({
     [householdId, serviceCase.id, userId],
   );
   const recovered = useMemo(
-    () => loadStaffDraft(browserSessionStorage(), draftKey),
+    () => loadStaffDraft(browserLocalStorage(), draftKey),
     [draftKey],
   );
   const [weeks, setWeeks] = useState(recovered?.weeks ?? [week(1)]);
@@ -57,7 +57,7 @@ export function StaffAuthoring({
   const [resourceLessonId, setResourceLessonId] = useState("");
   useEffect(() => {
     if (draftState === "clean") return;
-    const kept = saveStaffDraft(browserSessionStorage(), draftKey, weeks);
+    const kept = saveStaffDraft(browserLocalStorage(), draftKey, weeks);
     const next = kept ? "saved" : "unprotected";
     if (draftState !== next) setDraftState(next);
   }, [draftKey, draftState, weeks]);
@@ -204,7 +204,7 @@ export function StaffAuthoring({
         <section className="draft-recovery" aria-label="Plan draft recovery">
           {recovered ? (
             <p className="live-operation success" role="status">
-              Recovered this case’s unsaved draft from this browser session.
+              We kept your unsaved draft for this case. Pick up where you left off.
             </p>
           ) : null}
           {draftState === "unprotected" ? (
@@ -214,7 +214,7 @@ export function StaffAuthoring({
             </p>
           ) : draftState !== "clean" ? (
             <p className="draft-status" role="status">
-              Unsaved work protected in this browser session ·{" "}
+              Unsaved work kept on this device for 24 hours ·{" "}
               {draftState === "changed" ? "saving…" : "saved"}
             </p>
           ) : null}
@@ -242,7 +242,7 @@ export function StaffAuthoring({
                 if (
                   globalThis.confirm?.("Discard this case’s unsaved draft?")
                 ) {
-                  discardStaffDraft(browserSessionStorage(), draftKey);
+                  discardStaffDraft(browserLocalStorage(), draftKey);
                   setWeeks([week(1)]);
                   setDraftState("clean");
                 }
@@ -267,7 +267,7 @@ export function StaffAuthoring({
               }),
             );
             if (saved) {
-              discardStaffDraft(browserSessionStorage(), draftKey);
+              discardStaffDraft(browserLocalStorage(), draftKey);
               setDraftState("clean");
             }
           }}

@@ -1,16 +1,16 @@
 import {lessonInstructionTexts} from './authenticated-workspace.js';
+import {discardDraft,draftKey,loadDraft,saveDraft} from './form-drafts.js';
 export const emptyLesson=()=>({subject:"",title:"",objective:"",instructions:"",materials:"",accommodations:"",adultHelpMinutes:"",estimatedMinutes:"",helpLevel:"",needsScreen:""});
 export const emptyDay=number=>({number,plannedDate:"",lessons:[emptyLesson()]});
 export const emptyWeek=number=>({number,theme:"",days:[emptyDay(1)]});
 
-export function staffDraftKey({householdId,caseId,userId}){return`britelink:staff-plan-draft:${householdId}:${caseId}:${userId}`}
-// Reading sessionStorage itself throws when the browser blocks site data, so every access is guarded:
-// a missing backup must never take the authoring screen down with it.
-export function browserSessionStorage(){try{return globalThis.sessionStorage??null}catch{return null}}
-export function loadStaffDraft(storage,key){try{const value=JSON.parse(storage?.getItem(key)??"null");return Array.isArray(value?.weeks)&&value.weeks.length?value:null}catch{return null}}
+// Kept with every other draft (src/form-drafts.js): on this device for up to 24 hours, for the same
+// educator only, and removed on save, on "Discard draft", or when anyone presses Sign out.
+export function staffDraftKey({householdId,caseId,userId}){return draftKey(userId,"staff-plan",householdId,caseId)}
+export function loadStaffDraft(storage,key,now){const value=loadDraft(storage,key,now);return Array.isArray(value?.weeks)&&value.weeks.length?value:null}
 // Returns false when the backup could not be written (no storage, blocked, or over quota).
-export function saveStaffDraft(storage,key,weeks){if(!storage)return false;try{storage.setItem(key,JSON.stringify({version:1,weeks,savedAt:new Date().toISOString()}));return true}catch{return false}}
-export function discardStaffDraft(storage,key){try{storage?.removeItem(key)}catch{}}
+export function saveStaffDraft(storage,key,weeks,now){return saveDraft(storage,key,{version:1,weeks},now)}
+export function discardStaffDraft(storage,key){discardDraft(storage,key)}
 
 export function planToAuthoringWeeks(plan){
  if(!plan?.plan_weeks?.length)return[emptyWeek(1)];

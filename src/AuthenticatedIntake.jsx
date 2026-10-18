@@ -10,6 +10,13 @@ const PLANNING_OPTIONS = [
 ];
 import { classifyOperationError } from "./operation-state.js";
 import { clearFixedField, markMissing, missingFields, missingMessage } from "./form-errors.js";
+import {
+  browserLocalStorage,
+  discardDraft,
+  draftKey,
+  loadDraft,
+  saveDraft,
+} from "./form-drafts.js";
 
 const EMPTY = {
   subjects: [],
@@ -35,15 +42,35 @@ function draftFromProfile(profile) {
     guardianConsent: false,
   };
 }
+// Unsubmitted answers come back on top of the latest submitted version. Consent is never kept: the
+// guardian gives it again on the day they submit.
+function withKeptAnswers(base, kept) {
+  if (!kept || typeof kept !== "object") return base;
+  const answers = Object.fromEntries(
+    Object.keys(EMPTY)
+      .filter((name) => name !== "subjects" && name !== "guardianConsent")
+      .filter((name) => typeof kept[name] === "string")
+      .map((name) => [name, kept[name]]),
+  );
+  const subjects = Array.isArray(kept.subjects)
+    ? kept.subjects.filter((item) => INTAKE_SUBJECTS.includes(item))
+    : base.subjects;
+  return { ...base, ...answers, subjects, guardianConsent: false };
+}
 
 export function AuthenticatedIntake({
   householdId,
   learner,
   repository,
+  userId,
   privacyNoticeVersion,
   onSubmitted,
 }) {
   const formId = useId();
+  // Kept on this device until submitted, so the idle sign-out does not lose a half-filled form.
+  const keptKey = draftKey(userId, "intake", householdId, learner.id);
+  const edited = useRef(false);
+  const [restored, setRestored] = useState(false);
   const [state, setState] = useState({
     status: "loading",
     profile: null,
@@ -65,7 +92,9 @@ export function AuthenticatedIntake({
         learner.id,
       );
       setState({ status: "success", profile, error: null });
-      setDraft(draftFromProfile(profile));
+      const kept = quiet ? null : loadDraft(browserLocalStorage(), keptKey);
+      setDraft(withKeptAnswers(draftFromProfile(profile), kept));
+      setRestored(Boolean(kept));
     } catch (error) {
       if (quiet) throw error;
       setState((previous) => ({
@@ -74,11 +103,17 @@ export function AuthenticatedIntake({
         error: error.message,
       }));
     }
-  }, [householdId, learner.id, repository]);
+  }, [householdId, keptKey, learner.id, repository]);
   useEffect(() => {
     load();
   }, [load]);
-  const field = (name) => (event) =>
+  useEffect(() => {
+    if (!edited.current) return;
+    const { guardianConsent, ...answers } = draft;
+    saveDraft(browserLocalStorage(), keptKey, answers);
+  }, [draft, keptKey]);
+  const field = (name) => (event) => {
+    edited.current = true;
     setDraft((value) => ({
       ...value,
       [name]:
@@ -86,9 +121,11 @@ export function AuthenticatedIntake({
           ? event.target.checked
           : event.target.value,
     }));
+  };
   const [subjectsInvalid, setSubjectsInvalid] = useState(false);
   const firstSubjectRef = useRef(null);
   const subject = (subjectName) => (event) => {
+    edited.current = true;
     if (event.target.checked) setSubjectsInvalid(false);
     setDraft((value) => ({
       ...value,
@@ -132,6 +169,9 @@ export function AuthenticatedIntake({
         guardianConsent: draft.guardianConsent,
         ...draft,
       });
+      edited.current = false;
+      discardDraft(browserLocalStorage(), keptKey);
+      setRestored(false);
       const submitted = `Intake version ${result?.profile_version ?? "new"} submitted with consent record ${privacyNoticeVersion}.`;
       let refreshed = true;
       try {
@@ -219,6 +259,12 @@ export function AuthenticatedIntake({
             details. Submitting creates a new immutable version; it never
             overwrites prior records.
           </p>
+          {restored ? (
+            <p className="live-operation success" role="status">
+              We kept the answers you hadn't submitted yet. Check them, then
+              submit when you're ready.
+            </p>
+          ) : null}
           <ol className="intake-progress" aria-label="Intake steps">
             <li>Learning context</li>
             <li>Household setup</li>

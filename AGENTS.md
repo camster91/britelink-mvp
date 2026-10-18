@@ -83,4 +83,5 @@ Build app UI in `src/`. Production serves the static build in `dist/client/` (Co
 - Form errors must name the affected fields, use `aria-invalid` / `aria-describedby`, announce via a live region or alert summary, and move focus to the first invalid control.
 - Demo and authenticated shells keep a skip link, labelled `main`, and per-view document titles so a later VoiceOver pass can start from a predictable landmark order.
 - Product Design `get-context` and Mobbin remain unavailable in this environment; re-check those sources before changing tokens or layout system.
+- Unsent typing survives the idle sign-out (owner decision 2026-10-18, `src/form-drafts.js`): intake answers, lesson notes, messages and staff plan drafts are kept in this browser's localStorage for at most 24 hours, only for the same signed-in person, and removed on send/submit or when anyone presses Sign out. Consent is never kept. Use the same helper for any new long form.
 - Staging operators follow `docs/STAGING_HANDOFF.md`; do not fake hosted Auth, counsel approval, or VoiceOver completion.
