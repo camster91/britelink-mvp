@@ -4,7 +4,7 @@ This is the sequenced plan to close every remaining official product goal. A che
 
 Governing ledgers:
 
-- Product intent and original blockers: `REAL_WORLD_REVIEW.md`
+- Product intent and original blockers: `docs/archive/REAL_WORLD_REVIEW.md`
 - Local checkbox ledger: `docs/IMPLEMENTATION_PLAN.md`
 - Release evidence ledger: `docs/RELEASE_READINESS.md`
 - GitHub execution units: issues [#1](https://github.com/camster91/britelink-mvp/issues/1)–[#13](https://github.com/camster91/britelink-mvp/issues/13), roadmap [#14](https://github.com/camster91/britelink-mvp/issues/14)

@@ -239,7 +239,7 @@ The current repository already implements several high-value foundations:
 - instructions, materials, adaptations, adult-help estimate, and reviewed resources ([lines 675–753](../src/AuthenticatedApp.jsx#L675));
 - lesson states, privacy-minimal rescheduling reasons, new dates, and caregiver notes ([lines 755–839](../src/AuthenticatedApp.jsx#L755));
 - intake for priorities, starting point, interests, goals, supports, weekly schedule, caregiver availability, devices, budget, content constraints, and accessibility ([`AuthenticatedIntake.jsx` lines 170–316](../src/AuthenticatedIntake.jsx#L170));
-- secure educator messaging and versioned, educator-reviewed plans (documented in [`REAL_WORLD_REVIEW.md`](../REAL_WORLD_REVIEW.md)).
+- secure educator messaging and versioned, educator-reviewed plans (documented in [`REAL_WORLD_REVIEW.md`](archive/REAL_WORLD_REVIEW.md)).
 
 These features directly answer “what do I do next?”, personalization, and support. They should be preserved.
 

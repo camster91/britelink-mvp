@@ -1,10 +1,12 @@
 # BriteLink MVP Design QA
 
+> Archived 2026-10-16 from the repository root. A one-off review kept for history; parts of it are out of date (for example, mobile navigation is now a 2-up grid, per `AGENTS.md`). For the current state read `docs/PROJECT-STATUS.md` and `docs/TODO.md`.
+
 ## Evidence
 
 - Source visual truth: `/tmp/britelink-audit/01-home-desktop-top.png` and `/tmp/britelink-audit/06-home-mobile-top.png`
-- Implementation: `qa/implementation-home-desktop.png`, `qa/implementation-home-mobile-top.png`, `qa/implementation-plan-desktop.png`, and `qa/implementation-profile-desktop.png`
-- Combined comparison evidence: `qa/comparison-desktop.png` and `qa/comparison-mobile.png`
+- Implementation: `docs/archive/evidence/design-qa/implementation-home-desktop.png`, `docs/archive/evidence/design-qa/implementation-home-mobile-top.png`, `docs/archive/evidence/design-qa/implementation-plan-desktop.png`, and `docs/archive/evidence/design-qa/implementation-profile-desktop.png`
+- Combined comparison evidence: `docs/archive/evidence/design-qa/comparison-desktop.png` and `docs/archive/evidence/design-qa/comparison-mobile.png`
 - Desktop viewport: 1440 x 900 CSS pixels, 1x capture; source and implementation are 1440 x 900 pixels
 - Mobile viewport: 390 x 844 CSS pixels, 1x capture; source and implementation are 390 x 844 pixels
 - State: source marketing hero compared with MVP parent-workspace overview at initial load
@@ -33,6 +35,6 @@
 
 - Initial mobile pass used unlabeled inactive navigation marks, a P2 discoverability issue.
 - Fixed by showing all three route labels at mobile widths and tightening logo/navigation spacing.
-- Post-fix evidence: `qa/implementation-home-mobile-top.png` and `qa/comparison-mobile.png`; labels are visible with no horizontal overflow.
+- Post-fix evidence: `docs/archive/evidence/design-qa/implementation-home-mobile-top.png` and `docs/archive/evidence/design-qa/comparison-mobile.png`; labels are visible with no horizontal overflow.
 
 final result: passed

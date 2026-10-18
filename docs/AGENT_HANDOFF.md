@@ -3,7 +3,7 @@
 **Product:** BriteLink, homeschool curriculum planning with a human educator in the loop. It is not an
 unsupervised AI tutor.
 **Owner:** Cameron (camster91)
-**Last updated:** 2026-09-30
+**Last updated:** 2026-10-16
 
 ## Read first
 
@@ -14,16 +14,28 @@ unsupervised AI tutor.
 
 ## How production works
 
-- **Web:** `britelink.ashbi.ca`. The `Dockerfile` nginx image is built on the VPS in
-  `/docker/britelink-web`, behind Traefik. A merge to `main` → CI → Deploy (GitHub Actions over SSH)
-  → a `/version.json` check.
-- **Backend:** a self-hosted Supabase stack on the same VPS (`britelink-production`, files in
-  `/opt/britelink-production/supabase/selfhosted`), served at `britelink-api.ashbi.ca`.
+This section is the one place that says where production runs. Other docs link here.
+
+- **Web:** `britelink.ashbi.ca`, deployed by **Coolify** on the VPS since 2026-10-01 (#86,
+  `docker-compose.coolify-development.json`), behind Traefik. The `Dockerfile` nginx image serves
+  the built app; `/version.json` names the deployed commit.
+  - The GitHub Actions **Deploy** workflow (SSH to `/docker/britelink-web`) was switched off by
+    hand on 2026-10-01 and stays off (`deploy/coolify-backend/PRODUCTION.md`). Do not turn it back
+    on alongside Coolify: two release owners would race on every merge.
+  - Database migrations are **not** applied by a deploy. Run the Migrate workflow, with Cameron's
+    go, before merging code that needs a new migration.
+- **Backend:** the self-hosted Supabase stack on the same VPS (`britelink-production`), served at
+  `britelink-api.ashbi.ca`. Its compose file notes that the live stack is managed in Coolify
+  (`britelink-backend-production`, see `deploy/coolify-backend/PRODUCTION.md`). The repo copies in
+  `supabase/selfhosted/` are the reference: a change there (for example `gateway.conf`) reaches
+  production only when it is copied to the backend and redeployed. Ops check shows the differences.
 - **Workflows:**
   - **Migrate** (check/apply);
   - **Ops check** (read-only diagnostics, plus explicit fix modes);
+  - **Staff** (add, remove and list staff, `STAFF_TEAM.md`);
   - **Monitor** (hourly);
-  - **Backup** (nightly, restore-verified);
+  - **Backup** (nightly, restore-verified, with an encrypted Google Drive copy once its secrets exist);
+  - **Notifications** (every 10 minutes; sends nothing until `NOTIFICATIONS_ENABLED` is set);
   - **Staging** (rebuild/verify the synthetic staging stack).
 
 ## Rules

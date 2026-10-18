@@ -1,18 +1,21 @@
 # BriteLink — the to-do list
 
-**The single source of truth for what is left.** Last updated 2026-09-30. Earlier plans (`LAUNCH-TODO`,
+**The single source of truth for what is left.** Last updated 2026-10-16. Earlier plans (`LAUNCH-TODO`,
 `END_TO_END_SHIP_PLAN`, `ship-status`, the evaluations) are in `docs/archive/` for history only.
 Each item names its GitHub issue and who can do it: **Cameron** (a decision, an account or a
 person), **code** (can be built in this repo), or **both**.
 
 ## Live today (done)
 
-- Production at https://britelink.ashbi.ca runs current `main`. Every merge to `main` deploys
-  automatically through GitHub Actions (CI, then Deploy, with a `/version.json` check), per #33.
-  Moving deploys to Coolify is a later choice for Cameron.
-- Self-hosted Supabase (`britelink-production` stack on the VPS) has migrations 001–059; 060 and
-  061 wait for the owner's go (item 3 below). Applied history: (053 review integrity and 054 privacy integrity applied 2026-10-01; 055 revision-requires-request and 056 staff-workflow integrity applied 2026-10-02; 057 staff display names and 058 email notifications applied 2026-10-05; 059 review follow-ups applied 2026-10-06; each after a pre-migrate backup). Notification sending stays off until counsel approves the wording and NOTIFICATIONS_ENABLED is set (docs/EMAIL_NOTIFICATIONS.md, #99). Auth,
-  database API and storage share the key-signing secret. The site's public key is accepted.
+- Production at https://britelink.ashbi.ca. The web app is deployed by Coolify (since
+  2026-10-01). The older GitHub Actions SSH **Deploy** workflow was switched off then and stays
+  off; see `AGENT_HANDOFF.md` → "How production works".
+- The self-hosted Supabase backend (`britelink-production`, served at `britelink-api.ashbi.ca`)
+  has migrations 001–059. 060 and 061 wait for the owner's go (item 3 below). Each was applied
+  with the Migrate workflow after a pre-migrate backup; the run links are in `PROJECT-STATUS.md`.
+  Notification sending stays off until counsel approves the wording and `NOTIFICATIONS_ENABLED`
+  is set (`EMAIL_NOTIFICATIONS.md`, #99). Auth, database API and storage share the key-signing
+  secret, and the site's public key is accepted.
 - The approved privacy notice `2026-09-30` is live, so guardian intake is open.
 - Features shipped: flexible week, day-aware next action, calm lesson completion with undo,
   weekly story and educator notes, learning captures, shared multi-learner activities, calendar
@@ -25,7 +28,8 @@ person), **code** (can be built in this repo), or **both**.
 
 1. **Prove sign-in email end to end** (#2, Cameron).
    - Already configured (Ops check, 2026-09-30): GoTrue sends through Mailgun (`smtp.mailgun.org:587`)
-     as `BriteLink <noreply@ashbi.ca>`, with auto-confirm off and sign-up invite-only.
+     as `BriteLink <noreply@ashbi.ca>`, with auto-confirm off. Sign-up was invite-only then; opening it
+     is item 3.
    - The sign-in link address `https://britelink-api.ashbi.ca/verify` reaches GoTrue.
    - Left: sign in once with a real invited address, from a phone and a computer. Confirm the email
      arrives (not in spam) and the link opens the household workspace.
@@ -78,6 +82,8 @@ person), **code** (can be built in this repo), or **both**.
 
 ## Maintenance
 
-- Dependencies: `npm audit` is clean. Minor updates are available (supabase-js, playwright);
-  Vite 6 → 8 is a major upgrade to plan separately.
+- Dependencies: `npm audit --omit=dev` (what ships to families) is clean. A full `npm audit`
+  reports one high finding in `source-map-js`, a build-time tool under Vite, which never reaches
+  the browser. Minor updates are available (supabase-js, playwright); Vite 6 → 8 is a major
+  upgrade to plan separately.
 - Monitor and backup workflows: watch for failure emails; `Actions → Backup` keeps 14 nightly dumps.
