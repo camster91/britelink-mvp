@@ -61,6 +61,12 @@ person), **code** (can be built in this repo), or **both**.
    `true`). To turn them on: deploy the scanner (ClamAV behind `scripts/attachment-scanner.mjs`),
    then set `VITE_ATTACHMENTS_ENABLED=true` in the web `.env` and redeploy.
 
+7. **Approval for production changes** (Cameron, one minute). Add yourself as a required
+   reviewer under Settings → Environments → `production-change`. Until then, Migrate **apply**,
+   Ops check fix modes and Staff **add**/**remove** stop at their approve step and change nothing
+   (`APPLYING_MIGRATIONS.md` → "Approving a production change"). Do this before applying 060
+   and 061.
+
 ## Soon after (the beta can start without these)
 
 - **Payments** (#5, #52, #54, Cameron then code). Choose the provider and prices first. The

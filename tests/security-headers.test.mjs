@@ -1,6 +1,6 @@
 // Regression tests for the shipped security headers.
 //
-// These headers existed in the nginx template and the Sites worker with no test
+// These headers existed in the nginx template with no test
 // coverage, which is how the BriteLink routes ended up without HSTS while other
 // routes on the same Traefik instance had it: nothing failed when a header went
 // missing.
@@ -17,7 +17,6 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const nginx = readFileSync(path.join(root, "nginx.conf.template"), "utf8");
-const worker = readFileSync(path.join(root, "worker", "index.js"), "utf8");
 
 test("nginx serves HSTS", () => {
   // TLS terminates at Traefik, whose britelink routers do not set stsSeconds, so
@@ -50,26 +49,6 @@ test("the Content-Security-Policy stays strict in nginx", () => {
   assert.match(policy, /frame-ancestors 'none'/);
   assert.match(policy, /base-uri 'self'/);
   assert.match(policy, /form-action 'self'/);
-});
-
-test("the Sites worker policy matches the nginx policy in strictness", () => {
-  const match = worker.match(/"Content-Security-Policy":\s*"([^"]+)"/);
-  assert.ok(match, "worker must emit a Content-Security-Policy");
-  const policy = match[1];
-  assert.doesNotMatch(policy, /style-src[^;]*'unsafe-inline'/);
-  assert.doesNotMatch(policy, /font-src[^;]*https?:/);
-  assert.doesNotMatch(policy, /connect-src[^;]*\*/);
-  assert.match(policy, /object-src 'none'/);
-  assert.match(policy, /frame-ancestors 'none'/);
-});
-
-test("the worker sets HSTS only over HTTPS", () => {
-  assert.match(worker, /Strict-Transport-Security/);
-  assert.match(
-    worker,
-    /protocol === "https:"[\s\S]{0,120}Strict-Transport-Security/,
-    "HSTS must be conditional on an HTTPS request",
-  );
 });
 
 test("no source file emits an inline style attribute", () => {

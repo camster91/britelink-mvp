@@ -29,7 +29,8 @@ This section is the one place that says where production runs. Other docs link h
   (`britelink-backend-production`, see `deploy/coolify-backend/PRODUCTION.md`). The repo copies in
   `supabase/selfhosted/` are the reference: a change there (for example `gateway.conf`) reaches
   production only when it is copied to the backend and redeployed. Ops check shows the differences.
-- **Workflows:**
+- **Workflows.** Every mode that changes production waits for a required reviewer on the
+  `production-change` environment; read-only modes never wait (`APPLYING_MIGRATIONS.md`).
   - **Migrate** (check/apply);
   - **Ops check** (read-only diagnostics, plus explicit fix modes);
   - **Staff** (add, remove and list staff, `STAFF_TEAM.md`);

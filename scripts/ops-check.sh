@@ -27,6 +27,9 @@
 #   fix-anon-key  copies the production stack's own ANON_KEY into the web .env (after a backup),
 #                 only if it verifies under PostgREST's secret and is role=anon. No rebuild: run
 #                 Deploy afterwards.
+#   Both of these edit a web .env, so both refuse when Coolify manages the web app (it rewrites
+#   that file on every deploy): set the value in Coolify instead. They still work for a web app
+#   run from /docker/britelink-web.
 #
 # Overridable for tests: WEB_ENV, WEB_ORIGIN, REST_CONTAINER, AUTH_CONTAINER, STORAGE_CONTAINER,
 # TRAEFIK_CONTAINER, TRAEFIK_CONFIGS.
@@ -34,8 +37,10 @@ set -euo pipefail
 set +x
 MODE="${1:-check}"
 case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version VALUE]" >&2; exit 2 ;; esac
-# Read-only checks follow the actual Coolify frontend, rather than the retired SSH web release.
-if [ "$MODE" = check ]; then
+# Every mode follows the actual Coolify frontend, rather than the retired SSH web release.
+# COOLIFY_WEB_ID is set when Coolify owns the web app; modes that would edit a web .env refuse then.
+COOLIFY_WEB_ID=""
+if [ -z "${WEB_ENV:-}" ]; then
   native_web="$(docker exec coolify php -r '
     try {
       require "/var/www/html/vendor/autoload.php";
@@ -48,6 +53,7 @@ if [ "$MODE" = check ]; then
   if [ -n "$native_web" ]; then
     IFS='|' read -r native_dir native_id <<<"$native_web"
     if [[ "$native_id" =~ ^[0-9]+$ ]] && [ -f "$native_dir/.env" ]; then
+      COOLIFY_WEB_ID="$native_id"
       WEB_ENV="${WEB_ENV:-$native_dir/.env}"
       WEB_ORIGIN="${WEB_ORIGIN:-https://britelink.ashbi.ca}"
       native_containers="$(docker ps -q --filter "label=coolify.applicationId=$native_id" --filter label=com.docker.compose.service=web)"
@@ -302,8 +308,18 @@ for f in $TRAEFIK_CONFIGS; do
   grep -niE 'accesslog|access_log|filepath|defaultmode|fields' "$f" | sed 's/^/  /' || echo "  (no accessLog section)"
 done
 
+# Coolify writes the web app's .env from its own settings on every deploy, so editing that file
+# here would be undone (and the retired SSH release's file is no longer served at all).
+coolify_owns_web() {
+  [ -n "$COOLIFY_WEB_ID" ] || return 0
+  echo "REFUSED: Coolify manages the web app, so this script does not edit its settings; nothing changed." >&2
+  echo "Set $1 in Coolify (BriteLink web app -> Environment Variables), then redeploy it there." >&2
+  exit 1
+}
+
 if [ "$MODE" = "fix-anon-key" ]; then
   echo "== fix-anon-key =="
+  coolify_owns_web "VITE_SUPABASE_ANON_KEY to the backend stack's ANON_KEY"
   if [ -z "$stack_key" ] || [ -z "$rest_secret" ]; then echo "FAIL: stack key or PostgREST secret unavailable; nothing changed" >&2; exit 1; fi
   if [ "$(jwt_verifies "$stack_key" "$rest_secret")" != yes ]; then echo "FAIL: the stack's ANON_KEY does not verify under PostgREST's secret; nothing changed" >&2; exit 1; fi
   if ! jwt_claims "$stack_key" | grep -q '"role": "anon"'; then echo "FAIL: the stack key is not role=anon; nothing changed" >&2; exit 1; fi
@@ -442,6 +458,7 @@ if [ "$MODE" = "set-notice-version" ]; then
   echo "== set-notice-version =="
   value="${2:-}"
   printf '%s' "$value" | grep -qE '^[A-Za-z0-9._-]{1,80}$' || { echo "FAIL: the notice version must be 1-80 of [A-Za-z0-9._-]; nothing changed" >&2; exit 1; }
+  coolify_owns_web "VITE_PRIVACY_NOTICE_VERSION=$value"
   [ -f "$WEB_ENV" ] || { echo "FAIL: no $WEB_ENV; nothing changed" >&2; exit 1; }
   current="$(env_file_val "$WEB_ENV" VITE_PRIVACY_NOTICE_VERSION)"
   if [ "$current" = "$value" ]; then echo "already $value; nothing changed"; exit 0; fi

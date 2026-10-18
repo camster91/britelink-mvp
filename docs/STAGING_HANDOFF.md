@@ -77,14 +77,6 @@ bundle, so nothing new needs configuring. In the demo build the route answers 40
 - `npm run test:staging-journeys` creates a link, fetches it signed out, turns it off and expects a
   404.
 
-## Sites packaging (local, no credentials)
-
-```sh
-npm run build && npm run test:sites
-```
-
-Confirm `dist/client/index.html`, `dist/server/index.js`, and `dist/.openai/hosting.json` exist. Keep `.openai/hosting.json`, `worker/index.js`, `scripts/prepare-sites-build.mjs`, and `tests/sites-worker.test.mjs` intact.
-
 ## Evidence that stays human-only
 
 Do not mark these complete from this Linux environment or from automated audits alone:

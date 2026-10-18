@@ -104,7 +104,6 @@ scripts/               Browser audits, the migration harness and the ops scripts
 qa/                    Browser-audit harnesses; audit screenshots and reports are written here
 deploy/                Coolify backend adoption hooks and their tests
 .github/               CI and the production workflows (Migrate, Ops check, Staff, Backup, ...)
-worker/                Sites packaging, kept working per AGENTS.md; production does not use it
 docs/                  TODO, status, runbooks, product research and family/educator guides
 ```
 

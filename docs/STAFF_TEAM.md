@@ -27,7 +27,8 @@ Keep the team to the people who need it, and remove people when they leave.
    link**, and open the link. That creates their account **and confirms their email**. They then
    see "Set up your household": they should **not** fill it in (it is for parents); they sign out.
    (This needs sign-up switched on in the sign-in service; see `TODO.md` item 3.)
-2. GitHub → **Actions → Staff → Run workflow**:
+2. GitHub → **Actions → Staff → Run workflow** (then approve the run: **add** and **remove**
+   change production, see `APPLYING_MIGRATIONS.md` → "Approving a production change"):
    - action: `add`
    - email: their sign-in email
    - role: `educator` or `admin`

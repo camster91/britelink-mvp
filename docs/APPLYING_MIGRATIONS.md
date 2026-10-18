@@ -9,14 +9,34 @@ order, one transaction per file. A file that fails is rolled back and nothing af
 **Order matters for launch:** apply migrations **before** enabling the Deploy workflow. The web
 build calls functions these migrations create (sign-up, calendar, learning notes, calendar feed).
 
+## Approving a production change
+
+Migrate (**apply**), Ops check (any mode but **check**), Staff (**add**, **remove**) and Staging
+(**rebuild**, which wipes staging) change things only the owner may approve, so each run first
+waits in an **approve** step for a required reviewer on the `production-change` GitHub
+environment. Read-only runs (Migrate **check**, Ops check **check**, Staff **list**, Staging
+**verify**) never wait.
+
+One-time setup (about a minute): **Settings → Environments → production-change → Required
+reviewers**, add yourself (and anyone else who may approve), and save. GitHub creates the
+environment the first time one of these workflows runs; until it has a required reviewer, every
+change run stops at the approve step with "Nobody approved this production change" and changes
+nothing.
+
+Each change run then shows **Review deployments** on its page. Approve it there to let it run, or
+reject it to stop it. The approval is recorded on the run.
+
+Migrate and Ops check share one queue, so they never touch production at the same time. Staging
+has its own queue, so a long staging rebuild no longer cancels a waiting Migrate or Ops check run.
+
 ## Easiest: the Migrate workflow (no SSH needed on your machine)
 
 Actions → **Migrate** → Run workflow on `main`
 (https://github.com/camster91/britelink-mvp/actions/workflows/migrate.yml).
 
 1. Run it with **mode = check**. The log lists `have` / `MISS` for 039–051 and nothing changes.
-2. Run it again with **mode = apply**. It backs up to `/root/britelink-backups/` on the VPS, then
-   applies what's missing.
+2. Run it again with **mode = apply** and approve it (see "Approving a production change" above).
+   It backs up to `/root/britelink-backups/` on the VPS, then applies what's missing.
 3. Run **check** once more. It should say "Up to date".
 
 It uses the Deploy workflow's `production` environment (`DEPLOY_SSH_KEY`, `VPS_KNOWN_HOSTS`). It
@@ -146,6 +166,8 @@ On any failure it restores the backup. Re-running it is a no-op.
 
 ### Unlocking guardian intake (privacy notice version)
 
-On 2026-09-30 the owner confirmed that counsel approved the privacy notice **as written in the app**, with version `2026-09-30`. To apply it, run **Ops check → set-notice-version** with value `2026-09-30`, then run **Deploy**. The first step writes `VITE_PRIVACY_NOTICE_VERSION` into `/docker/britelink-web/.env` after a backup; Deploy rebuilds the bundle with it.
+On 2026-09-30 the owner confirmed that counsel approved the privacy notice **as written in the app**, with version `2026-09-30`, and it is live.
+
+To change it now that Coolify deploys the web app: set `VITE_PRIVACY_NOTICE_VERSION` in Coolify (BriteLink web app → Environment Variables) and redeploy there. **Ops check → set-notice-version** and **fix-anon-key** refuse when Coolify manages the web app, because Coolify rewrites the web `.env` on every deploy; they only edit `/docker/britelink-web/.env` for a web app run from that folder.
 
 Every consent is recorded against this version (`guardian_consents.notice_version`). If the notice text ever changes, it needs a new approved version string, never a reuse of this one.
