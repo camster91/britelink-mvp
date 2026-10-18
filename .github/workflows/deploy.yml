@@ -18,7 +18,7 @@ permissions:
 # NEVER cancel-in-progress: killing a run mid `docker compose up -d --build` can
 # leave the service half-recreated. Serialize instead; the last push wins.
 concurrency:
-  group: deploy-britelink-web
+  group: production-britelink
   cancel-in-progress: false
 
 env:

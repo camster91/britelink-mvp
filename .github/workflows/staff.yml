@@ -31,18 +31,47 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: staff-britelink
-  cancel-in-progress: false
-
 env:
   VPS_HOST: 187.77.26.99
   VPS_USER: root
 
 jobs:
+  approve:
+    name: approve (production change)
+    # "list" only reads, so it never waits. Anything else changes production, so it waits here
+    # for a required reviewer on the production-change environment, and refuses to run while
+    # that environment has none (docs/APPLYING_MIGRATIONS.md -> "Approving a production change").
+    if: ${{ github.ref == 'refs/heads/main' && inputs.action != 'list' }}
+    environment: production-change
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require a reviewer on production-change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! n="$(gh api "repos/$GITHUB_REPOSITORY/environments/production-change" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')"; then
+            echo "::error::Could not read the production-change environment's rules from GitHub, so this run cannot show that anyone approved it. Nothing changed."
+            exit 1
+          fi
+          if [ "${n:-0}" -lt 1 ]; then
+            echo "::error::Nobody approved this production change: the production-change environment has no required reviewer. Add one under Settings -> Environments -> production-change -> Required reviewers, then run this again. Nothing changed."
+            exit 1
+          fi
+          echo "A required reviewer approved this run."
+
   staff:
     name: staff (${{ inputs.action }})
-    if: ${{ github.ref == 'refs/heads/main' }}
+    needs: approve
+    # Runs after an approval, or straight away for the read-only mode (the gate is skipped then).
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (needs.approve.result == 'success' || (inputs.action == 'list' && needs.approve.result == 'skipped')) }}
+    # Job-level, so a run waiting for approval never holds the queue. Staff changes run one at a time.
+    concurrency:
+      group: staff-britelink
+      cancel-in-progress: false
     environment: production
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 5

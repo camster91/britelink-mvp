@@ -4,7 +4,8 @@ name: Ops check
 # commit. "check" (default) is read-only and prints facts only, never a key or secret: whether the
 # web build's anon key verifies under the secret PostgREST uses, and whether Traefik writes an
 # access log. "fix-anon-key" copies the production stack's own ANON_KEY into the web .env after a
-# backup; run Deploy afterwards so the bundle is rebuilt with it. "reconcile-stack" recreates the
+# backup; it refuses when Coolify manages the web app (set the value in Coolify instead).
+# Every mode but "check" waits for approval (docs/APPLYING_MIGRATIONS.md). "reconcile-stack" recreates the
 # production stack's auth/rest/storage containers from its own compose files and .env (db untouched)
 # so every service uses the JWT_SECRET that signed ANON_KEY; it signs out existing sessions.
 on:
@@ -24,18 +25,48 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: deploy-britelink-web
-  cancel-in-progress: false
-
 env:
   VPS_HOST: 187.77.26.99
   VPS_USER: root
 
 jobs:
+  approve:
+    name: approve (production change)
+    # "check" is read-only, so it never waits. Anything else changes production, so it waits here for a required
+    # reviewer on the production-change environment, and refuses to run while that environment
+    # has none (docs/APPLYING_MIGRATIONS.md -> "Approving a production change").
+    if: ${{ github.ref == 'refs/heads/main' && inputs.mode != 'check' }}
+    environment: production-change
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require a reviewer on production-change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! n="$(gh api "repos/$GITHUB_REPOSITORY/environments/production-change" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')"; then
+            echo "::error::Could not read the production-change environment's rules from GitHub, so this run cannot show that anyone approved it. Nothing changed."
+            exit 1
+          fi
+          if [ "${n:-0}" -lt 1 ]; then
+            echo "::error::Nobody approved this production change: the production-change environment has no required reviewer. Add one under Settings -> Environments -> production-change -> Required reviewers, then run this again. Nothing changed."
+            exit 1
+          fi
+          echo "A required reviewer approved this run."
+
   ops:
     name: ops (${{ inputs.mode }})
-    if: ${{ github.ref == 'refs/heads/main' }}
+    needs: approve
+    # Runs after an approval, or straight away for the read-only mode (the gate is skipped then).
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (needs.approve.result == 'success' || (inputs.mode == 'check' && needs.approve.result == 'skipped')) }}
+    # Job-level, so a run waiting for approval never holds the queue. Migrate and Ops check share
+    # it so they never touch production at the same time.
+    concurrency:
+      group: production-britelink
+      cancel-in-progress: false
     environment: production
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 10
