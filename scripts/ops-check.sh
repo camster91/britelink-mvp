@@ -45,9 +45,10 @@ case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set
 COOLIFY_WEB_ID=""
 COOLIFY_ON_HOST=""
 if [ -z "${WEB_ENV:-}" ]; then
-  # Only docker's own "no such container" answer counts as no Coolify; any other failure does not.
+  # Only docker's own "No such container: coolify" answer counts as no Coolify. Any other failure,
+  # including a missing socket ("connect: no such file or directory"), does not.
   coolify_probe="$(docker inspect --type container --format '{{.Name}}' coolify 2>&1 || true)"
-  grep -qi 'no such' <<<"$coolify_probe" || COOLIFY_ON_HOST=yes
+  grep -Eq 'No such (container|object): coolify' <<<"$coolify_probe" || COOLIFY_ON_HOST=yes
   native_web="$(docker exec coolify php -r '
     try {
       require "/var/www/html/vendor/autoload.php";
@@ -323,7 +324,7 @@ coolify_owns_web() {
   elif [ -n "$COOLIFY_ON_HOST" ]; then
     # Coolify runs here but the web app lookup failed: we cannot tell which .env is live, so the
     # retired /docker/britelink-web file must not be edited and reported as a success.
-    echo "REFUSED: Coolify runs on this host, but ops check could not find the BriteLink web app in it, so it cannot tell which settings production uses; nothing changed." >&2
+    echo "REFUSED: ops check could not find the BriteLink web app in Coolify (Coolify runs on this host, or docker did not answer), so it cannot tell which settings production uses; nothing changed." >&2
   else
     return 0
   fi
