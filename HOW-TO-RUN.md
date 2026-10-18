@@ -54,15 +54,9 @@ npm run preview
 
 ### Testing
 
-`npm test` checks the built files too, so build first on a fresh clone:
-
 ```bash
-# Build, then run all unit and integration tests
-npm run build
+# Run all unit and integration tests
 npm test
-
-# Run Sites deployment tests
-npm run test:sites
 
 # Run accessibility audit
 npm run test:a11y
@@ -128,9 +122,8 @@ VITE_PRIVACY_NOTICE_VERSION=2026-09-30
 
 ## What Gets Built
 
-- **Client bundle**: `dist/client/` — the static app. This is all production serves.
-- **Server entry**: `dist/server/index.js` and **hosting config** `dist/.openai/hosting.json` — the
-  Sites packaging that `AGENTS.md` asks to keep working. Production does not use them.
+- **Client bundle**: `dist/client/` — the static app, with `version.json` naming the commit. The
+  `Dockerfile` serves it with nginx.
 
 ## Project Structure
 

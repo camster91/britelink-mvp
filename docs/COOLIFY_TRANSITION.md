@@ -62,6 +62,6 @@ attempt names do not guarantee survival across full workflow reruns.
    approval. Retire the old SSH trigger in the same reviewed transition so both
    release owners cannot compete. Verify public HTTPS/revision and core journeys.
 
-The deploy workflow, runtime configuration, Sites support and production Supabase
+The deploy workflow, runtime configuration and production Supabase
 data are preserved. No registry publication or Coolify promotion is implemented by
 the initial demo image transport gate. The full consolidation goal remains open.
