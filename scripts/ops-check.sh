@@ -28,8 +28,9 @@
 #                 only if it verifies under PostgREST's secret and is role=anon. No rebuild: run
 #                 Deploy afterwards.
 #   Both of these edit a web .env, so both refuse when Coolify manages the web app (it rewrites
-#   that file on every deploy): set the value in Coolify instead. They still work for a web app
-#   run from /docker/britelink-web.
+#   that file on every deploy): set the value in Coolify instead. They also refuse when Coolify
+#   runs on the host but the web app cannot be found in it. They still work for a web app run
+#   from /docker/britelink-web on a host without Coolify.
 #
 # Overridable for tests: WEB_ENV, WEB_ORIGIN, REST_CONTAINER, AUTH_CONTAINER, STORAGE_CONTAINER,
 # TRAEFIK_CONTAINER, TRAEFIK_CONFIGS.
@@ -39,8 +40,15 @@ MODE="${1:-check}"
 case "$MODE" in check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version) ;; *) echo "usage: $0 [check|fix-anon-key|reconcile-stack|restore-secret|feed-route|set-notice-version VALUE]" >&2; exit 2 ;; esac
 # Every mode follows the actual Coolify frontend, rather than the retired SSH web release.
 # COOLIFY_WEB_ID is set when Coolify owns the web app; modes that would edit a web .env refuse then.
+# COOLIFY_ON_HOST is set when Coolify runs here (or docker cannot say it does not), so a failed
+# lookup of the web app is never mistaken for "no Coolify" (see coolify_owns_web).
 COOLIFY_WEB_ID=""
+COOLIFY_ON_HOST=""
 if [ -z "${WEB_ENV:-}" ]; then
+  # Only docker's own "No such container: coolify" answer counts as no Coolify. Any other failure,
+  # including a missing socket ("connect: no such file or directory"), does not.
+  coolify_probe="$(docker inspect --type container --format '{{.Name}}' coolify 2>&1 || true)"
+  grep -Eq 'No such (container|object): coolify' <<<"$coolify_probe" || COOLIFY_ON_HOST=yes
   native_web="$(docker exec coolify php -r '
     try {
       require "/var/www/html/vendor/autoload.php";
@@ -311,8 +319,15 @@ done
 # Coolify writes the web app's .env from its own settings on every deploy, so editing that file
 # here would be undone (and the retired SSH release's file is no longer served at all).
 coolify_owns_web() {
-  [ -n "$COOLIFY_WEB_ID" ] || return 0
-  echo "REFUSED: Coolify manages the web app, so this script does not edit its settings; nothing changed." >&2
+  if [ -n "$COOLIFY_WEB_ID" ]; then
+    echo "REFUSED: Coolify manages the web app, so this script does not edit its settings; nothing changed." >&2
+  elif [ -n "$COOLIFY_ON_HOST" ]; then
+    # Coolify runs here but the web app lookup failed: we cannot tell which .env is live, so the
+    # retired /docker/britelink-web file must not be edited and reported as a success.
+    echo "REFUSED: ops check could not find the BriteLink web app in Coolify (Coolify runs on this host, or docker did not answer), so it cannot tell which settings production uses; nothing changed." >&2
+  else
+    return 0
+  fi
   echo "Set $1 in Coolify (BriteLink web app -> Environment Variables), then redeploy it there." >&2
   exit 1
 }

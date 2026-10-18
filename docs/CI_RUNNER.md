@@ -25,7 +25,7 @@ Self-hosted runners are free for private repositories, so the only real question
 
 1. Use a Linux host that is **not** the production VPS: Ubuntu 24.04, 2 vCPU, 4 GB RAM, 20 GB disk.
 2. Install Docker (used by `migration-harness`), then provision Playwright's OS libraries once with `sudo npx playwright install-deps chromium`. CI skips `--with-deps` on self-hosted runners so the runner user doesn't need sudo.
-3. Install nginx (`sudo apt-get install -y nginx-core`), so `tests/nginx-calendar-feed.test.mjs` runs its functional checks instead of skipping.
+3. Install nginx, curl and jq (`sudo apt-get install -y nginx-core curl jq`). nginx lets `tests/nginx-calendar-feed.test.mjs` run its functional checks instead of skipping; the Staff workflow reads its inputs with jq.
 4. Register the runner in the repository under Settings → Actions → Runners → New self-hosted runner. Give it the extra label `britelink-ci` and run it as a service, as an unprivileged user.
 5. Under Settings → Secrets and variables → Actions → Variables, add `CI_RUNS_ON` = `["self-hosted","linux","britelink-ci"]`.
 6. Push any commit to a PR branch. `build-test`, `migration-harness` and `browser-audits` should start within a minute.

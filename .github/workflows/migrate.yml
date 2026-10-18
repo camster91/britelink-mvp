@@ -34,7 +34,7 @@ jobs:
     # has none (docs/APPLYING_MIGRATIONS.md -> "Approving a production change").
     if: ${{ github.ref == 'refs/heads/main' && inputs.mode != 'check' }}
     environment: production-change
-    runs-on: ubuntu-24.04
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
     timeout-minutes: 5
     permissions:
       actions: read
@@ -42,12 +42,15 @@ jobs:
       - name: Require a reviewer on production-change
         env:
           GH_TOKEN: ${{ github.token }}
+        # Only curl and grep, so it runs on any configured runner (the self-hosted fallback has no gh
+        # or jq). "required_reviewers" appears in the response only as a protection rule's type.
         run: |
           set -euo pipefail
-          if ! n="$(gh api "repos/$GITHUB_REPOSITORY/environments/production-change" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')"; then
+          if ! rules="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/environments/production-change")"; then
             echo "::error::Could not read the production-change environment's rules from GitHub, so this run cannot show that anyone approved it. Nothing changed."
             exit 1
           fi
+          n="$({ grep -Eo '"type"[[:space:]]*:[[:space:]]*"required_reviewers"' <<<"$rules" || true; } | wc -l)"
           if [ "${n:-0}" -lt 1 ]; then
             echo "::error::Nobody approved this production change: the production-change environment has no required reviewer. Add one under Settings -> Environments -> production-change -> Required reviewers, then run this again. Nothing changed."
             exit 1
