@@ -145,6 +145,9 @@ try{
   await page.getByText("Save lesson activity: temporarily unavailable").first().waitFor();
   if(await page.getByLabel(/Caregiver note/).inputValue()!=="Completed with a short movement break.")throw new Error("a failed lesson save erased the caregiver note");
   if(await page.getByLabel("Status").inputValue()!=="completed")throw new Error("a failed lesson save reset the lesson status");
+  // The save showed its values before failing; the parent's words must still be kept on the device (src/form-drafts.js).
+  const keptAfterFailure=await page.evaluate(()=>Object.entries(localStorage).filter(([key])=>key.includes(":lesson:")).map(([,value])=>JSON.parse(value).value?.note));
+  if(!keptAfterFailure.includes("Completed with a short movement break."))throw new Error(`a failed lesson save dropped the kept draft: ${JSON.stringify(keptAfterFailure)}`);
   await page.getByRole("button",{name:"Save lesson activity"}).click();
   // Completing a lesson gets a calm confirmation with Undo; undo restores exactly what was there.
   const done=page.locator(".lesson-complete");

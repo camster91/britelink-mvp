@@ -41,9 +41,20 @@ export function loadDraft(storage, key, now = Date.now()) {
   }
 }
 
-// Returns false when the draft could not be kept (no storage, blocked, or over quota).
+// Returns false when the draft could not be kept (no storage, blocked, or over quota). Saving the
+// same words again keeps the original time, so opening a kept draft never extends its 24 hours.
 export function saveDraft(storage, key, value, now = Date.now()) {
   if (!storage || !key) return false;
+  try {
+    const kept = JSON.parse(storage.getItem(key) ?? "null");
+    const unchanged =
+      typeof kept?.savedAt === "number" &&
+      now - kept.savedAt <= DRAFT_TTL_MS &&
+      JSON.stringify(kept.value) === JSON.stringify(value);
+    if (unchanged) return true;
+  } catch {
+    // An unreadable entry is simply replaced below.
+  }
   try {
     storage.setItem(key, JSON.stringify({ value, savedAt: now }));
     return true;

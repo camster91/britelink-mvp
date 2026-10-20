@@ -798,6 +798,9 @@ function ParentWorkspace({
   const seededDraft = useRef({ lessonId: null, values: null });
   const lessonDraftKey = (lessonId) =>
     draftKey(userId, "lesson", household.household_id, lessonId);
+  // Lessons whose save is still on its way. The screen shows the new values before the server
+  // confirms them, so their kept copy must not be dropped until the save succeeds.
+  const savingLessons = useRef(new Set());
   useEffect(() => {
     if (!selectedLesson) return;
     if (keepDraft.current) {
@@ -844,7 +847,7 @@ function ParentWorkspace({
     const key = lessonDraftKey(lessonId);
     const changed = Object.keys(values).some((field) => draft[field] !== values[field]);
     if (changed) saveDraft(browserLocalStorage(), key, draft);
-    else discardDraft(browserLocalStorage(), key);
+    else if (!savingLessons.current.has(lessonId)) discardDraft(browserLocalStorage(), key);
   }, [draft]);
 
   const operationFailure = (error, action) => {
@@ -878,6 +881,14 @@ function ParentWorkspace({
     const lessonId = selectedLesson.id;
     // loadPlan bumps planRequest when the learner changes; a reply for the previous child is dropped.
     const request = planRequest.current;
+    const typed = {
+      status: draft.status,
+      note: draft.note,
+      scheduleReason: draft.scheduleReason,
+      scheduledFor: draft.scheduledFor,
+    };
+    savingLessons.current.add(lessonId);
+    saveDraft(browserLocalStorage(), lessonDraftKey(lessonId), typed);
     setPlanState((state) => ({
       ...state,
       activities: [
@@ -901,6 +912,8 @@ function ParentWorkspace({
     });
     try {
       const saved = await repository.saveLessonActivity(input);
+      savingLessons.current.delete(lessonId);
+      discardDraft(browserLocalStorage(), lessonDraftKey(lessonId));
       if (request !== planRequest.current) return;
       setPlanState((state) => ({
         ...state,
@@ -922,6 +935,20 @@ function ParentWorkspace({
           : null,
       );
     } catch (error) {
+      savingLessons.current.delete(lessonId);
+      // Not saved, so the words stay kept on the device, and the form compares against the record
+      // as it really is (not the values shown while the save was on its way).
+      saveDraft(browserLocalStorage(), lessonDraftKey(lessonId), typed);
+      if (seededDraft.current.lessonId === lessonId)
+        seededDraft.current = {
+          lessonId,
+          values: {
+            status: prior?.status ?? "not_started",
+            note: prior?.caregiver_note ?? "",
+            scheduleReason: prior?.schedule_reason ?? "",
+            scheduledFor: prior?.scheduled_for ?? "",
+          },
+        };
       if (request !== planRequest.current) return;
       // Put back only this lesson, so other saves that finished meanwhile are kept.
       keepDraft.current = true;

@@ -42,6 +42,18 @@ test("a draft comes back within a day and is removed after it", () => {
   assert.equal(storage.getItem(key), null, "an expired draft is deleted, not just hidden");
 });
 
+test("saving the same words again does not extend the 24 hours", () => {
+  const storage = memoryStorage();
+  const key = draftKey("u1", "message", "h1", "c1");
+  const start = Date.UTC(2026, 9, 18, 9);
+  saveDraft(storage, key, { weeks: [1] }, start);
+  assert.equal(saveDraft(storage, key, { weeks: [1] }, start + 20 * 60 * 60 * 1000), true);
+  assert.equal(loadDraft(storage, key, start + DRAFT_TTL_MS + 1), null, "an unchanged draft still expires on time");
+  saveDraft(storage, key, "first", start);
+  saveDraft(storage, key, "edited", start + 1000);
+  assert.equal(JSON.parse(storage.getItem(key)).savedAt, start + 1000, "a real edit starts a new 24 hours");
+});
+
 test("objects round-trip and a corrupt entry reads as no draft", () => {
   const storage = memoryStorage([["britelink:draft:u1:lesson:h1:l1", "{not json"]]);
   assert.equal(loadDraft(storage, "britelink:draft:u1:lesson:h1:l1"), null);
