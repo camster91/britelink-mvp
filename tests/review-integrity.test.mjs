@@ -854,3 +854,135 @@ test("migration 063 database follow-ups", async (t) => {
     await db.close();
   }
 });
+
+test("migration 064 staff approve new families", async (t) => {
+  const db = await database();
+  const houseA = "5eed0000-0000-4000-8000-0000000000a1";
+  const admin = "5eed0000-0000-4000-8000-00000000ad64";
+  const parent = "5eed0000-0000-4000-8000-00000000ad65";
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  // A team admin and a parent who has just signed up, all rolled back. Returns the new family.
+  const withNewFamily = async (fn) => {
+    await db.exec("begin");
+    try {
+      await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'approve-admin@britelink.invalid', now()), ($2, 'approve-parent@britelink.invalid', now())`, [admin, parent]);
+      await db.query(`select public.staff_team_add('approve-admin@britelink.invalid', 'admin')`);
+      await actAs(parent);
+      const family = (await db.query(`select * from public.provision_beta_household('Ada', 'Grade 3', 'Ontario')`)).rows[0];
+      await db.exec("reset role");
+      return await fn(family);
+    } finally {
+      await db.exec("reset role");
+      await db.exec("rollback");
+    }
+  };
+  const refuses = async (sql, pattern, params = []) => {
+    await db.exec("savepoint expected_failure");
+    await assert.rejects(() => db.query(sql, params), pattern);
+    await db.exec("rollback to savepoint expected_failure");
+  };
+  const approvedAt = async (household) =>
+    (await db.query(`select approved_at from public.households where id = $1`, [household])).rows[0].approved_at;
+  const staffNotices = async (household) =>
+    (await db.query(`select count(*)::int as n from public.notification_outbox where household_id = $1 and kind = 'message_to_staff'`, [household])).rows[0].n;
+  try {
+    await t.test("existing families stay approved; a family that signs itself up waits", async () => {
+      assert.notEqual(await approvedAt(houseA), null);
+      await withNewFamily(async (family) => {
+        assert.equal(await approvedAt(family.household_id), null);
+      });
+    });
+
+    await t.test("work on a waiting family's case cannot start, but the case can be closed", async () => {
+      await withNewFamily(async (family) => {
+        await refuses(`update public.service_cases set status = 'triage' where id = $1`, /approve this family/, [family.case_id]);
+        await refuses(`update public.service_cases set assigned_educator_id = $2 where id = $1`, /approve this family/, [family.case_id, admin]);
+        await db.query(`update public.service_cases set status = 'submitted' where id = $1`, [family.case_id]);
+        await db.query(`update public.service_cases set status = 'cancelled' where id = $1`, [family.case_id]);
+      });
+    });
+
+    await t.test("a waiting family's messages do not email staff until they are approved", async () => {
+      await withNewFamily(async (family) => {
+        const send = (n) => db.query(`insert into public.case_messages(id, household_id, case_id, sender_user_id, body) values ($1, $2, $3, $4, 'Hello')`,
+          [`5eed0000-0000-4000-8000-0000000064d${n}`, family.household_id, family.case_id, parent]);
+        await send(1);
+        assert.equal(await staffNotices(family.household_id), 0);
+        await actAs(admin);
+        await db.query(`select public.staff_approve_household($1)`, [family.household_id]);
+        await db.exec("reset role");
+        await send(2);
+        assert.equal(await staffNotices(family.household_id), 1);
+        await db.query(`update public.service_cases set status = 'triage' where id = $1`, [family.case_id]);
+      });
+    });
+
+    await t.test("only a staff admin can approve, once, and it is recorded", async () => {
+      await withNewFamily(async (family) => {
+        await actAs(parent);
+        await refuses(`select public.staff_approve_household($1)`, /admin access required/, [family.household_id]);
+        await db.exec("reset role");
+        assert.equal(await approvedAt(family.household_id), null);
+        await actAs(admin);
+        const first = (await db.query(`select public.staff_approve_household($1) as at`, [family.household_id])).rows[0].at;
+        const again = (await db.query(`select public.staff_approve_household($1) as at`, [family.household_id])).rows[0].at;
+        await db.exec("reset role");
+        assert.notEqual(first, null);
+        assert.deepEqual(again, first);
+        const events = (await db.query(`select actor_user_id from public.audit_events where household_id = $1 and event_type = 'household.approved'`, [family.household_id])).rows;
+        assert.deepEqual(events, [{ actor_user_id: admin }]);
+      });
+    });
+  } finally {
+    await db.close();
+  }
+});
+
+test("migration 065 deleting a family deletes its sign-in accounts", async (t) => {
+  const db = await database();
+  const parent = "5eed0000-0000-4000-8000-00000000ad66";
+  const request = "5eed0000-0000-4000-8000-0000000065e1";
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  try {
+    await t.test("the guardian's account and sign-in log go; a co-guardian with another family stays", async () => {
+      await db.exec("begin");
+      try {
+        await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'leaving@britelink.invalid', now())`, [parent]);
+        await actAs(parent);
+        const family = (await db.query(`select * from public.provision_beta_household('Ada', 'Grade 3', 'Ontario')`)).rows[0];
+        // The deletion job runs as the service, signed in as nobody.
+        await db.exec("reset role; select set_config('request.jwt.claim.sub', '', true);");
+        await db.query(`insert into public.memberships(household_id, user_id, role) values ($1, $2, 'guardian')`, [family.household_id, users.guardianA]);
+        await db.exec(`create table if not exists auth.audit_log_entries(id uuid primary key default gen_random_uuid(), payload json)`);
+        await db.query(`insert into auth.audit_log_entries(payload) values (json_build_object('actor_id', $1::text, 'actor_username', 'leaving@britelink.invalid')), (json_build_object('actor_id', $2::text))`, [parent, users.guardianA]);
+        await db.query(`insert into public.privacy_requests(id, household_id, requested_by, kind, status) values ($1, $2, $3, 'deletion', 'scheduled')`, [request, family.household_id, parent]);
+        await db.query(`insert into public.deletion_jobs(household_id, privacy_request_id, status, eligible_at, approved_by, approval_basis, identity_verified, co_guardian_reviewed)
+          values ($1, $2, 'scheduled', now() - interval '1 minute', $3, 'Synthetic approved deletion for testing', true, true)`, [family.household_id, request, users.adminA]);
+        await db.exec(`update public.retention_execution_controls set execution_enabled = true, enablement_basis = 'Synthetic test enablement'`);
+        const jobs = (await db.query(`select * from public.admin_execute_due_deletion_jobs(5) where target_household = $1`, [family.household_id])).rows;
+        assert.deepEqual(jobs.map((job) => [job.job_status, job.failure_code]), [["completed", null]]);
+        const accounts = (await db.query(`select id from auth.users where id = any($1::uuid[]) order by id`, [[parent, users.guardianA]])).rows.map((row) => row.id);
+        assert.deepEqual(accounts, [users.guardianA]);
+        const log = (await db.query(`select payload->>'actor_id' as actor from auth.audit_log_entries`)).rows.map((row) => row.actor);
+        assert.deepEqual(log, [users.guardianA]);
+        const ledger = (await db.query(`select outcome, accounts_erased from public.retention_execution_ledger where household_ref = $1`, [family.household_id])).rows;
+        assert.deepEqual(ledger, [{ outcome: "completed", accounts_erased: 1 }]);
+      } finally {
+        await db.exec("reset role");
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("no client can erase accounts directly", async () => {
+      await db.exec("begin");
+      try {
+        await actAs(users.adminA);
+        await assert.rejects(() => db.query(`select public.erase_guardian_accounts(array[$1]::uuid[])`, [users.guardianA]), /permission denied/);
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+  } finally {
+    await db.close();
+  }
+});

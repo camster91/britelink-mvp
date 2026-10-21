@@ -1,0 +1,106 @@
+name: Release
+
+# Releases the web app through Coolify after a one-click approval, and puts the previous version
+# back by itself if the new one does not come up (owner decision 2026-10-21, docs/RELEASES.md).
+#
+# Off until the repository variable RELEASE_VIA_WORKFLOW is "true". Turn it on only after turning
+# off Coolify's own automatic deploy of main: two release owners would race on every merge
+# (docs/AGENT_HANDOFF.md -> "How production works"). The old SSH Deploy workflow stays off.
+on:
+  workflow_run:
+    workflows: ["CI"] # must match `name:` in ci.yml exactly
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Full 40-hex commit SHA on main to release (to re-release or go back to an older commit)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: ${{ inputs.sha || github.event.workflow_run.head_sha || github.sha }}
+
+jobs:
+  approve:
+    name: approve (production change)
+    # Only main, only after CI passed on a push (never a pull request or a fork), and only when switched on.
+    if: >-
+      ${{ vars.RELEASE_VIA_WORKFLOW == 'true'
+          && ((github.event_name == 'workflow_run'
+                && github.event.workflow_run.conclusion == 'success'
+                && github.event.workflow_run.event == 'push'
+                && github.event.workflow_run.head_branch == 'main')
+              || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) }}
+    # Waits here for a required reviewer's click (Settings -> Environments -> production-change).
+    environment: production-change
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Require a reviewer on production-change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Same check as Migrate: a run that nobody had to approve must not release.
+        run: |
+          set -euo pipefail
+          if ! rules="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/environments/production-change")"; then
+            echo "::error::Could not read the production-change environment's rules from GitHub, so this run cannot show that anyone approved it. Nothing changed."
+            exit 1
+          fi
+          n="$({ grep -Eo '"type"[[:space:]]*:[[:space:]]*"required_reviewers"' <<<"$rules" || true; } | wc -l)"
+          if [ "${n:-0}" -lt 1 ]; then
+            echo "::error::Nobody approved this release: the production-change environment has no required reviewer. Add one under Settings -> Environments -> production-change -> Required reviewers, then run this again. Nothing changed."
+            exit 1
+          fi
+          echo "A required reviewer approved this release of $RELEASE_SHA."
+
+  release:
+    name: release
+    needs: approve
+    # Job-level, so a run waiting for approval never holds the queue. Shared with Migrate and Ops
+    # check, so they never touch production at the same time. Never cancelled mid-release.
+    concurrency:
+      group: production-britelink
+      cancel-in-progress: false
+    environment: production
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-24.04"') }}
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Check the commit is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$RELEASE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::RELEASE_SHA is not a full 40-hex commit SHA: '$RELEASE_SHA'. Nothing changed."
+            exit 1
+          fi
+          # A hand-started run must not release an unreviewed branch commit.
+          status="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/compare/main...$RELEASE_SHA" \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])')" \
+            || { echo "::error::Could not check that $RELEASE_SHA is on main. Nothing changed."; exit 1; }
+          case "$status" in
+            identical|behind) ;;
+            *) echo "::error::$RELEASE_SHA is not on main (compared to main it is '$status'). Nothing changed."; exit 1 ;;
+          esac
+
+      - name: Release through Coolify, and undo if it fails
+        env:
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_WEB_APP_UUID: ${{ vars.COOLIFY_WEB_APP_UUID }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          SITE_URL: ${{ vars.SITE_URL || 'https://britelink.ashbi.ca' }}
+          # A hand-started run rebuilds even the commit that is already live.
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' }}
+        run: python3 .github/scripts/coolify_release.py

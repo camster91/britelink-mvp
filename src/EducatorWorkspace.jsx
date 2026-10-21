@@ -68,6 +68,11 @@ export function EducatorWorkspace({
   const [casePackage, setCasePackage] = useState("essentials");
   const [newCaseLearnerId, setNewCaseLearnerId] = useState("");
   const [operation, setOperation] = useState({ status: "idle", message: "" });
+  // A family that signed itself up waits for a staff admin (migration 064). Only an explicit null
+  // means waiting: an older backend that has no approved_at column leaves it undefined.
+  const [approvedHere, setApprovedHere] = useState(false);
+  const waitingForApproval =
+    household.households?.approved_at === null && !approvedHere;
   const [transition, setTransition] = useState({ status: "", reason: "" });
   const [checks, setChecks] = useState({
     curriculum: false,
@@ -487,6 +492,28 @@ export function EducatorWorkspace({
         Queue → case → next action. Priority is overdue, revision, clarification, then SLA. Mutations stay
         role-checked and audited.
       </p>
+      {waitingForApproval ? (
+        <div className="live-limit family-approval" role="note">
+          <strong>New family, waiting for approval.</strong>{" "}
+          They signed up on their own. Check that they look genuine, then
+          approve them to start work on their case. Until then, their messages
+          don't email staff.
+          {membership.role === "admin" ? (
+            <button
+              type="button"
+              className="primary"
+              onClick={async () => {
+                const done = await act("Family approval", () =>
+                  repository.approveStaffHousehold(household.household_id),
+                );
+                if (done) setApprovedHere(true);
+              }}
+            >
+              Approve this family
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {data.warnings.length ? (
         <div className="live-operation failure" role="alert">
           <strong>Some supporting panels are temporarily unavailable.</strong>

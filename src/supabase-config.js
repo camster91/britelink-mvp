@@ -13,6 +13,9 @@ export function readSupabaseConfig(environment = import.meta.env) {
   // Off unless the build says exactly "true". Uploads stay quarantined until the malware scanner
   // marks them clean, so with no scanner running a family's file could never be opened again.
   const attachmentsEnabled = String(environment.VITE_ATTACHMENTS_ENABLED ?? "").trim() === "true";
-  if(!url||!anonKey)return { configured:false, url, anonKey, privacyNoticeVersion, attachmentsEnabled };
-  return { configured:true, ...validateBrowserSupabaseConfig(url,anonKey), privacyNoticeVersion, attachmentsEnabled };
+  // The public Cloudflare Turnstile site key for the person check before a sign-in email. Empty means
+  // no check, which is right for the demo and for a backend without GOTRUE_SECURITY_CAPTCHA_ENABLED.
+  const humanCheckSiteKey = String(environment.VITE_TURNSTILE_SITE_KEY ?? "").trim() || null;
+  if(!url||!anonKey)return { configured:false, url, anonKey, privacyNoticeVersion, attachmentsEnabled, humanCheckSiteKey };
+  return { configured:true, ...validateBrowserSupabaseConfig(url,anonKey), privacyNoticeVersion, attachmentsEnabled, humanCheckSiteKey };
 }

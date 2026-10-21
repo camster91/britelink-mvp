@@ -120,7 +120,9 @@ restore) is a measurement of an empty database, not an RTO.
 1. writes a full `pg_dump` (custom format; public, auth and storage) to `/root/britelink-backups/nightly-<time>.dump.unverified`, mode `0600`, after checking there is disk room. It becomes `nightly-<time>.dump` only after the restore check below passes, so every `nightly-*.dump` is a proven backup. A file still ending in `.unverified` failed its check: never restore from it without investigating, and it is not counted or removed by retention;
 2. restores it into a throwaway, network-less container of the **same** image as production;
 3. requires identical row counts in every public table and in `auth.users`;
-4. keeps the newest 14 nightly dumps.
+4. keeps the newest 14 nightly dumps, and deletes Migrate's `pre-migrate-*.dump` copies older than
+   30 days (always keeping the newest 3; decision 2026-10-21). Ops check prunes its own `.bak-*`
+   copies of `.env` and Traefik files the same way each time it writes a new one.
 
 A failed run makes GitHub email the owner. Restoring a dump into production is a manual, deliberate step:
 
@@ -134,8 +136,9 @@ than 30 days are removed (to Drive's trash). The dump streams from the VPS strai
 (AES-256, with a passphrase), so the unencrypted data is never written anywhere but the VPS. Google
 only ever holds the encrypted file.
 
-Until both secrets below exist, this step is skipped with a notice, and the backup itself still
-runs. Once they exist, a failed copy fails the run, which emails the owner.
+Until both secrets below exist, this step fails every night, so the run is red and emails the
+owner (decision 2026-10-21); the verified backup on the VPS is still made first. Once they exist,
+a failed copy fails the run the same way.
 
 **One-time setup (owner, about 10 minutes):**
 

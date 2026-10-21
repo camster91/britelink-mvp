@@ -1408,8 +1408,14 @@ function ParentWorkspace({
           />
         ) : null}
       </section>
+      {household.households?.approved_at === null ? (
+        <p className="live-notice" role="note">
+          Our team checks each new family before work starts. You can fill in
+          the intake form now, and we'll begin once your spot is confirmed.
+        </p>
+      ) : null}
       <AuthenticatedIntake
-        key={selectedLearner.id}
+        key={`intake-${selectedLearner.id}`}
         householdId={household.household_id}
         learner={selectedLearner}
         repository={repository}
@@ -2177,7 +2183,7 @@ function ParentWorkspace({
         </section>
       </div>
       <AuthenticatedServicePrivacy
-        key={selectedLearner.id}
+        key={`privacy-${selectedLearner.id}`}
         householdId={household.household_id}
         learner={selectedLearner}
         serviceCase={selectedCase}
@@ -2448,6 +2454,9 @@ export function Workspace({
                   <option key={item.household_id} value={item.household_id}>
                     {item.households?.display_name ?? "BriteLink household"} ·{" "}
                     {item.role}
+                    {item.households?.approved_at === null
+                      ? " · waiting for approval"
+                      : ""}
                   </option>
                 ))}
               </select>
