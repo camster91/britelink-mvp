@@ -62,7 +62,7 @@ export class SupabaseBriteLinkRepository {
     // Account workspace selection must use this authenticated user's rows only.
     const account = unwrap(await this.client.auth.getUser(), "Read signed-in account");
     const userId = requireIdentifier(account?.user?.id, "Signed-in user ID");
-    return unwrap(await this.client.from("memberships").select("household_id, role, households(id, display_name)").eq("user_id", userId).order("created_at"), "Load memberships");
+    return unwrap(await this.client.from("memberships").select("household_id, role, households(id, display_name, approved_at)").eq("user_id", userId).order("created_at"), "Load memberships");
   }
   async listLearners(householdId) {
     requireIdentifier(householdId,"Household ID");
@@ -275,5 +275,6 @@ export class SupabaseBriteLinkRepository {
   async completeStaffRevision({householdId,revisionId,changeSummary}){requireIdentifier(householdId,"Household ID");requireIdentifier(revisionId,"Revision ID");const summary=typeof changeSummary==="string"?changeSummary.trim():"";if(!summary||summary.length>4000)throw new TypeError("Change summary must be between 1 and 4000 characters");const rows=unwrap(await this.client.rpc("staff_complete_revision",{target_household:householdId,target_revision:revisionId,revision_change_summary:summary}),"Complete revision");return rows?.[0]??null}
   async recordStaffAbsence({householdId,caseId,reason}){requireIdentifier(householdId,"Household ID");requireIdentifier(caseId,"Case ID");const value=typeof reason==="string"?reason.trim():"";if(!value||value.length>500)throw new TypeError("Absence reason must be between 1 and 500 characters");const rows=unwrap(await this.client.rpc("staff_record_educator_absence",{target_household:householdId,target_case:caseId,absence_reason:value}),"Record educator absence");return rows?.[0]??null}
   async markStaffOverdue(householdId,evaluatedAt=new Date().toISOString()){requireIdentifier(householdId,"Household ID");const timestamp=new Date(evaluatedAt);if(Number.isNaN(timestamp.valueOf()))throw new TypeError("Overdue evaluation time is invalid");return unwrap(await this.client.rpc("staff_mark_overdue_cases",{target_household:householdId,evaluated_at:timestamp.toISOString()}),"Evaluate overdue cases")}
+  async approveStaffHousehold(householdId){requireIdentifier(householdId,"Household ID");return unwrap(await this.client.rpc("staff_approve_household",{target_household:householdId}),"Approve family")}
   async acceptStaffIntake({householdId,caseId}){requireIdentifier(householdId,"Household ID");requireIdentifier(caseId,"Case ID");const rows=unwrap(await this.client.rpc("staff_accept_usable_intake",{target_household:householdId,target_case:caseId}),"Accept usable intake");return rows?.[0]??null}
 }

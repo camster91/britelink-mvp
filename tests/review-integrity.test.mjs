@@ -854,3 +854,86 @@ test("migration 063 database follow-ups", async (t) => {
     await db.close();
   }
 });
+
+test("migration 064 staff approve new families", async (t) => {
+  const db = await database();
+  const houseA = "5eed0000-0000-4000-8000-0000000000a1";
+  const admin = "5eed0000-0000-4000-8000-00000000ad64";
+  const parent = "5eed0000-0000-4000-8000-00000000ad65";
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  // A team admin and a parent who has just signed up, all rolled back. Returns the new family.
+  const withNewFamily = async (fn) => {
+    await db.exec("begin");
+    try {
+      await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'approve-admin@britelink.invalid', now()), ($2, 'approve-parent@britelink.invalid', now())`, [admin, parent]);
+      await db.query(`select public.staff_team_add('approve-admin@britelink.invalid', 'admin')`);
+      await actAs(parent);
+      const family = (await db.query(`select * from public.provision_beta_household('Ada', 'Grade 3', 'Ontario')`)).rows[0];
+      await db.exec("reset role");
+      return await fn(family);
+    } finally {
+      await db.exec("reset role");
+      await db.exec("rollback");
+    }
+  };
+  const refuses = async (sql, pattern, params = []) => {
+    await db.exec("savepoint expected_failure");
+    await assert.rejects(() => db.query(sql, params), pattern);
+    await db.exec("rollback to savepoint expected_failure");
+  };
+  const approvedAt = async (household) =>
+    (await db.query(`select approved_at from public.households where id = $1`, [household])).rows[0].approved_at;
+  const staffNotices = async (household) =>
+    (await db.query(`select count(*)::int as n from public.notification_outbox where household_id = $1 and kind = 'message_to_staff'`, [household])).rows[0].n;
+  try {
+    await t.test("existing families stay approved; a family that signs itself up waits", async () => {
+      assert.notEqual(await approvedAt(houseA), null);
+      await withNewFamily(async (family) => {
+        assert.equal(await approvedAt(family.household_id), null);
+      });
+    });
+
+    await t.test("work on a waiting family's case cannot start, but the case can be closed", async () => {
+      await withNewFamily(async (family) => {
+        await refuses(`update public.service_cases set status = 'triage' where id = $1`, /approve this family/, [family.case_id]);
+        await refuses(`update public.service_cases set assigned_educator_id = $2 where id = $1`, /approve this family/, [family.case_id, admin]);
+        await db.query(`update public.service_cases set status = 'submitted' where id = $1`, [family.case_id]);
+        await db.query(`update public.service_cases set status = 'cancelled' where id = $1`, [family.case_id]);
+      });
+    });
+
+    await t.test("a waiting family's messages do not email staff until they are approved", async () => {
+      await withNewFamily(async (family) => {
+        const send = (n) => db.query(`insert into public.case_messages(id, household_id, case_id, sender_user_id, body) values ($1, $2, $3, $4, 'Hello')`,
+          [`5eed0000-0000-4000-8000-0000000064d${n}`, family.household_id, family.case_id, parent]);
+        await send(1);
+        assert.equal(await staffNotices(family.household_id), 0);
+        await actAs(admin);
+        await db.query(`select public.staff_approve_household($1)`, [family.household_id]);
+        await db.exec("reset role");
+        await send(2);
+        assert.equal(await staffNotices(family.household_id), 1);
+        await db.query(`update public.service_cases set status = 'triage' where id = $1`, [family.case_id]);
+      });
+    });
+
+    await t.test("only a staff admin can approve, once, and it is recorded", async () => {
+      await withNewFamily(async (family) => {
+        await actAs(parent);
+        await refuses(`select public.staff_approve_household($1)`, /admin access required/, [family.household_id]);
+        await db.exec("reset role");
+        assert.equal(await approvedAt(family.household_id), null);
+        await actAs(admin);
+        const first = (await db.query(`select public.staff_approve_household($1) as at`, [family.household_id])).rows[0].at;
+        const again = (await db.query(`select public.staff_approve_household($1) as at`, [family.household_id])).rows[0].at;
+        await db.exec("reset role");
+        assert.notEqual(first, null);
+        assert.deepEqual(again, first);
+        const events = (await db.query(`select actor_user_id from public.audit_events where household_id = $1 and event_type = 'household.approved'`, [family.household_id])).rows;
+        assert.deepEqual(events, [{ actor_user_id: admin }]);
+      });
+    });
+  } finally {
+    await db.close();
+  }
+});

@@ -414,6 +414,27 @@ try {
     )
   )
     throw new Error("Staff workspace overflows mobile viewport");
+  // 064: an approved family shows no approval banner; a waiting one does until an admin approves.
+  if (await page.getByText("New family, waiting for approval.").count())
+    throw new Error("An approved family showed the approval banner");
+  const waitingPage = await context.newPage();
+  await waitingPage.addInitScript(() => {
+    globalThis.staffQaWaitingFamily = true;
+  });
+  await waitingPage.goto(`${origin}/qa/staff-workspace-harness.html`, {
+    waitUntil: "networkidle",
+  });
+  await waitingPage.getByText("New family, waiting for approval.").waitFor();
+  await waitingPage.getByRole("button", { name: "Approve this family" }).click();
+  await waitingPage.getByText("Family approval completed and audited.").waitFor();
+  if (await waitingPage.getByText("New family, waiting for approval.").count())
+    throw new Error("The approval banner stayed after approving");
+  const approvals = await waitingPage.evaluate(() =>
+    globalThis.staffQaState.calls.filter((call) => call[0] === "approveStaffHousehold"),
+  );
+  if (JSON.stringify(approvals) !== JSON.stringify([["approveStaffHousehold", "household-a"]]))
+    throw new Error(`Approve called the repository wrongly: ${JSON.stringify(approvals)}`);
+  await waitingPage.close();
   const refreshPage = await context.newPage();
   await refreshPage.addInitScript(() => {
     globalThis.staffQaRefreshIntervalMs = 250;
@@ -572,6 +593,7 @@ try {
         overdueEvaluation: true,
         caseSwitchStateReset: true,
         householdScope: true,
+        familyApproval: true,
         mobileOverflow: false,
         seriousOrCriticalAccessibilityViolations: [],
       },

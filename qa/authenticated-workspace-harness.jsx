@@ -14,7 +14,7 @@ globalThis.qaState=qaState;
 function failPrivacyRefresh(){if((globalThis.qaFailPrivacyReads??0)>0){globalThis.qaFailPrivacyReads-=1;throw new Error("Synthetic privacy refresh outage")}}
 
 const repository={
-  async listMemberships(){qaState.calls.push(["listMemberships"]);return[{household_id:"household-a",role:"guardian",households:{id:"household-a",display_name:"QA Family"}}]},
+  async listMemberships(){qaState.calls.push(["listMemberships"]);return[{household_id:"household-a",role:"guardian",households:{id:"household-a",display_name:"QA Family",...(globalThis.qaWaitingFamily?{approved_at:null}:{})}}]},
   async listLearners(householdId){qaState.calls.push(["listLearners",householdId]);return[{id:"learner-a",preferred_name:"Maya",grade_label:"Grade 4"},{id:"learner-b",preferred_name:"Noah",grade_label:"Grade 2"}]},
   async listCases(householdId){qaState.calls.push(["listCases",householdId]);return qaState.cases},
   async loadLatestProfile(householdId,learnerId){qaState.calls.push(["loadLatestProfile",householdId,learnerId]);return qaState.profiles.filter(item=>item.learner_id===learnerId).sort((a,b)=>b.version-a.version)[0]??null},
