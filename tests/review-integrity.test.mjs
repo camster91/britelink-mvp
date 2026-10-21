@@ -782,3 +782,75 @@ test("migration 062 staff access follows the work", async (t) => {
     await db.close();
   }
 });
+
+test("migration 063 database follow-ups", async (t) => {
+  const db = await database();
+  const houseA = "5eed0000-0000-4000-8000-0000000000a1";
+  const learnerA = id("a10");
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  // Owner setup, then sql as userId, all rolled back. Returns { result } or { error }.
+  const afterSetup = async (setup, userId, sql) => {
+    await db.exec("begin");
+    try {
+      if (setup) await db.exec(setup);
+      if (userId) await actAs(userId);
+      return { result: await db.query(sql) };
+    } catch (error) {
+      return { error };
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const lessonIn = (plan, lesson) => `
+    insert into public.plan_weeks(id, household_id, plan_id, week_number, theme) values ('${id("c40")}', '${houseA}', '${plan}', 9, 'Week');
+    insert into public.plan_days(id, household_id, week_id, day_number, planned_date) values ('${id("c41")}', '${houseA}', '${id("c40")}', 1, current_date);
+    insert into public.lessons(id, household_id, day_id, position, subject, title, objective, instructions, adult_help_minutes)
+      values ('${lesson}', '${houseA}', '${id("c41")}', 1, 'Mathematics', 'Lesson', 'Objective', '[{"step":1,"text":"x"}]'::jsonb, 10);`;
+  const record = (lesson) => `insert into public.lesson_activities(household_id, learner_id, lesson_id, status, updated_by)
+    values ('${houseA}', '${learnerA}', '${lesson}', 'completed', '${users.guardianA}') returning id`;
+  try {
+    await t.test("a guardian cannot record progress on a lesson in a draft plan", async () => {
+      const draft = await afterSetup(lessonIn(id("a31"), id("c50")), users.guardianA, record(id("c50")));
+      assert.match(draft.error?.message ?? "", /row-level security/);
+      const published = await afterSetup(lessonIn(PLAN_A, id("c51")), users.guardianA, record(id("c51")));
+      assert.equal(published.error, undefined, published.error?.message);
+      assert.equal(published.result.rows.length, 1);
+    });
+
+    await t.test("a removed learning note is no longer readable", async () => {
+      const setup = `insert into public.learning_captures(id, household_id, learner_id, captured_on, kind, subjects, note, created_by, removed_at)
+        values ('${id("c60")}', '${houseA}', '${learnerA}', current_date, 'note', array['Science'], 'Removed note.', '${users.guardianA}', now());`;
+      for (const userId of [users.guardianA, users.adminA, users.educatorA]) {
+        const { result, error } = await afterSetup(setup, userId, `select count(*)::int as n from public.learning_captures where id = '${id("c60")}'`);
+        assert.equal(error, undefined, error?.message);
+        assert.equal(result.rows[0].n, 0);
+      }
+    });
+
+    await t.test("a notice stuck in 'sending' is tried again, then given up after three attempts", async () => {
+      const setup = `insert into public.notification_outbox(id, household_id, recipient_user_id, kind, subject_id, status, attempts, claimed_at)
+        overriding system value values
+        (9001, '${houseA}', '${users.guardianA}', 'plan_delivered', '${id("c70")}', 'sending', 1, now() - interval '2 hours'),
+        (9002, '${houseA}', '${users.guardianA}', 'plan_delivered', '${id("c71")}', 'sending', 3, now() - interval '2 hours'),
+        (9003, '${houseA}', '${users.guardianA}', 'plan_delivered', '${id("c72")}', 'sending', 1, now() - interval '5 minutes');`;
+      const { result, error } = await afterSetup(`${setup} select * from public.notification_claim(50);`, null,
+        `select id, status, attempts from public.notification_outbox where id in (9001, 9002, 9003) order by id`);
+      assert.equal(error, undefined, error?.message);
+      const rows = result.rows;
+      assert.deepEqual(rows.map((r) => [Number(r.id), r.status, r.attempts]), [[9001, "sending", 2], [9002, "failed", 3], [9003, "sending", 1]]);
+    });
+
+    await t.test("consent status answers only a member of the household", async () => {
+      const ask = `select public.has_active_guardian_consent('${houseA}', '${learnerA}') as ok`;
+      assert.equal((await afterSetup(null, users.guardianA, ask)).result.rows[0].ok, true);
+      assert.equal((await afterSetup(null, users.adminB, ask)).result.rows[0].ok, false);
+    });
+
+    await t.test("no client can run the old identity diagnostic", async () => {
+      const { error } = await afterSetup(null, users.adminA, `select * from public.diagnose_caller_identity('${houseA}')`);
+      assert.match(error?.message ?? "", /permission denied/);
+    });
+  } finally {
+    await db.close();
+  }
+});

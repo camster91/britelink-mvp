@@ -15,8 +15,8 @@ completion-pass status is archived in `docs/archive/PROJECT-STATUS-2026-09-21.md
   deployed commit, and the site serves HSTS, CSP and nosniff.
 - **Privacy notice.** The approved notice `2026-09-30` is live, so guardian intake is open.
 - **Database.** Migrations 001–059 are applied, each with the Migrate workflow after a
-  pre-migrate backup. 060 (staff team), 061 (staff safeguards) and 062 (staff access follows the
-  work) are in the repo and wait for the owner's go.
+  pre-migrate backup. 060 (staff team), 061 (staff safeguards), 062 (staff access follows the
+  work) and 063 (review database follow-ups) are in the repo and wait for the owner's go.
   - 001–052 by 2026-09-30.
   - 053 (review integrity, [run](https://github.com/camster91/britelink-mvp/actions/runs/36908951781))
     and 054 (privacy integrity, [run](https://github.com/camster91/britelink-mvp/actions/runs/36920564561))
