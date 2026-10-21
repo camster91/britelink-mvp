@@ -116,6 +116,8 @@ try {
   await step("a calendar link serves the family calendar to a signed-out client, and stops when turned off", async () => {
     const panel = deviceOne.page.locator("details.calendar-feed");
     await panel.getByText("Keep my calendar app up to date").click();
+    // "Replace link" asks first, because it stops the old link.
+    deviceOne.page.once("dialog", (dialog) => dialog.accept());
     await panel.getByRole("button", { name: /Create calendar link|Replace link/ }).click();
     const url = await panel.getByLabel("Your calendar link").inputValue();
     const live = await journeyFetch(url);

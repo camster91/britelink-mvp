@@ -172,3 +172,16 @@ test("the environment flag only enables verification on the exact string 'true'"
   assert.equal(isWebhookVerificationEnabled({ BRITELINK_STRIPE_WEBHOOK_VERIFICATION_ENABLED: "TRUE" }), false);
   assert.equal(isWebhookVerificationEnabled({}), false);
 });
+
+test("during a secret roll any matching v1 signature verifies, whatever its position", async () => {
+  const payload = JSON.stringify({ id: "evt_roll", type: "checkout.session.completed" });
+  const timestamp = nowSeconds();
+  const current = await sign(payload, timestamp);
+  const old = await sign(payload, timestamp, "whsec_previous_secret");
+  for (const header of [`t=${timestamp},v1=${current},v1=${old}`, `t=${timestamp},v1=${old},v1=${current}`]) {
+    const result = await verifyStripeWebhook(payload, header, SECRET);
+    assert.equal(result.verified, true, header);
+  }
+  const none = await verifyStripeWebhook(payload, `t=${timestamp},v1=${old},v1=${old}`, SECRET);
+  assert.equal(none.verified, false);
+});

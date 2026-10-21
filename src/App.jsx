@@ -138,11 +138,6 @@ function Overview({ setView, plan, activity }) {
       <Header
         eyebrow="Prototype workspace"
         title="Welcome, Alex."
-        action={
-          <button className="ghost" disabled>
-            Messages <b>Demo</b>
-          </button>
-        }
       />
       <section className="hero">
         <div>
@@ -227,6 +222,9 @@ function Plan({ plan, activity, saveActivity }) {
   const [scheduleMessage, setScheduleMessage] = useState("");
   const [scheduleFailed, setScheduleFailed] = useState(false);
   const [statusToast, setStatusToast] = useState("");
+  // One timer at a time, so a second quick change keeps its toast for the full three seconds.
+  const toastTimer = useRef(null);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
   const lessonHeadingRef = useRef(null);
   const week = plan.weeks[weekIndex];
   const day = week.days[dayIndex];
@@ -239,7 +237,8 @@ function Plan({ plan, activity, saveActivity }) {
     saveActivity(updateLessonActivity(activity, lesson.id, nextStatus, activity[lesson.id]?.note ?? ""));
     const labels = { in_progress: "started", paused: "paused", completed: "completed", skipped: "skipped" };
     setStatusToast(`Lesson ${labels[nextStatus]} and saved to this browser.`);
-    setTimeout(() => setStatusToast(""), 3000);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setStatusToast(""), 3000);
   };
   const setNote = (note) => saveActivity(updateLessonActivity(activity, lesson.id, status, note));
   const reschedule = () => {

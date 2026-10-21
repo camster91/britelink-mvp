@@ -28,17 +28,18 @@ export async function verifyStripeWebhook(payload, signature, secret, tolerance 
     return { verified: false, event: null, error: "Invalid webhook secret format" };
   }
 
-  // Parse the signature header
-  const signatureParts = signature.split(",").reduce((acc, part) => {
-    const [key, value] = part.split("=");
-    if (key && value) acc[key] = value;
-    return acc;
-  }, {});
+  // Parse the signature header. While a signing secret is being rolled, Stripe sends one v1
+  // signature per active secret ("t=...,v1=old,v1=new"), so every v1 is kept and any may match.
+  let timestamp = null;
+  const candidateSignatures = [];
+  for (const part of signature.split(",")) {
+    const [key, value] = part.trim().split("=");
+    if (!key || !value) continue;
+    if (key === "t") timestamp = value;
+    else if (key === "v1") candidateSignatures.push(value);
+  }
 
-  const timestamp = signatureParts.t;
-  const expectedSignature = signatureParts.v1;
-
-  if (!timestamp || !expectedSignature) {
+  if (!timestamp || !candidateSignatures.length) {
     return { verified: false, event: null, error: "Malformed signature header" };
   }
 
@@ -87,7 +88,12 @@ export async function verifyStripeWebhook(payload, signature, secret, tolerance 
     // bytes of a guessed signature were correct -- enough to recover a valid
     // signature byte by byte. Stripe's own libraries use a constant-time
     // compare for this reason.
-    if (!timingSafeEqualHex(computedSignature, expectedSignature)) {
+    // Every candidate is compared (no early exit), so timing does not reveal which one matched.
+    let matched = false;
+    for (const candidate of candidateSignatures) {
+      if (timingSafeEqualHex(computedSignature, candidate)) matched = true;
+    }
+    if (!matched) {
       return { verified: false, event: null, error: "Signature verification failed" };
     }
 
@@ -160,22 +166,18 @@ export function getWebhookSecret(env) {
  *     const signature = request.headers.get("stripe-signature");
  *     const secret = getWebhookSecret(env);
  * 
- *     if (!isWebhookVerificationEnabled(env)) {
- *       console.warn("Webhook verification is disabled - processing unverified event");
- *       // In development/testing only - never in production
- *     } else {
- *       if (!secret) {
- *         return new Response("Webhook secret not configured", { status: 500 });
- *       }
- *       
- *       const result = await verifyStripeWebhook(payload, signature, secret);
- *       if (!result.verified) {
- *         console.error("Webhook verification failed:", result.error);
- *         return new Response("Webhook verification failed", { status: 400 });
- *       }
- *       
- *       // Process result.event here
+ *     // Fail closed: with verification off or no secret, no payment event is processed.
+ *     if (!isWebhookVerificationEnabled(env) || !secret) {
+ *       return new Response("Webhook verification is not configured", { status: 503 });
  *     }
+ *
+ *     const result = await verifyStripeWebhook(payload, signature, secret);
+ *     if (!result.verified) {
+ *       console.error("Webhook verification failed:", result.error);
+ *       return new Response("Webhook verification failed", { status: 400 });
+ *     }
+ *
+ *     // Process result.event here
  * 
  *     return new Response("Webhook received", { status: 200 });
  *   }
