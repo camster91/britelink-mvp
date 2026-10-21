@@ -150,14 +150,23 @@ export function EducatorWorkspace({
     setAbsenceReason("");
     setCloseReason("");
   }, [selectedId]);
+  // The background refresh runs nine queries, so it skips while the tab is hidden and catches up
+  // as soon as the tab is shown again.
   useEffect(() => {
     load().catch(() => {});
     if (!refreshIntervalMs) return undefined;
-    const timer = globalThis.setInterval(
-      () => load().catch(() => {}),
-      refreshIntervalMs,
-    );
-    return () => globalThis.clearInterval(timer);
+    const hidden = () => globalThis.document?.visibilityState === "hidden";
+    const timer = globalThis.setInterval(() => {
+      if (!hidden()) load().catch(() => {});
+    }, refreshIntervalMs);
+    const onVisible = () => {
+      if (!hidden()) load().catch(() => {});
+    };
+    globalThis.document?.addEventListener("visibilitychange", onVisible);
+    return () => {
+      globalThis.clearInterval(timer);
+      globalThis.document?.removeEventListener("visibilitychange", onVisible);
+    };
   }, [load, refreshIntervalMs]);
   const queue = useMemo(() => prioritizedCases(data.cases), [data.cases]);
   const selected =
@@ -327,7 +336,9 @@ export function EducatorWorkspace({
   };
   const act = async (label, work) => {
     if (operationInFlight.current) return null;
-    if (data.warnings.length) {
+    // A panel that never loaded means acting without its context, so that blocks. A failed
+    // background refresh keeps the last good data on screen, so it does not.
+    if (data.warnings.some((item) => item.panel !== "workspace refresh")) {
       setOperation({
         status: "error",
         message:

@@ -1,8 +1,27 @@
 import { validateLearningCapture, validateSharedActivity, validateWeeklyNote, requireEmail, requireHttpUrl, requireIdentifier, validateAttachmentFile, validateDeletionRequest, validateGuardianIntake, validateLessonActivityInput, validateMessageInput, validateMessageReadInput, validateRevisionRequest, validateStaffPlanDocument, validateStaffResource } from "./input-validation.js";
 
+// Postgres and PostgREST describe failures for developers ("new row violates row-level security
+// policy", "PGRST202"). Families and staff see this text, so technical failures become a plain
+// next step; the messages our own database functions raise are already written for people.
+export function plainBackendMessage(failure = {}) {
+  const message = String(failure.message ?? "");
+  const code = String(failure.code ?? "");
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) return "We couldn't reach BriteLink. Check your connection and try again.";
+  if (code === "PGRST301" || /jwt (expired|malformed)|invalid jwt|refresh token/i.test(message)) return "Your session has expired. Sign in again, then try once more.";
+  if (code === "42501" && !/access required|membership required/i.test(message)) return "You don't have permission to do this. If you think you should, sign out and sign in again.";
+  if (/row-level security|permission denied/i.test(message)) return "You don't have permission to do this. If you think you should, sign out and sign in again.";
+  if (code === "23505") return "This was already saved. Reload the page to see the latest version.";
+  if (code === "23503") return "Something this depends on has changed. Reload the page and try again.";
+  if (code === "23514" || code === "22P02") return "One of the values isn't allowed. Check what you entered and try again.";
+  if (code.startsWith("PGRST") || /schema cache|could not find the function/i.test(message)) return "This part of BriteLink isn't available right now. Please try again later.";
+  if (Number(failure.status) >= 500) return "BriteLink had a problem saving this. Please try again in a minute.";
+  return message || "Something went wrong. Please try again.";
+}
+
 function unwrap(result, operation) {
   if (result.error) {
-    const error = new Error(`${operation}: ${result.error.message}`);
+    const error = new Error(`${operation}: ${plainBackendMessage({ ...result.error, status: result.error.status ?? result.status })}`);
+    error.technical = result.error.message ?? null;
     error.code = result.error.code ?? null;
     error.status = result.error.status ?? result.status ?? null;
     error.details = result.error.details ?? null;

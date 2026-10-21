@@ -16,6 +16,9 @@ try{
   const page=await context.newPage();
   await page.addInitScript(()=>{globalThis.qaPrintCalls=0;window.print=()=>{globalThis.qaPrintCalls+=1}});
   await page.goto(`${origin}/qa/authenticated-workspace-harness.html`,{waitUntil:"networkidle"});
+  // Sign-in loads the workspace once, not twice (the first load used to re-trigger itself).
+  const membershipLoads=await page.evaluate(()=>globalThis.qaState.calls.filter(item=>item[0]==="listMemberships").length);
+  if(membershipLoads!==1)throw new Error(`sign-in loaded the workspace ${membershipLoads} times`);
   await page.getByRole("heading",{name:"Maya’s plan"}).waitFor();
   // What fits today (044): the tagged lesson wins when it fits; an untagged one is never assumed to fit.
   const nextUp0=page.locator("section.next-up");
