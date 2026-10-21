@@ -56,10 +56,10 @@ class FakeWorld:
         return 404, ""
 
 
-def run(world):
+def run(world, **extra):
     clock = iter(range(0, 10_000_000, 15))
     lines = []
-    code = Release(dict(ENV), call=world.call, sleep=lambda _: None, clock=lambda: next(clock), log=lines.append).run()
+    code = Release({**ENV, **extra}, call=world.call, sleep=lambda _: None, clock=lambda: next(clock), log=lines.append).run()
     return code, lines
 
 
@@ -112,6 +112,19 @@ class ReleaseTests(unittest.TestCase):
         code, _ = run(world)
         self.assertEqual(code, 0)
         self.assertIsNone(world.pinned)
+
+    def test_a_hand_started_run_rebuilds_the_live_commit(self):
+        world = FakeWorld(live=NEW)
+        code, lines = run(world, FORCE_RELEASE="true")
+        self.assertEqual(code, 0)
+        self.assertEqual(world.pinned, NEW, "Coolify was asked to deploy it again")
+        self.assertIn(f"released {NEW}: the site reports it and the home page loads", lines)
+
+    def test_a_failed_rebuild_of_the_live_commit_says_so(self):
+        world = FakeWorld(live=NEW, deploy_state="failed")
+        code, lines = run(world, FORCE_RELEASE="true")
+        self.assertEqual(code, 1)
+        self.assertTrue(any("no older commit to put back" in line for line in lines))
 
     def test_a_bad_sha_is_refused(self):
         with self.assertRaises(ReleaseError):

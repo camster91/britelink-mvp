@@ -14,7 +14,8 @@ Steps:
   If 2-4 fail, pin the previous commit, deploy it, wait until the site names it again, and exit 1
   either way so the run shows red.
 
-Environment: COOLIFY_URL, COOLIFY_API_TOKEN, COOLIFY_WEB_APP_UUID, SITE_URL, RELEASE_SHA.
+Environment: COOLIFY_URL, COOLIFY_API_TOKEN, COOLIFY_WEB_APP_UUID, SITE_URL, RELEASE_SHA, and
+FORCE_RELEASE ("true" on a hand-started run, which rebuilds even a commit that is already live).
 The token is sent only to COOLIFY_URL and never printed.
 """
 import json
@@ -57,6 +58,7 @@ class Release:
         self.app = env["COOLIFY_WEB_APP_UUID"]
         self.site = env["SITE_URL"].rstrip("/")
         self.sha = env["RELEASE_SHA"].strip()
+        self.force = env.get("FORCE_RELEASE") == "true"
         self.call = call
         self.sleep = sleep
         self.clock = clock
@@ -115,7 +117,7 @@ class Release:
     def run(self):
         previous = self.live_commit()
         self.log(f"live commit before release: {previous or 'unknown'}")
-        if previous == self.sha:
+        if previous == self.sha and not self.force:
             self.log("this commit is already live; nothing to do")
             return 0
         try:
@@ -129,6 +131,10 @@ class Release:
         return 0
 
     def undo(self, previous):
+        if previous == self.sha:
+            self.log(f"::error::Rebuilding the live commit {previous} failed, and there is no older commit to put "
+                     "back. Check Coolify now; it keeps the old container while the new one is unhealthy.")
+            return 1
         if not previous:
             self.log("::error::The live commit before the release is unknown, so nothing was put back. "
                      "Redeploy the last good commit from Coolify by hand.")

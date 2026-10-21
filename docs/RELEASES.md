@@ -48,3 +48,7 @@ To turn it off again, delete `RELEASE_VIA_WORKFLOW` and turn Coolify's automatic
 
 **Actions → Release → Run workflow**, with the older commit's full SHA. It must be on `main`. It
 still needs approval.
+
+A hand-started run always deploys, even the commit that is already live, so it can also rebuild a
+damaged container. If that rebuild fails there is no older commit to put back; Coolify keeps the old
+container while the new one is unhealthy, and the run says so.

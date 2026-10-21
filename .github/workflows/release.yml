@@ -101,4 +101,6 @@ jobs:
           COOLIFY_WEB_APP_UUID: ${{ vars.COOLIFY_WEB_APP_UUID }}
           COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
           SITE_URL: ${{ vars.SITE_URL || 'https://britelink.ashbi.ca' }}
+          # A hand-started run rebuilds even the commit that is already live.
+          FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' }}
         run: python3 .github/scripts/coolify_release.py
