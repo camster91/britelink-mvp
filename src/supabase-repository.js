@@ -66,7 +66,11 @@ export class SupabaseBriteLinkRepository {
     // Account workspace selection must use this authenticated user's rows only.
     const account = unwrap(await this.client.auth.getUser(), "Read signed-in account");
     const userId = requireIdentifier(account?.user?.id, "Signed-in user ID");
-    return unwrap(await this.client.from("memberships").select("household_id, role, households(id, display_name, approved_at)").eq("user_id", userId).order("created_at"), "Load memberships");
+    const load = (columns) => this.client.from("memberships").select(`household_id, role, households(${columns})`).eq("user_id", userId).order("created_at");
+    const result = await load("id, display_name, approved_at");
+    // A backend without migration 064 has no approved_at yet; every family there counts as approved.
+    if (result.error && /approved_at/.test(result.error.message ?? "")) return unwrap(await load("id, display_name"), "Load memberships");
+    return unwrap(result, "Load memberships");
   }
   async listLearners(householdId) {
     requireIdentifier(householdId,"Household ID");
