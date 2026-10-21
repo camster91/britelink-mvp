@@ -14,6 +14,31 @@ NAMES = {role: 'britelink-production-' + role + '-1' for role in ROLES}
 VOLUMES = {'db': 'britelink-production_db-data', 'storage': 'britelink-production_storage-data'}
 
 
+def replace_legacy_containers(run, start_new, names, stamp):
+    """Swap the old containers for the Coolify stack without leaving the backend down.
+
+    The old containers are stopped and renamed (not removed) so their names are free for the new
+    stack. If the new stack does not start, it is taken down (its volumes are external and kept)
+    and the old containers get their names back and are started again.
+    """
+    parked = {name: name + '-pre-coolify-' + stamp for name in names}
+    run(['docker', 'stop', '--time', '60'] + names)
+    for name, temporary in parked.items():
+        run(['docker', 'rename', name, temporary])
+    try:
+        start_new()
+    except Exception:
+        for name, temporary in parked.items():
+            try:
+                run(['docker', 'rm', '-f', name])
+            except Exception:
+                pass
+            run(['docker', 'rename', temporary, name])
+        run(['docker', 'start'] + names)
+        raise RuntimeError('The Coolify stack did not start; the previous backend containers were restarted')
+    run(['docker', 'rm'] + list(parked.values()))
+
+
 def validate_receipt(receipt, application, digest, now):
     if receipt.get('application') != application or receipt.get('configDigest') != digest or not 0 <= now - receipt.get('verifiedAt', 0) <= 1800:
         raise RuntimeError('Current deployment lacks a fresh verified backup')
@@ -152,17 +177,22 @@ def main():
     if legacy:
         if len(legacy) != len(ROLES):
             raise RuntimeError('Partial production adoption refused')
-        # Exact owned containers only. Neither command removes persistent volumes.
+        # Exact owned containers only. Nothing here removes persistent volumes.
         names = [NAMES[role] for role in ('gateway', 'auth', 'rest', 'storage', 'db')]
-        run(['docker', 'stop', '--time', '60'] + names)
-        run(['docker', 'rm'] + names)
-    run(compose + ['up', '-d', '--no-build', '--pull', 'never'])
+        replace_legacy_containers(run, lambda: run(compose + ['up', '-d', '--no-build', '--pull', 'never']), names, time.strftime('%Y%m%d%H%M%S'))
+    else:
+        run(compose + ['up', '-d', '--no-build', '--pull', 'never'])
     print(json.dumps({'productionStarted': True, 'application': application, 'volumeNamesPreserved': True, 'apiPortPreserved': True, 'containerNamesPreserved': True}))
 
 
 if __name__ == '__main__':
     try:
         main()
+    except RuntimeError as error:
+        # These messages are this script's own and carry no secrets; command output stays in
+        # production-failure.private.log in the application folder.
+        print('Production hook failed: ' + str(error), file=sys.stderr)
+        sys.exit(1)
     except Exception:
         print('Production hook failed; private diagnostics withheld', file=sys.stderr)
         sys.exit(1)

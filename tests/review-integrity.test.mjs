@@ -59,6 +59,22 @@ async function asUser(db, userId, sql) {
   }
 }
 
+// Runs sql as a second guardian of household A (added for this transaction only), rolled back.
+const coGuardianA = "5eed0000-0000-4000-8000-00000000ad05";
+async function asCoGuardian(db, sql) {
+  await db.exec("begin");
+  try {
+    await db.exec(`insert into auth.users(id, email, email_confirmed_at) values ('${coGuardianA}', 'co-guardian@britelink.invalid', now());
+      insert into public.memberships(household_id, user_id, role) values ('5eed0000-0000-4000-8000-0000000000a1', '${coGuardianA}', 'guardian');`);
+    await db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${coGuardianA}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+    return { result: await db.query(sql) };
+  } catch (error) {
+    return { error };
+  } finally {
+    await db.exec("rollback");
+  }
+}
+
 // Runs sql as the superuser (triggers still apply) inside a rolled-back transaction.
 async function asOwner(db, sql) {
   await db.exec("begin");
@@ -68,15 +84,15 @@ async function asOwner(db, sql) {
 test("migration 053 integrity rules", async (t) => {
   const db = await database();
   try {
-    await t.test("a second guardian/admin can update a lesson another guardian last touched", async () => {
-      const { error, result } = await asUser(db, users.adminA,
-        `update public.lesson_activities set status='completed', updated_by='${users.adminA}' where id='${ACTIVITY_A}' returning id`);
+    await t.test("a second guardian can update a lesson another guardian last touched", async () => {
+      const { error, result } = await asCoGuardian(db,
+        `update public.lesson_activities set status='completed', updated_by='${coGuardianA}' where id='${ACTIVITY_A}' returning id`);
       assert.equal(error, undefined, error?.message);
       assert.equal(result.rows.length, 1);
     });
 
     await t.test("a writer still cannot stamp someone else as updated_by", async () => {
-      const { error } = await asUser(db, users.adminA,
+      const { error } = await asCoGuardian(db,
         `update public.lesson_activities set status='completed', updated_by='${users.guardianA}' where id='${ACTIVITY_A}'`);
       assert.match(String(error?.message), /row-level security/);
     });
@@ -556,11 +572,12 @@ test("migrations 060 and 061 staff team", async (t) => {
 
     await t.test("061: leaving a family revokes the calendar links that person made there", async () => {
       await inTx(async () => {
-        await db.query(`select public.staff_team_add('new-staff@britelink.invalid', 'admin')`);
+        // Only guardians make calendar links (062), so a co-guardian leaves here.
+        await db.query(`insert into public.memberships(household_id, user_id, role) values ($1, $2, 'guardian')`, [houseA, person]);
         await actAs(person);
         const feed = (await db.query(`select feed_id from public.create_calendar_feed($1, $2, false)`, [houseA, id("a10")])).rows[0].feed_id;
         await db.exec("reset role");
-        assert.equal((await db.query(`select public.staff_team_remove('new-staff@britelink.invalid') as n`)).rows[0].n, 1);
+        await db.query(`delete from public.memberships where household_id = $1 and user_id = $2`, [houseA, person]);
         const revoked = (await db.query(`select revoked_at is not null as r from public.calendar_feeds where id = $1`, [feed])).rows[0].r;
         assert.equal(revoked, true);
       });
@@ -639,6 +656,199 @@ test("migrations 060 and 061 staff team", async (t) => {
         const { error } = await asUser(db, users.adminA, sql);
         assert.match(error?.message ?? "", /permission denied/, sql);
       }
+    });
+  } finally {
+    await db.close();
+  }
+});
+
+test("migration 062 staff access follows the work", async (t) => {
+  const db = await database();
+  const houseA = "5eed0000-0000-4000-8000-0000000000a1";
+  const learnerA = id("a10");
+  const first = "5eed0000-0000-4000-8000-00000000ad70";
+  const second = "5eed0000-0000-4000-8000-00000000ad71";
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  const inTx = async (fn) => {
+    await db.exec("begin");
+    try {
+      await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'first@britelink.invalid', now()), ($2, 'second@britelink.invalid', now())`, [first, second]);
+      await db.query(`select public.staff_team_add('first@britelink.invalid', 'educator', 4)`);
+      await db.query(`select public.staff_team_add('second@britelink.invalid', 'educator', 4)`);
+      await db.query(`update public.service_cases set status = 'triage', assigned_educator_id = null where id = $1`, [CASE_A]);
+      return await fn();
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const assign = async (educator) => {
+    await actAs(users.adminA);
+    await db.query(`select * from public.staff_assign_case($1, $2, $3)`, [houseA, CASE_A, educator]);
+    await db.exec("reset role");
+  };
+  const roleIn = async (userId) =>
+    (await db.query(`select role from public.memberships where household_id = $1 and user_id = $2`, [houseA, userId])).rows[0]?.role;
+  try {
+    await t.test("reassigning a case takes the previous educator out of the family", async () => {
+      await inTx(async () => {
+        await assign(first);
+        assert.equal(await roleIn(first), "educator");
+        await assign(second);
+        assert.equal(await roleIn(first), undefined, "the previous educator can no longer read the family");
+        assert.equal(await roleIn(second), "educator");
+        assert.equal(await roleIn(users.adminA), "admin");
+        assert.equal(await roleIn(users.educatorA), "educator", "an educator who is not on the staff team is left alone, as in 061");
+        // They stay assignable: their case limit for this family is kept.
+        const limit = (await db.query(`select count(*)::int as n from public.educator_capacities where household_id = $1 and educator_user_id = $2`, [houseA, first])).rows[0].n;
+        assert.equal(limit, 1);
+        await assign(first);
+        assert.equal(await roleIn(first), "educator", "assigning them again lets them back in");
+      });
+    });
+
+    await t.test("closing a case takes its educator out of the family", async () => {
+      await inTx(async () => {
+        await assign(first);
+        await db.query(`update public.service_cases set status = 'closed' where id = $1`, [CASE_A]);
+        assert.equal(await roleIn(first), undefined);
+        assert.equal(await roleIn(users.adminA), "admin");
+      });
+    });
+
+    await t.test("an educator who still holds another open case in the family stays", async () => {
+      await inTx(async () => {
+        await assign(first);
+        await db.query(`insert into public.service_cases(id, household_id, learner_id, package_code, status, assigned_educator_id)
+          select $1, household_id, learner_id, package_code, 'drafting', $2 from public.service_cases where id = $3`, [id("a29"), first, CASE_A]);
+        await assign(second);
+        assert.equal(await roleIn(first), "educator");
+      });
+    });
+
+    await t.test("recording an absence does not remove the educator", async () => {
+      await inTx(async () => {
+        await assign(first);
+        await actAs(users.adminA);
+        await db.query(`select * from public.staff_record_educator_absence($1, $2, 'Away this week.')`, [houseA, CASE_A]);
+        await db.exec("reset role");
+        assert.equal(await roleIn(first), "educator");
+      });
+    });
+
+    await t.test("an admin can no longer act as the family's guardian", async () => {
+      const calls = [
+        `select public.guardian_add_learner('${houseA}', 'Sam', 'Grade 2')`,
+        `select public.set_paused_subjects('${houseA}', '${PLAN_A}', array['Math'])`,
+        `select public.set_plan_schedule('${houseA}', '${PLAN_A}', current_date, array[1,2,3]::smallint[], array[]::date[])`,
+        `select public.record_learning_capture('${houseA}', '${learnerA}', current_date, 'outing', array['Science'], 'Pond walk.')`,
+        `select public.remove_learning_capture('${houseA}', gen_random_uuid())`,
+        `select public.move_shared_activity('${houseA}', gen_random_uuid(), current_date)`,
+        `select public.set_shared_activity_done('${houseA}', gen_random_uuid(), '${learnerA}', true)`,
+        `select public.create_calendar_feed('${houseA}', '${learnerA}', false)`,
+        `select public.revoke_calendar_feed('${houseA}', '${learnerA}')`,
+      ];
+      for (const sql of calls) {
+        const { error } = await asUser(db, users.adminA, sql);
+        assert.match(error?.message ?? "", /guardian access required/, sql);
+      }
+      const feed = await asUser(db, users.guardianA, `select feed_id from public.create_calendar_feed('${houseA}', '${learnerA}', false)`);
+      assert.equal(feed.error, undefined, "the guardian still can");
+      const progress = await asUser(db, users.adminA,
+        `update public.lesson_activities set status='completed', updated_by='${users.adminA}' where id='${ACTIVITY_A}' returning id`);
+      assert.equal(progress.result?.rows.length ?? 0, 0, "an admin cannot mark a child's lesson done");
+    });
+
+    await t.test("an admin reads intake details only while consent is active, like an educator", async () => {
+      const count = async (userId) => (await asUser(db, userId, `select count(*)::int as n from public.learner_profiles where household_id = '${houseA}'`)).result.rows[0].n;
+      assert.equal(await count(users.adminA), 1);
+      await db.exec("begin");
+      try {
+        await db.query(`update public.guardian_consents set withdrawn_at = now() where household_id = $1`, [houseA]);
+        await actAs(users.adminA);
+        assert.equal((await db.query(`select count(*)::int as n from public.learner_profiles where household_id = $1`, [houseA])).rows[0].n, 0);
+        await db.exec("reset role");
+        await actAs(users.guardianA);
+        assert.equal((await db.query(`select count(*)::int as n from public.learner_profiles where household_id = $1`, [houseA])).rows[0].n, 1, "the guardian always can");
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("no client can call the release directly", async () => {
+      const { error } = await asUser(db, users.adminA, `select public.release_unassigned_educators('${houseA}')`);
+      assert.match(error?.message ?? "", /permission denied/);
+    });
+  } finally {
+    await db.close();
+  }
+});
+
+test("migration 063 database follow-ups", async (t) => {
+  const db = await database();
+  const houseA = "5eed0000-0000-4000-8000-0000000000a1";
+  const learnerA = id("a10");
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  // Owner setup, then sql as userId, all rolled back. Returns { result } or { error }.
+  const afterSetup = async (setup, userId, sql) => {
+    await db.exec("begin");
+    try {
+      if (setup) await db.exec(setup);
+      if (userId) await actAs(userId);
+      return { result: await db.query(sql) };
+    } catch (error) {
+      return { error };
+    } finally {
+      await db.exec("rollback");
+    }
+  };
+  const lessonIn = (plan, lesson) => `
+    insert into public.plan_weeks(id, household_id, plan_id, week_number, theme) values ('${id("c40")}', '${houseA}', '${plan}', 9, 'Week');
+    insert into public.plan_days(id, household_id, week_id, day_number, planned_date) values ('${id("c41")}', '${houseA}', '${id("c40")}', 1, current_date);
+    insert into public.lessons(id, household_id, day_id, position, subject, title, objective, instructions, adult_help_minutes)
+      values ('${lesson}', '${houseA}', '${id("c41")}', 1, 'Mathematics', 'Lesson', 'Objective', '[{"step":1,"text":"x"}]'::jsonb, 10);`;
+  const record = (lesson) => `insert into public.lesson_activities(household_id, learner_id, lesson_id, status, updated_by)
+    values ('${houseA}', '${learnerA}', '${lesson}', 'completed', '${users.guardianA}') returning id`;
+  try {
+    await t.test("a guardian cannot record progress on a lesson in a draft plan", async () => {
+      const draft = await afterSetup(lessonIn(id("a31"), id("c50")), users.guardianA, record(id("c50")));
+      assert.match(draft.error?.message ?? "", /row-level security/);
+      const published = await afterSetup(lessonIn(PLAN_A, id("c51")), users.guardianA, record(id("c51")));
+      assert.equal(published.error, undefined, published.error?.message);
+      assert.equal(published.result.rows.length, 1);
+    });
+
+    await t.test("a removed learning note is no longer readable", async () => {
+      const setup = `insert into public.learning_captures(id, household_id, learner_id, captured_on, kind, subjects, note, created_by, removed_at)
+        values ('${id("c60")}', '${houseA}', '${learnerA}', current_date, 'note', array['Science'], 'Removed note.', '${users.guardianA}', now());`;
+      for (const userId of [users.guardianA, users.adminA, users.educatorA]) {
+        const { result, error } = await afterSetup(setup, userId, `select count(*)::int as n from public.learning_captures where id = '${id("c60")}'`);
+        assert.equal(error, undefined, error?.message);
+        assert.equal(result.rows[0].n, 0);
+      }
+    });
+
+    await t.test("a notice stuck in 'sending' is tried again, then given up after three attempts", async () => {
+      const setup = `insert into public.notification_outbox(id, household_id, recipient_user_id, kind, subject_id, status, attempts, claimed_at)
+        overriding system value values
+        (9001, '${houseA}', '${users.guardianA}', 'plan_delivered', '${id("c70")}', 'sending', 1, now() - interval '2 hours'),
+        (9002, '${houseA}', '${users.guardianA}', 'plan_delivered', '${id("c71")}', 'sending', 3, now() - interval '2 hours'),
+        (9003, '${houseA}', '${users.guardianA}', 'plan_delivered', '${id("c72")}', 'sending', 1, now() - interval '5 minutes');`;
+      const { result, error } = await afterSetup(`${setup} select * from public.notification_claim(50);`, null,
+        `select id, status, attempts from public.notification_outbox where id in (9001, 9002, 9003) order by id`);
+      assert.equal(error, undefined, error?.message);
+      const rows = result.rows;
+      assert.deepEqual(rows.map((r) => [Number(r.id), r.status, r.attempts]), [[9001, "sending", 2], [9002, "failed", 3], [9003, "sending", 1]]);
+    });
+
+    await t.test("consent status answers only a member of the household", async () => {
+      const ask = `select public.has_active_guardian_consent('${houseA}', '${learnerA}') as ok`;
+      assert.equal((await afterSetup(null, users.guardianA, ask)).result.rows[0].ok, true);
+      assert.equal((await afterSetup(null, users.adminB, ask)).result.rows[0].ok, false);
+    });
+
+    await t.test("no client can run the old identity diagnostic", async () => {
+      const { error } = await afterSetup(null, users.adminA, `select * from public.diagnose_caller_identity('${houseA}')`);
+      assert.match(error?.message ?? "", /permission denied/);
     });
   } finally {
     await db.close();

@@ -57,7 +57,13 @@ try {
     throw new Error(
       "Successful staff write lost the workbench when its refresh failed",
     );
-  await page.getByRole("button", { name: "Retry supporting panels" }).click();
+  // A failed background refresh keeps the last good data, so it must not block the next action.
+  const overdueBefore = await page.evaluate(() => globalThis.staffQaState.calls.filter((item) => item[0] === "markStaffOverdue").length);
+  await page.getByRole("button", { name: "Evaluate overdue cases" }).click();
+  await page.waitForFunction((before) => globalThis.staffQaState.calls.filter((item) => item[0] === "markStaffOverdue").length > before, overdueBefore);
+  // That action's own refresh usually clears the warning; retry only if it is still showing.
+  if (await page.getByRole("button", { name: "Retry supporting panels" }).count())
+    await page.getByRole("button", { name: "Retry supporting panels" }).click();
   await page.getByRole("button", { name: /Maya.*internal review/i }).click();
   await page.getByRole("button", { name: "Mark read" }).click();
   await page.getByText("Read acknowledgement completed and audited.").waitFor();

@@ -101,6 +101,15 @@ jobs:
           remote_size="$(rclone size --json "gdrive:$DRIVE_FOLDER/$name.gpg" | python3 -c 'import json,sys; print(json.load(sys.stdin)["bytes"])')"
           [ "$local_size" = "$remote_size" ] || { echo "FAIL: Drive holds $remote_size bytes, expected $local_size" >&2; exit 1; }
           echo "  ok   $name.gpg ($local_size bytes) in Google Drive folder \"$DRIVE_FOLDER\""
+          # Prove the off-site copy can actually be restored from: read it back, decrypt it with the
+          # same passphrase, and compare it byte for byte (by SHA-256) with the verified dump.
+          source_sha="$(vps "sha256sum '/root/britelink-backups/$name'" | cut -d' ' -f1)"
+          offsite_sha="$(rclone cat "gdrive:$DRIVE_FOLDER/$name.gpg" \
+            | gpg --batch --quiet --pinentry-mode loopback --passphrase-file "$work/passphrase" --decrypt \
+            | sha256sum | cut -d' ' -f1)"
+          [[ "$source_sha" =~ ^[0-9a-f]{64}$ ]] && [ "$source_sha" = "$offsite_sha" ] \
+            || { echo "FAIL: the Drive copy does not decrypt to the verified dump" >&2; exit 1; }
+          echo "  ok   the Drive copy decrypts to the verified dump (SHA-256 match)"
           # Retention: only this job's own files (nightly-*.dump.gpg) older than KEEP_DAYS.
           rclone delete --min-age "${KEEP_DAYS}d" --include 'nightly-*.dump.gpg' "gdrive:$DRIVE_FOLDER"
           echo "  ok   $(rclone lsf --include 'nightly-*.dump.gpg' "gdrive:$DRIVE_FOLDER" | wc -l) encrypted copies kept off-site (newest ${KEEP_DAYS} days)"

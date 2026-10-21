@@ -2228,7 +2228,9 @@ export function Workspace({
     household: null,
     error: null,
   });
-  const [householdId, setHouseholdId] = useState("");
+  // The household the person chose. A ref, so the first load picking a default does not trigger a
+  // second load; choosing another household reloads directly.
+  const chosenHousehold = useRef("");
   const workspaceRequest = useRef(0);
   const signupDetailsCleared = useRef(false);
   // Read through a ref: the session object changes on every token refresh, and reloading the
@@ -2288,10 +2290,9 @@ export function Workspace({
         });
       }
       const household =
-        memberships.find((item) => item.household_id === householdId) ??
+        memberships.find((item) => item.household_id === chosenHousehold.current) ??
         memberships[0];
-      if (household.household_id !== householdId)
-        setHouseholdId(household.household_id);
+      chosenHousehold.current = household.household_id;
       const [learners, cases] = await Promise.all([
         repository.listLearners(household.household_id),
         repository.listCases(household.household_id),
@@ -2313,7 +2314,7 @@ export function Workspace({
           error: error.message,
         }));
     }
-  }, [householdId, repository]);
+  }, [repository]);
   useEffect(() => {
     load();
   }, [load]);
@@ -2438,7 +2439,10 @@ export function Workspace({
               Workspace
               <select
                 value={state.household.household_id}
-                onChange={(event) => setHouseholdId(event.target.value)}
+                onChange={(event) => {
+                  chosenHousehold.current = event.target.value;
+                  load();
+                }}
               >
                 {state.memberships.map((item) => (
                   <option key={item.household_id} value={item.household_id}>

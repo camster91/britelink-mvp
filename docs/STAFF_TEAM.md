@@ -1,7 +1,7 @@
 # Staff team
 
-Everyone who works for BriteLink (you, and each educator) is on the **staff team** (migrations 060
-and 061, issue #100). What the team gives each person depends on their role:
+Everyone who works for BriteLink (you, and each educator) is on the **staff team** (migrations 060,
+061 and 062, issue #100). What the team gives each person depends on their role:
 
 - **Admins** are added to every family automatically: every family already on BriteLink when you
   add them, and each new family the moment it signs up.
@@ -15,7 +15,10 @@ A staff member opens a family from the **Workspace** list at the top of the staf
 ## Who can see what
 
 - Admins can open any family's workspace. They also see the audit history, privacy requests and
-  system reports, and only admins assign cases.
+  system reports, and only admins assign cases. They cannot act as the family's parent (add a
+  child, change the schedule, mark lessons done, write learning notes or make a calendar link),
+  and like educators they see a child's intake details only while the parent's consent is active
+  (migration 062).
 - An educator can open the families whose case they were assigned. An educator with no family yet
   sees "You're on the BriteLink staff team" and can set the name other staff see.
 
@@ -66,7 +69,8 @@ many families they're in.
   assigned (migration 058), so put at least one admin on the team.
 - Case limits are counted per family, as they always were. With one case per family, that limit
   rarely bites; a limit across all families would be a later change.
-- An educator keeps access to a family after their case there is reassigned to someone else. Taking
-  that access away on reassignment is a possible later change.
+- When an admin reassigns a case, or a case closes, is cancelled or refunded, its educator leaves
+  that family unless they still hold another open case there (migration 062). Recording an absence
+  does not remove them, since it may be temporary.
 - Anyone leaving a family (staff or a co-parent) has the calendar links they made there switched
   off, so a link never outlives its maker's access.

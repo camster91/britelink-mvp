@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SupabaseBriteLinkRepository } from "../src/supabase-repository.js";
+import { SupabaseBriteLinkRepository, plainBackendMessage } from "../src/supabase-repository.js";
 
 test("workspace access uses the verified account's roles across households, not another member's first role", async () => {
   const roster = [
@@ -180,10 +180,25 @@ test("staff completion messaging exception and intake controls use scoped RPCs",
 test("database errors are surfaced with operation context", async () => {
   const { client } = mockClient({ data: null, error: { message: "permission denied", code: "PGRST301", status: 401, details: "expired" } });
   await assert.rejects(() => new SupabaseBriteLinkRepository(client).listCases("household-a"), (error)=>{
-    assert.match(error.message,/Load cases: permission denied/);
+    assert.equal(error.message,"Load cases: Your session has expired. Sign in again, then try once more.");
+    assert.equal(error.technical,"permission denied");
     assert.equal(error.code,"PGRST301"); assert.equal(error.status,401); assert.equal(error.details,"expired");
     return true;
   });
+});
+
+test("technical database failures become a plain next step; our own messages pass through", () => {
+  const cases = [
+    [{ message: 'new row violates row-level security policy for table "lesson_activities"', code: "42501" }, /don't have permission/],
+    [{ message: "TypeError: Failed to fetch" }, /couldn't reach BriteLink/],
+    [{ message: 'duplicate key value violates unique constraint "x"', code: "23505" }, /already saved/],
+    [{ message: 'insert or update on table "x" violates foreign key constraint "y"', code: "23503" }, /depends on has changed/],
+    [{ message: "Could not find the function public.x in the schema cache", code: "PGRST202" }, /isn't available right now/],
+    [{ message: "upstream error", status: 503 }, /try again in a minute/],
+    [{ message: "guardian access required", code: "42501" }, /^guardian access required$/],
+    [{ message: "case is not assignable", code: "P0001" }, /^case is not assignable$/],
+  ];
+  for (const [failure, expected] of cases) assert.match(plainBackendMessage(failure), expected, failure.message);
 });
 
 test("message read acknowledgement is a user-scoped idempotent upsert", async () => {

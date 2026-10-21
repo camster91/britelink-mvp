@@ -5,6 +5,11 @@ import json
 REQUIRED_ROLES = ('db', 'auth', 'rest', 'storage', 'gateway')
 LEGACY = {role: 'britelink-production-' + role + '-1' for role in REQUIRED_ROLES}
 
+# Not `assert`: Python drops asserts when run with -O, and every one of these guards a backup.
+def check(condition, message='Backup safety check failed'):
+    if not condition:
+        raise RuntimeError(message)
+
 def validate_owner(owner):
     if owner.get('repository') != 'camster91/britelink-mvp':
         raise RuntimeError('Unexpected backend repository')
@@ -43,9 +48,9 @@ def main():
                 (folder/'failed-command.private.json').write_text(json.dumps({'command':args,'exitCode':p.returncode,'stderr':p.stderr.decode(errors='replace')}))
             raise RuntimeError('BriteLink PostgreSQL recovery command failed: '+args[0]+(' '+args[1] if len(args)>1 else '')+'; private diagnostics withheld')
         return p.stdout
-    assert run(['hostname']).decode().strip()=='vps.ashbi.ca'
+    check(run(['hostname']).decode().strip()=='vps.ashbi.ca')
     application=sys.argv[1]
-    assert re.fullmatch(r'[a-z0-9]{20,40}',application),'Invalid Coolify resource identity'
+    check(re.fullmatch(r'[a-z0-9]{20,40}',application),'Invalid Coolify resource identity')
     php="require '/var/www/html/vendor/autoload.php'; $app=require '/var/www/html/bootstrap/app.php'; $app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); $r=App\\Models\\Application::where('uuid',$argv[1])->sole(); echo json_encode(['repository'=>$r->git_repository,'compose'=>$r->docker_compose_location,'branch'=>$r->git_branch]);"
     owner=json.loads(run(['docker','exec','coolify','php','-r',php,application]))
     validate_owner(owner)
@@ -53,19 +58,19 @@ def main():
     containers=json.loads(run(['docker','inspect']+ids))
     records=select_stack(containers,application)
     db=records['db'];source=db['Id']
-    assert any(m['Destination']=='/var/lib/postgresql/data' for m in db['Mounts'])
+    check(any(m['Destination']=='/var/lib/postgresql/data' for m in db['Mounts']))
     settings=dict(s.split('=',1) for s in db['Config']['Env'] if '=' in s)
     user=settings.get('POSTGRES_USER','supabase_admin')
     connections=[]
     for role,key in [('auth','DATABASE_URL'),('rest','PGRST_DB_URI'),('storage','DATABASE_URL')]:
         values=dict(v.split('=',1) for v in records[role]['Config']['Env'] if '=' in v)
         url=urllib.parse.urlsplit(values[key])
-        assert url.scheme in ('postgres','postgresql') and url.hostname=='db','Unexpected backend database target'
-        assert set(records[role]['NetworkSettings']['Networks'])&set(db['NetworkSettings']['Networks']),'Database and consumer do not share a network'
+        check(url.scheme in ('postgres','postgresql') and url.hostname=='db','Unexpected backend database target')
+        check(set(records[role]['NetworkSettings']['Networks'])&set(db['NetworkSettings']['Networks']),'Database and consumer do not share a network')
         connections.append(url.path.lstrip('/'))
-    assert len(set(connections))==1,'Backend services use different databases'
+    check(len(set(connections))==1,'Backend services use different databases')
     database=connections[0]
-    assert re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',user) and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',database)
+    check(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',user) and re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*',database))
     volume_names=set(run(['docker','volume','ls','-q']).decode().splitlines())
     running_ids=[records[r]['Id'] for r in REQUIRED_ROLES]
     before={r['Id']:{'image':r['Image'],'startedAt':r['State']['StartedAt']} for r in json.loads(run(['docker','inspect']+running_ids))}
@@ -84,11 +89,11 @@ def main():
     try:
         broker.stdin.write(b'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SELECT pg_export_snapshot();\n');broker.stdin.flush()
         snapshot=broker.stdout.readline().decode().strip()
-        assert re.fullmatch(r'[0-9A-Fa-f-]+',snapshot),'Snapshot export failed'
+        check(re.fullmatch(r'[0-9A-Fa-f-]+',snapshot),'Snapshot export failed')
         def snapshot_sql(sql):
             return run(client,('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT \''+snapshot+'\'; '+sql+'; COMMIT;').encode())
         tables=snapshot_sql("SELECT schemaname||'.'||tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema') ORDER BY schemaname,tablename").decode().splitlines()
-        assert tables and all(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*\.[A-Za-z_][A-Za-z_0-9]*',t) for t in tables)
+        check(tables and all(re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*\.[A-Za-z_][A-Za-z_0-9]*',t) for t in tables))
         dump=run(sourcePrefix+['pg_dump','-U',user,'-d',database,'--format=custom','--snapshot='+snapshot])
         (folder/'database.private.dump').write_bytes(dump)
         run(['docker','exec','-i',source,'pg_restore','--list'],dump)
@@ -105,11 +110,11 @@ def main():
         sourceCatalog=json.loads(snapshot_sql(catalogQuery))
         sourceRoles=json.loads(run(client+['-c',rolesQuery]))
         sourceMembers=json.loads(run(client+['-c',membersQuery]))
-        assert int(run(client+['-c',"SELECT count(*) FROM pg_tablespace WHERE spcname NOT IN ('pg_default','pg_global')"]).strip())==0
+        check(int(run(client+['-c',"SELECT count(*) FROM pg_tablespace WHERE spcname NOT IN ('pg_default','pg_global')"]).strip())==0)
         roleNames=[r['rolname'] for r in sourceRoles]
         operator='supabase_admin'
-        assert any(r['rolname']==operator and r['rolsuper'] for r in sourceRoles)
-        assert all(e['owner']==operator for e in sourceCatalog['extensions']),'Mixed extension owners require separate restore review'
+        check(any(r['rolname']==operator and r['rolsuper'] for r in sourceRoles))
+        check(all(e['owner']==operator for e in sourceCatalog['extensions']),'Mixed extension owners require separate restore review')
         (folder/'database-catalog.private.json').write_text(json.dumps(sourceCatalog))
         (folder/'source-schema.private.sql').write_bytes(sourceSchema)
         (folder/'roles-and-memberships.private.json').write_text(json.dumps({'roles':sourceRoles,'memberships':sourceMembers}))
@@ -126,7 +131,7 @@ def main():
             time.sleep(1)
         else:raise RuntimeError('Isolated PostgreSQL restore did not become ready')
         initial=['docker','exec','-i','-e','PGPASSWORD='+fixturePassword,fixture,'psql','-U',restoreUser,'-d','postgres','-v','ON_ERROR_STOP=1']
-        assert operator==restoreUser
+        check(operator==restoreUser)
         fixturePrefix=['docker','exec','-i','-e','PGPASSWORD='+fixturePassword,fixture]
         fclient=fixturePrefix+['psql','-h','127.0.0.1','-U',operator,'-d','postgres','-qAt','-v','ON_ERROR_STOP=1']
         existing=set(run(fclient+['-c','SELECT rolname FROM pg_roles']).decode().splitlines())
@@ -148,7 +153,7 @@ def main():
         restoredRoles=[r for r in restoredRoles if r['rolname'] in roleNames]
         restoredMembers=json.loads(run(fclient+['-c',membersQuery]))
         restoredMembers=[m for m in restoredMembers if m['role'] in roleNames and m['member'] in roleNames]
-        assert restoredRoles==sourceRoles,'Role attributes or password hashes differ'
+        check(restoredRoles==sourceRoles,'Role attributes or password hashes differ')
         if restoredMembers!=sourceMembers:
             # pg_dumpall replays membership as the executing operator. Preserve original grantors
             # through the public SQL authorization mechanism; no catalog writes or weakened checks.
@@ -166,17 +171,17 @@ def main():
             run(fclient,'\n'.join(replay).encode())
             restoredMembers=json.loads(run(fclient+['-c',membersQuery]))
             restoredMembers=[m for m in restoredMembers if m['role'] in roleNames and m['member'] in roleNames]
-        assert restoredMembers==sourceMembers,'Role membership/grantor attributes differ'
+        check(restoredMembers==sourceMembers,'Role membership/grantor attributes differ')
         restoredRoles=[r for r in json.loads(run(fclient+['-c',rolesQuery])) if r['rolname'] in roleNames]
-        assert restoredRoles==sourceRoles,'Role attributes after grantor replay differ'
+        check(restoredRoles==sourceRoles,'Role attributes after grantor replay differ')
         run(fixturePrefix+['createdb','-h','127.0.0.1','-U',operator,'--template=template0','--owner='+sourceCatalog['databaseOwner'],restoreDB])
         eventOwners=snapshot_sql('SELECT DISTINCT r.rolname FROM pg_event_trigger e JOIN pg_roles r ON r.oid=e.evtowner WHERE NOT r.rolsuper ORDER BY r.rolname').decode().splitlines()
-        assert all(role in roleNames for role in eventOwners)
+        check(all(role in roleNames for role in eventOwners))
         if eventOwners:run(fclient,'\n'.join('ALTER ROLE '+quote(role)+' SUPERUSER;' for role in eventOwners).encode())
         restoreCommand=fixturePrefix+['pg_restore','-h','127.0.0.1','-U',operator,'-d',restoreDB,'--exit-on-error']
         toc=run(fixturePrefix+['pg_restore','--list'],dump).splitlines()
         deferred=[line for line in toc if not line.startswith(b';') and b' ACL ' in line and b'graphql_public' in line and b'graphql(' in line]
-        assert len(deferred)==1,'Unexpected GraphQL ACL archive entries'
+        check(len(deferred)==1,'Unexpected GraphQL ACL archive entries')
         filtered=b'\n'.join(b';'+line if line in deferred else line for line in toc)
         onlyGraphqlACL=b'\n'.join(line if line in deferred or line.startswith(b';') else b';'+line for line in toc)
         run(fixturePrefix+['sh','-c','umask 077; cat > /tmp/restore-filtered.list'],filtered)
@@ -188,7 +193,7 @@ def main():
         if graphqlMissing:
             q="SELECT json_build_object('definition',pg_get_functiondef(p.oid),'owner',r.rolname,'extension',x.extname) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_roles r ON r.oid=p.proowner JOIN pg_depend d ON d.objid=p.oid AND d.classid='pg_proc'::regclass AND d.deptype='e' JOIN pg_extension x ON x.oid=d.refobjid WHERE n.nspname='graphql_public' AND p.proname='graphql' AND p.oid='graphql_public.graphql(text,text,jsonb,jsonb)'::regprocedure"
             function=json.loads(snapshot_sql(q))
-            assert function['extension']=='pg_graphql' and function['owner']=='supabase_admin'
+            check(function['extension']=='pg_graphql' and function['owner']=='supabase_admin')
             definition=function['definition']
             (folder/'graphql-extension-function.private.sql').write_text(definition)
             run(restoreClient,(definition+';\nALTER FUNCTION graphql_public.graphql(text,text,jsonb,jsonb) OWNER TO '+quote(function['owner'])+';\nALTER EXTENSION pg_graphql ADD FUNCTION graphql_public.graphql(text,text,jsonb,jsonb);').encode())
@@ -197,9 +202,9 @@ def main():
         run(fixturePrefix+['pg_restore','-h','127.0.0.1','-U',operator,'-d',restoreDB,'--exit-on-error','--use-list=/tmp/restore-graphql-acl.list'],dump)
         if eventOwners:run(fclient,'\n'.join('ALTER ROLE '+quote(role)+' NOSUPERUSER;' for role in eventOwners).encode())
         restoredRoles=[r for r in json.loads(run(fclient+['-c',rolesQuery])) if r['rolname'] in roleNames]
-        assert restoredRoles==sourceRoles,'Role attributes after full schema restore differ'
+        check(restoredRoles==sourceRoles,'Role attributes after full schema restore differ')
         restoredCatalog=json.loads(run(restoreClient+['-c',catalogQuery]))
-        assert restoredCatalog==sourceCatalog,'Database or extension ownership/version/schema differs'
+        check(restoredCatalog==sourceCatalog,'Database or extension ownership/version/schema differs')
         restoredSchema=canon(run(fixturePrefix+['pg_dump','-h','127.0.0.1','-U',operator,'-d',restoreDB,'--schema-only']))
         rawSchemaHashesMatch=restoredSchema==sourceSchema
         normalizedCheckCount=0
@@ -212,35 +217,35 @@ def main():
             key=lambda c:(c['schema'],c['table'],c['name'])
             sourceCheckMap={key(c):c for c in sourceChecks}
             restoredCheckMap={key(c):c for c in restoredChecks}
-            assert sourceCheckMap.keys()==restoredCheckMap.keys(),'Check constraint identities differ'
+            check(sourceCheckMap.keys()==restoredCheckMap.keys(),'Check constraint identities differ')
             normalized=sourceSchema
             for identity,original in sourceCheckMap.items():
                 restored=restoredCheckMap[identity]
                 if original==restored:continue
-                assert {k:v for k,v in original.items() if k!='definition'}=={k:v for k,v in restored.items() if k!='definition'},'Check constraint validation or inheritance differs'
-                assert original['definition'].startswith('CHECK ') and restored['definition'].startswith('CHECK ')
+                check({k:v for k,v in original.items() if k!='definition'}=={k:v for k,v in restored.items() if k!='definition'},'Check constraint validation or inheritance differs')
+                check(original['definition'].startswith('CHECK ') and restored['definition'].startswith('CHECK '))
                 probe='ashbi_restore_check_'+secrets.token_hex(5)
                 table=quote(original['schema'])+'.'+quote(original['table'])
                 run(restoreClient,('ALTER TABLE '+table+' ADD CONSTRAINT '+quote(probe)+' '+original['definition']+';').encode())
                 comparison="SELECT json_build_object('name',c.conname,'definition',pg_get_constraintdef(c.oid,false),'tree',regexp_replace(c.conbin::text,':location -?[0-9]+',':location -1','g')) FROM pg_constraint c JOIN pg_class t ON t.oid=c.conrelid JOIN pg_namespace n ON n.oid=t.relnamespace WHERE n.nspname='"+original['schema']+"' AND t.relname='"+original['table']+"' AND c.conname IN ('"+original['name']+"','"+probe+"') ORDER BY c.conname"
                 compared=[json.loads(line) for line in run(restoreClient+['-c',comparison]).decode().splitlines()]
-                assert len(compared)==2 and compared[0]['tree']==compared[1]['tree'] and compared[0]['definition']==compared[1]['definition'],'Reparsed CHECK expression semantics differ'
+                check(len(compared)==2 and compared[0]['tree']==compared[1]['tree'] and compared[0]['definition']==compared[1]['definition'],'Reparsed CHECK expression semantics differ')
                 run(restoreClient,('ALTER TABLE '+table+' DROP CONSTRAINT '+quote(probe)+';').encode())
-                assert original['definition'].encode() in normalized
+                check(original['definition'].encode() in normalized)
                 normalized=normalized.replace(original['definition'].encode(),restored['definition'].encode())
                 normalizedCheckCount+=1
-            assert normalizedCheckCount>0 and normalized==restoredSchema,'Schema differences extend beyond the two parser-qualified CHECK normalizations'
+            check(normalizedCheckCount>0 and normalized==restoredSchema,'Schema differences extend beyond the two parser-qualified CHECK normalizations')
             (folder/'check-normalization-proof.private.json').write_text(json.dumps({'checksCompared':len(sourceChecks),'normalizedChecks':normalizedCheckCount,'originalDefinitionsReparsedInRestoreDB':True,'ExpressionTreesMatchAfterLocationNormalization':True,'allOtherSchemaBytesMatch':True}))
-        assert json.loads(run(client+['-c',rolesQuery]))==sourceRoles and json.loads(run(client+['-c',membersQuery]))==sourceMembers,'Live roles changed during qualification'
+        check(json.loads(run(client+['-c',rolesQuery]))==sourceRoles and json.loads(run(client+['-c',membersQuery]))==sourceMembers,'Live roles changed during qualification')
         for table,expected in baseline.items():
             sql='COPY (SELECT row_to_json(x)::text FROM "'+table.replace('.', '"."')+'" x ORDER BY row_to_json(x)::text) TO STDOUT;'
             rows=run(['docker','exec','-i','-e','PGPASSWORD='+fixturePassword,fixture,'psql','-h','127.0.0.1','-U',operator,'-d',restoreDB,'-qAt','-v','ON_ERROR_STOP=1'],sql.encode())
-            assert hashlib.sha256(rows).hexdigest()==expected['sha256'],'Restored table hash mismatch'
+            check(hashlib.sha256(rows).hexdigest()==expected['sha256'],'Restored table hash mismatch')
     finally:
         if broker.poll() is None:
             broker.stdin.write(b'ROLLBACK;\n');broker.stdin.close();broker.wait(timeout=15)
         if started:run(['docker','rm','-f',fixture])
-    assert subprocess.run(['docker','inspect',fixture],capture_output=True).returncode!=0
+    check(subprocess.run(['docker','inspect',fixture],capture_output=True).returncode!=0)
     retained=[]
     for role in REQUIRED_ROLES:
         record=records[role]
@@ -250,7 +255,7 @@ def main():
         run(['docker','tag',record['Image'],base])
         run(['docker','build','--pull=false','--network=none','-t',tag,'-'],('FROM '+base+'\nLABEL coolify.managed="true" ashbi.recovery="britelink-backend"\n').encode())
         protected=json.loads(run(['docker','image','inspect',tag]))[0]
-        assert protected['RootFS']['Layers']==original['RootFS']['Layers']
+        check(protected['RootFS']['Layers']==original['RootFS']['Layers'])
         retained.append({'role':role,'sourceImage':record['Image'],'protectedImage':protected['Id'],'protectedTag':tag,'rootFSLayersMatch':True})
         if role=='db':databaseProtected=protected;databaseTag=tag
     # Preserve all non-database mounts/configuration privately. Verify files/modes/links and
@@ -278,16 +283,16 @@ def main():
         for index,(path,_) in enumerate(mounts):archive.add(path,arcname='mount-'+str(index),recursive=True)
     with tarfile.open(archivePath,'r') as archive:
         expectedCount=sum(len(m) for _,m in mounts)
-        assert len(archive.getmembers())==expectedCount,'Unexpected archive member count'
+        check(len(archive.getmembers())==expectedCount,'Unexpected archive member count')
         for index,(path,expected) in enumerate(mounts):
-            assert manifest(path)==expected,'Source file changed during backup'
+            check(manifest(path)==expected,'Source file changed during backup')
             for relative,info in expected.items():
                 name='mount-'+str(index)+('' if relative=='.' else '/'+relative)
                 member=archive.getmember(name)
-                assert member.mode==info['mode'] and member.uid==info['uid'] and member.gid==info['gid']
-                if info['kind']=='file':assert member.isfile() and hashlib.sha256(archive.extractfile(member).read()).hexdigest()==info['sha256']
-                elif info['kind']=='link':assert member.issym() and member.linkname==info['target']
-                else:assert member.isdir()
+                check(member.mode==info['mode'] and member.uid==info['uid'] and member.gid==info['gid'])
+                if info['kind']=='file':check(member.isfile() and hashlib.sha256(archive.extractfile(member).read()).hexdigest()==info['sha256'],'Restored file differs from the backup manifest')
+                elif info['kind']=='link':check(member.issym() and member.linkname==info['target'],'Restored file differs from the backup manifest')
+                else:check(member.isdir(),'Restored file differs from the backup manifest')
     # The image loop ends at gateway; the top-level DB recovery fields must select DB.
     databaseRetained = next(item for item in retained if item['role'] == 'db')
     protected = json.loads(run(['docker','image','inspect',databaseRetained['protectedImage']]))[0]
@@ -297,13 +302,13 @@ def main():
     sourceStorageEmpty=all(info['kind']=='directory' for info in storageManifest.values())
     protected=databaseProtected;tag=databaseTag
     (folder/'stack-inspect.private.json').write_text(json.dumps(records))
-    assert volume_names==set(run(['docker','volume','ls','-q']).decode().splitlines())
+    check(volume_names==set(run(['docker','volume','ls','-q']).decode().splitlines()))
     after={r['Id']:r for r in json.loads(run(['docker','inspect']+running_ids))}
-    assert all(after[k]['State']['Running'] and after[k]['Image']==v['image'] and after[k]['State']['StartedAt']==v['startedAt'] for k,v in before.items())
+    check(all(after[k]['State']['Running'] and after[k]['Image']==v['image'] and after[k]['State']['StartedAt']==v['startedAt'] for k,v in before.items()))
     (folder/'table-hashes.private.json').write_text(json.dumps(baseline,indent=2))
     proof={'backupDirectory':str(folder),'sourceImage':db['Image'],'protectedImage':protected['Id'],'protectedTag':tag,'rootFSLayersMatch':True,'consistentExportedSnapshot':True,'applicationSchemas':['auth','public','storage','vault'],'roleNamesPreparedForRestore':True,'fullRolePrivilegesQualified':True,'databaseAndExtensionCatalogMatch':True,'sourceDatabaseOwner':sourceCatalog['databaseOwner'],'extensionCount':len(sourceCatalog['extensions']),'noExtraRestoreOperatorRoleCreated':True,'roleAttributesAndPasswordHashesMatch':True,'roleMembershipsAndGrantorsMatch':True,'schemaOwnershipAndGrantsMatch':True,'sourceRoleCount':len(sourceRoles),'sourceMembershipCount':len(sourceMembers),'fullSchemaSHA256':hashlib.sha256(sourceSchema).hexdigest(),'restoredSchemaSHA256':hashlib.sha256(restoredSchema).hexdigest(),'rawSchemaHashesMatch':rawSchemaHashesMatch,'parserQualifiedCheckNormalizations':normalizedCheckCount,'allOtherSchemaBytesMatch':True,'sourceRoleAttributesUnchanged':True,'graphqlExtensionOwnedFunctionRecreated':graphqlMissing,'temporaryFixtureOnlyGrantorElevationRemoved':True,'temporaryFixtureOnlyEventOwnerElevationRemoved':True,'allApplicationTables':len(baseline),'totalSnapshotRows':sum(v['rows'] for v in baseline.values()),'allRestoredTableHashesMatch':True,'dumpBytes':len(dump),'dumpSHA256':hashlib.sha256(dump).hexdigest(),'globalRolesSavedPrivately':True,'databaseVolumeRetained':True,'allDockerVolumesRetained':True,'volumeCount':len(volume_names),'productionBackendContainerStatesUnchanged':True,'fixtureRemoved':True,'liveDatabaseStopped':False,'liveDatabaseOrConsumerConfigurationChanged':False,'candidateProvisioned':False,'application':application,'retainedStackImages':retained,'filesConfigArchiveSHA256':hashlib.sha256(archivePath.read_bytes()).hexdigest(),'fileHashesModesOwnersAndLinksMatch':True,'nonDatabaseMountsArchived':len(mounts),'sourceStorageEmpty':sourceStorageEmpty,'sourceBuildPerformed':False}
     (folder/'recovery-proof.json').write_text(json.dumps(proof,indent=2))
-    assert folder.stat().st_mode&0o077==0 and all(p.stat().st_mode&0o077==0 for p in folder.iterdir())
+    check(folder.stat().st_mode&0o077==0 and all(p.stat().st_mode&0o077==0 for p in folder.iterdir()))
     print(json.dumps(proof))
 
 if __name__ == '__main__':

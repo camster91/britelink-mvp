@@ -139,3 +139,14 @@ test("static files keep nosniff and HSTS even though their location sets its own
   assert.match(block, /add_header X-Content-Type-Options nosniff always;/);
   assert.match(block, /add_header Strict-Transport-Security "max-age=31536000" always;/);
 });
+
+test("the feed is also limited per visitor, and the API gateway never logs the feed credential", async () => {
+  const route = template.slice(template.indexOf("location ~ \"^/feed/"), template.indexOf("location @calendar_feed_gone"));
+  assert.match(template, /limit_req_zone \$binary_remote_addr zone=calendar_feed_client/);
+  assert.match(route, /limit_req zone=calendar_feed_client /);
+  assert.match(route, /real_ip_header X-Forwarded-For;/);
+  const gateway = await readFile(new URL("../supabase/selfhosted/gateway.conf", import.meta.url), "utf8");
+  const feed = gateway.slice(gateway.indexOf("location = /rest/v1/rpc/calendar_feed"), gateway.indexOf("location /rest/v1/ {"));
+  assert.match(feed, /access_log off;/);
+  assert.ok(gateway.indexOf("location = /rest/v1/rpc/calendar_feed") < gateway.indexOf("location /rest/v1/ {"));
+});

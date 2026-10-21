@@ -32,6 +32,12 @@ export function CalendarFeed({ repository, householdId, learner }) {
   }, [created]);
 
   const create = async () => {
+    // Replacing stops the old link, so calendars already subscribed to it stop updating.
+    if (
+      state.feed &&
+      !globalThis.confirm?.("Replace this calendar link? Calendars that use the old link will stop updating.")
+    )
+      return;
     setOperation({ status: "loading", message: "Creating your calendar link…" });
     try {
       const made = await repository.createCalendarFeed({ householdId, learnerId: learner.id, includeTitles });

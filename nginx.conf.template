@@ -34,6 +34,10 @@
 # Calendar subscription feed (#47): one bucket per feed URL, so a misbehaving calendar client polling
 # one link cannot hammer the API. Guessing a link is not the threat -- tokens carry 244 random bits.
 limit_req_zone $uri zone=calendar_feed:2m rate=20r/m;
+# And one bucket per visitor: a flood of made-up links gets a fresh per-URL bucket each time, so
+# only this one throttles it before PostgREST and the database see it. A family's calendar apps
+# poll a few times an hour, far inside it.
+limit_req_zone $binary_remote_addr zone=calendar_feed_client:2m rate=60r/m;
 
 server {
     listen 80;
@@ -92,7 +96,15 @@ server {
     # the path is the credential.
     location ~ "^/feed/(?<feed_token>[0-9a-f]{64})\.ics$" {
         access_log off;
+        # Traefik (a private address) is what connects; count the visitor it reports instead.
+        set_real_ip_from 10.0.0.0/8;
+        set_real_ip_from 172.16.0.0/12;
+        set_real_ip_from 192.168.0.0/16;
+        set_real_ip_from 127.0.0.1;
+        real_ip_header X-Forwarded-For;
+        real_ip_recursive on;
         limit_req zone=calendar_feed burst=10 nodelay;
+        limit_req zone=calendar_feed_client burst=30 nodelay;
         limit_req_status 429;
         set $feed_api "${BRITELINK_API_ORIGIN}";
         if ($feed_api = "") {
