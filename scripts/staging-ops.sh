@@ -66,8 +66,16 @@ if [ "$MODE" = "rebuild" ]; then
   docker exec "$DB_CONTAINER" psql -X -tA -U postgres -d postgres -c "select 'households='||count(*) from public.households" 2>/dev/null || true
   # Synthetic data only, by design (docs/STAGING_HANDOFF.md). Refuse if anything that is not the
   # synthetic seed is present, so a staging stack that someone repurposed is never wiped.
-  foreign="$(docker exec "$DB_CONTAINER" psql -X -tA -U postgres -d postgres -c "select count(*) from auth.users where email not like '%@britelink.invalid'" 2>/dev/null || echo 0)"
-  [ "${foreign:-0}" = 0 ] || fail "staging has ${foreign} non-synthetic auth user(s); refusing to wipe it"
+  # Fail closed: a database that exists but cannot be checked is never wiped. Only a stack with no
+  # database container at all (nothing to protect) goes ahead.
+  if docker inspect "$DB_CONTAINER" >/dev/null 2>&1; then
+    foreign="$(docker exec "$DB_CONTAINER" psql -X -tA -U postgres -d postgres -c "select count(*) from auth.users where email not like '%@britelink.invalid'" 2>/dev/null)" \
+      || fail "could not check staging for real accounts (its database did not answer); refusing to wipe it. Start the staging database, then run rebuild again."
+    [[ "$foreign" =~ ^[0-9]+$ ]] || fail "could not read the staging account count; refusing to wipe it"
+    [ "$foreign" = 0 ] || fail "staging has ${foreign} non-synthetic auth user(s); refusing to wipe it"
+  else
+    echo "no staging database container yet; nothing to protect"
+  fi
 
   # Bring the stack's compose definition up to this commit (backing up what was there).
   backup="$stack_dir/.pre-rebuild-$(date -u +%Y%m%dT%H%M%SZ)"

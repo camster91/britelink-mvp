@@ -64,12 +64,24 @@ jobs:
           ssh-keygen -lf "$HOME/.ssh/britelink_deploy.pub"
 
       - name: Validate target SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if ! printf '%s' "$DEPLOY_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "::error::DEPLOY_SHA is not a full 40-hex commit SHA: '$DEPLOY_SHA'"
             exit 1
           fi
+          # Only a commit that is on main (main itself or one of its ancestors) may be deployed: a
+          # hand-dispatched run must not ship an unreviewed branch commit.
+          status="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/compare/main...$DEPLOY_SHA" \
+            | python3 -c 'import json, sys; print(json.load(sys.stdin)["status"])')" \
+            || { echo "::error::Could not check that $DEPLOY_SHA is on main; nothing was deployed."; exit 1; }
+          case "$status" in
+            identical|behind) ;;
+            *) echo "::error::$DEPLOY_SHA is not on main (compared to main it is '$status'); nothing was deployed."; exit 1 ;;
+          esac
           echo "Deploying commit: $DEPLOY_SHA"
 
       # No actions/checkout here. The VPS is the build machine and pulls from

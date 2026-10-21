@@ -105,3 +105,29 @@ class ProductionBoundaryTests(unittest.TestCase):
 
 
 if __name__ == '__main__': unittest.main()
+
+
+class LegacyReplacementTests(unittest.TestCase):
+    names = ['britelink-production-gateway-1', 'britelink-production-db-1']
+
+    def test_success_removes_the_parked_containers(self):
+        calls = []
+        production.replace_legacy_containers(calls.append, lambda: calls.append(['up']), self.names, 'T')
+        self.assertEqual(calls, [
+            ['docker', 'stop', '--time', '60'] + self.names,
+            ['docker', 'rename', self.names[0], self.names[0] + '-pre-coolify-T'],
+            ['docker', 'rename', self.names[1], self.names[1] + '-pre-coolify-T'],
+            ['up'],
+            ['docker', 'rm', self.names[0] + '-pre-coolify-T', self.names[1] + '-pre-coolify-T'],
+        ])
+
+    def test_failed_start_restores_and_restarts_the_old_containers(self):
+        calls = []
+        def fail():
+            raise RuntimeError('up failed')
+        with self.assertRaisesRegex(RuntimeError, 'previous backend containers were restarted'):
+            production.replace_legacy_containers(calls.append, fail, self.names, 'T')
+        self.assertIn(['docker', 'rename', self.names[0] + '-pre-coolify-T', self.names[0]], calls)
+        self.assertIn(['docker', 'rename', self.names[1] + '-pre-coolify-T', self.names[1]], calls)
+        self.assertEqual(calls[-1], ['docker', 'start'] + self.names)
+        self.assertNotIn(['docker', 'rm', self.names[0] + '-pre-coolify-T', self.names[1] + '-pre-coolify-T'], calls)
