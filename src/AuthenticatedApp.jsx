@@ -41,6 +41,16 @@ import { downloadTextFile } from "./browser-download.js";
 import { startInactivityMonitor } from "./inactivity-monitor.js";
 import { signInLinkProblem } from "./sign-in-link.js";
 import { checkRequired, clearFixedField } from "./form-errors.js";
+import {
+  browserLocalStorage,
+  discardAllDrafts,
+  discardDraft,
+  discardExpiredDrafts,
+  draftKey,
+  loadDraft,
+  saveDraft,
+  useKeptText,
+} from "./form-drafts.js";
 
 // A signed-in account with no household. Beta families arrive here straight from their sign-in
 // link: the details they typed on the join form come back as signup metadata, so the household is
@@ -163,7 +173,7 @@ function BetaHouseholdSetup({ repository, metadata, onReady }) {
           <button
             type="button"
             className="ghost"
-            onClick={() => repository.signOut()}
+            onClick={() => signOutAndForget(repository)}
           >
             Sign out
           </button>
@@ -175,6 +185,13 @@ function BetaHouseholdSetup({ repository, metadata, onReady }) {
       </section>
     </main>
   );
+}
+
+// Pressing Sign out is the deliberate way to leave, so it also removes every draft kept on this
+// device (src/form-drafts.js). The idle sign-out keeps them, so nothing typed is lost to it.
+function signOutAndForget(repository) {
+  discardAllDrafts(browserLocalStorage());
+  return repository.signOut();
 }
 
 // A staff-team educator before their first assignment (migration 061): they see no family until
@@ -199,7 +216,7 @@ function StaffWaiting({ profile, repository, onCheckAgain }) {
         <button className="primary" onClick={onCheckAgain}>
           Check again
         </button>
-        <button className="ghost" onClick={() => repository.signOut()}>
+        <button className="ghost" onClick={() => signOutAndForget(repository)}>
           Sign out
         </button>
       </section>
@@ -651,7 +668,6 @@ function ParentWorkspace({
     message: "",
     canRetry: false,
   });
-  const [messageBody, setMessageBody] = useState("");
   const [messageFiles, setMessageFiles] = useState([]);
   const [attachmentRecovery, setAttachmentRecovery] = useState([]);
   // Bumped to clear the file picker, which the browser does not let React set directly.
@@ -669,6 +685,10 @@ function ParentWorkspace({
   const selectedLearner =
     learners.find((item) => item.id === learnerId) ?? learners[0];
   const selectedCase = caseForLearner(cases, selectedLearner?.id);
+  // Kept per case on this device, so the idle sign-out does not lose a half-written message.
+  const [messageBody, setMessageBody] = useKeptText(
+    draftKey(userId, "message", household.household_id, selectedCase?.id),
+  );
   // The case on screen now. A send or retry that finishes after the parent switched learners
   // must not touch the new learner's thread.
   const shownCaseId = useRef(selectedCase?.id);
@@ -745,7 +765,6 @@ function ParentWorkspace({
     loadPlan();
   }, [loadPlan]);
   useEffect(() => {
-    setMessageBody("");
     setMessageFiles([]);
     setAttachmentRecovery([]);
     attachmentRecoveryRef.current = [];
@@ -777,6 +796,11 @@ function ParentWorkspace({
   // record changes underneath the form (moving the day, the student view), only the fields the
   // parent has not touched are refreshed, so nothing they typed is thrown away.
   const seededDraft = useRef({ lessonId: null, values: null });
+  const lessonDraftKey = (lessonId) =>
+    draftKey(userId, "lesson", household.household_id, lessonId);
+  // Lessons whose save is still on its way. The screen shows the new values before the server
+  // confirms them, so their kept copy must not be dropped until the save succeeds.
+  const savingLessons = useRef(new Set());
   useEffect(() => {
     if (!selectedLesson) return;
     if (keepDraft.current) {
@@ -794,6 +818,11 @@ function ParentWorkspace({
     const sameLesson = seeded.lessonId === selectedLesson.id;
     seededDraft.current = { lessonId: selectedLesson.id, values: fresh };
     setSelectedLessonId(selectedLesson.id);
+    // Opening a lesson brings back what the parent typed there and had not saved (for example
+    // before the idle sign-out), field by field over the saved record.
+    const kept = sameLesson
+      ? null
+      : loadDraft(browserLocalStorage(), lessonDraftKey(selectedLesson.id));
     setDraft((current) =>
       sameLesson && seeded.values
         ? Object.fromEntries(
@@ -802,9 +831,24 @@ function ParentWorkspace({
               current[field] === seeded.values[field] ? fresh[field] : current[field],
             ]),
           )
-        : fresh,
+        : Object.fromEntries(
+            Object.keys(fresh).map((field) => [
+              field,
+              typeof kept?.[field] === "string" ? kept[field] : fresh[field],
+            ]),
+          ),
     );
   }, [selectedLesson?.id, activities]);
+  // Keep the open lesson's unsaved changes on this device; once they match the saved record (it
+  // was saved, or the parent undid their edits) the kept copy is removed.
+  useEffect(() => {
+    const { lessonId, values } = seededDraft.current;
+    if (!lessonId || !values) return;
+    const key = lessonDraftKey(lessonId);
+    const changed = Object.keys(values).some((field) => draft[field] !== values[field]);
+    if (changed) saveDraft(browserLocalStorage(), key, draft);
+    else if (!savingLessons.current.has(lessonId)) discardDraft(browserLocalStorage(), key);
+  }, [draft]);
 
   const operationFailure = (error, action) => {
     const status = classifyOperationError(error);
@@ -837,6 +881,14 @@ function ParentWorkspace({
     const lessonId = selectedLesson.id;
     // loadPlan bumps planRequest when the learner changes; a reply for the previous child is dropped.
     const request = planRequest.current;
+    const typed = {
+      status: draft.status,
+      note: draft.note,
+      scheduleReason: draft.scheduleReason,
+      scheduledFor: draft.scheduledFor,
+    };
+    savingLessons.current.add(lessonId);
+    saveDraft(browserLocalStorage(), lessonDraftKey(lessonId), typed);
     setPlanState((state) => ({
       ...state,
       activities: [
@@ -860,6 +912,8 @@ function ParentWorkspace({
     });
     try {
       const saved = await repository.saveLessonActivity(input);
+      savingLessons.current.delete(lessonId);
+      discardDraft(browserLocalStorage(), lessonDraftKey(lessonId));
       if (request !== planRequest.current) return;
       setPlanState((state) => ({
         ...state,
@@ -881,6 +935,20 @@ function ParentWorkspace({
           : null,
       );
     } catch (error) {
+      savingLessons.current.delete(lessonId);
+      // Not saved, so the words stay kept on the device, and the form compares against the record
+      // as it really is (not the values shown while the save was on its way).
+      saveDraft(browserLocalStorage(), lessonDraftKey(lessonId), typed);
+      if (seededDraft.current.lessonId === lessonId)
+        seededDraft.current = {
+          lessonId,
+          values: {
+            status: prior?.status ?? "not_started",
+            note: prior?.caregiver_note ?? "",
+            scheduleReason: prior?.schedule_reason ?? "",
+            scheduledFor: prior?.scheduled_for ?? "",
+          },
+        };
       if (request !== planRequest.current) return;
       // Put back only this lesson, so other saves that finished meanwhile are kept.
       keepDraft.current = true;
@@ -1035,13 +1103,15 @@ function ParentWorkspace({
       });
       return;
     }
+    // Sent, so its draft goes even if the parent has moved to another learner meanwhile: a sent
+    // message must never come back as a draft to send twice.
+    setMessageBody("");
     if (!stillShown()) return;
     setMessages((state) => ({
       ...state,
       status: "success",
       items: [...state.items, saved],
     }));
-    setMessageBody("");
     const failed = [];
     for (const file of files) {
       try {
@@ -1343,6 +1413,7 @@ function ParentWorkspace({
         householdId={household.household_id}
         learner={selectedLearner}
         repository={repository}
+        userId={userId}
         privacyNoticeVersion={privacyNoticeVersion}
         onSubmitted={() => setServiceRefresh((value) => value + 1)}
       />
@@ -2246,7 +2317,9 @@ export function Workspace({
   useEffect(() => {
     load();
   }, [load]);
-  // A minute's notice before the automatic sign-out, so nothing typed is lost to it.
+  // Drafts are kept for a day at most; tidy away older ones on this device.
+  useEffect(() => discardExpiredDrafts(browserLocalStorage()), []);
+  // A minute's notice before the automatic sign-out. What is being typed is kept (form-drafts.js).
   const [idleWarning, setIdleWarning] = useState(false);
   useEffect(
     () =>
@@ -2262,7 +2335,8 @@ export function Workspace({
     <div className="idle-warning" role="alert">
       <span>
         For your family's privacy, you'll be signed out in about a minute.
-        Anything you haven't saved will be lost.
+        Most unsent typing, like messages and lesson notes, stays on this
+        device for a day, so you can pick up where you left off.
       </span>
       <button type="button" onClick={() => setIdleWarning(false)}>
         Stay signed in
@@ -2300,7 +2374,7 @@ export function Workspace({
           <button className="primary" onClick={load}>
             Try again
           </button>
-          <button className="ghost" onClick={() => repository.signOut()}>
+          <button className="ghost" onClick={() => signOutAndForget(repository)}>
             Sign out
           </button>
         </section>
@@ -2340,7 +2414,7 @@ export function Workspace({
         <div>
           <span>Authenticated workspace</span>
           <strong>{session.user.email}</strong>
-          <button onClick={() => repository.signOut()}>Sign out</button>
+          <button onClick={() => signOutAndForget(repository)}>Sign out</button>
         </div>
       </header>
       <main id="live-main" aria-label={workspaceName}>

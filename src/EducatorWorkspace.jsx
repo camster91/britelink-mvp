@@ -17,6 +17,7 @@ import { StaffSharedActivities, StaffWeeklyNote } from "./StaffFamilyTools.jsx";
 import { localDateString } from "./authenticated-workspace.js";
 import { validateAttachmentFile } from "./input-validation.js";
 import { checkRequired, clearFixedField } from "./form-errors.js";
+import { draftKey, useKeptText } from "./form-drafts.js";
 
 function StaffNotice({ state }) {
   if (!state.message) return null;
@@ -77,7 +78,10 @@ export function EducatorWorkspace({
   const [reviewNotes, setReviewNotes] = useState("");
   const [decisionReason, setDecisionReason] = useState("");
   const [changeSummary, setChangeSummary] = useState("");
-  const [messageBody, setMessageBody] = useState("");
+  // Kept per case on this device, so the idle sign-out does not lose a half-written reply.
+  const [messageBody, setMessageBody] = useKeptText(
+    draftKey(userId, "message", household.household_id, selectedId),
+  );
   const [messageFiles, setMessageFiles] = useState([]);
   // Remounts the file picker whenever the chosen files are cleared, so it never shows stale names.
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -141,7 +145,6 @@ export function EducatorWorkspace({
     setReviewNotes("");
     setDecisionReason("");
     setChangeSummary("");
-    setMessageBody("");
     setMessageFiles([]);
     staffAttachmentRecovery.current = null;
     setAbsenceReason("");
