@@ -11,7 +11,7 @@ person), **code** (can be built in this repo), or **both**.
   2026-10-01). The older GitHub Actions SSH **Deploy** workflow was switched off then and stays
   off; see `AGENT_HANDOFF.md` → "How production works".
 - The self-hosted Supabase backend (`britelink-production`, served at `britelink-api.ashbi.ca`)
-  has migrations 001–059. 060 and 061 wait for the owner's go (item 3 below). Each was applied
+  has migrations 001–059. 060, 061 and 062 wait for the owner's go (item 3 below). Each was applied
   with the Migrate workflow after a pre-migrate backup; the run links are in `PROJECT-STATUS.md`.
   Notification sending stays off until counsel approves the wording and `NOTIFICATIONS_ENABLED`
   is set (`EMAIL_NOTIFICATIONS.md`, #99). Auth, database API and storage share the key-signing
@@ -42,8 +42,10 @@ person), **code** (can be built in this repo), or **both**.
    new families (before it, nobody on staff could). Migration 061 tightens it: only an account with
    a confirmed email can be added, admins see every family, educators see a family only once an
    admin assigns them its case, and a calendar link stops working when its maker leaves the
-   family. 060 and 061 are in the repo and wait for the owner's go; apply them together with the
-   Migrate workflow, then add each person with the Staff workflow (`STAFF_TEAM.md`).
+   family. Migration 062 takes an educator out of a family when its case is reassigned, and stops
+   admins acting as a family's parent. 060, 061 and 062 are in the repo and wait for the owner's
+   go; apply them together with the Migrate workflow, then add each person with the Staff
+   workflow (`STAFF_TEAM.md`).
    Before opening sign-up, check that `GOTRUE_MAILER_AUTOCONFIRM` is `false` on the auth service
    (Ops check prints "email confirmation: required (safe)"), and copy the updated
    `supabase/selfhosted/gateway.conf` to the backend so sign-in emails are rate-limited per visitor. Decided 2026-10-06: open free beta, anyone can join. The app's "Join the
@@ -64,8 +66,8 @@ person), **code** (can be built in this repo), or **both**.
 7. **Approval for production changes** (Cameron, one minute). Add yourself as a required
    reviewer under Settings → Environments → `production-change`. Until then, Migrate **apply**,
    Ops check fix modes and Staff **add**/**remove** stop at their approve step and change nothing
-   (`APPLYING_MIGRATIONS.md` → "Approving a production change"). Do this before applying 060
-   and 061.
+   (`APPLYING_MIGRATIONS.md` → "Approving a production change"). Do this before applying 060,
+   061 and 062.
 
 ## Soon after (the beta can start without these)
 
