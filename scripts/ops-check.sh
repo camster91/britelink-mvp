@@ -94,6 +94,15 @@ mac = hmac.new(os.environ["SECRET"].encode(), f"{h}.{p}".encode(), hashlib.sha25
 print("yes" if hmac.compare_digest(base64.urlsafe_b64encode(mac).rstrip(b"=").decode(), s) else "no")'; }
 env_file_val() { grep -E "^$2=" "$1" 2>/dev/null | head -1 | cut -d= -f2- | tr -d "\"' \r" || true; }
 label_of() { docker inspect "$1" --format "{{index .Config.Labels \"$2\"}}" 2>/dev/null || true; }
+# Old copies hold secrets or family data. Keep the newest 3, and of the rest delete any older
+# than 30 days (owner decision 2026-10-21). Arguments: the copies, usually one glob.
+prune_old_copies() {
+  local f files
+  mapfile -t files < <(ls -1t -- "$@" 2>/dev/null || true)
+  for f in "${files[@]:3}"; do
+    if [ -n "$(find "$f" -maxdepth 0 -mtime +30 2>/dev/null)" ]; then rm -f -- "$f"; echo "  removed old copy $(basename "$f")"; fi
+  done
+}
 # Anonymous REST call through the public API origin with an all-zero (never valid) feed token:
 # 401 means the key is rejected; 400/403/404 means it was accepted. The key goes in a 0600
 # header file, never argv.
@@ -353,6 +362,7 @@ if [ "$MODE" = "fix-anon-key" ]; then
   if [ "$web_key" = "$stack_key" ]; then echo "already correct; nothing changed"; exit 0; fi
   backup="$WEB_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)"
   cp -p "$WEB_ENV" "$backup"
+  prune_old_copies "$WEB_ENV".bak-*
   tmp="$(mktemp)"
   STACK_KEY="$stack_key" awk '/^VITE_SUPABASE_ANON_KEY=/ { if (!done) print "VITE_SUPABASE_ANON_KEY=" ENVIRON["STACK_KEY"]; done = 1; next } { print } END { if (!done) print "VITE_SUPABASE_ANON_KEY=" ENVIRON["STACK_KEY"] }' "$backup" > "$tmp"
   cat "$tmp" > "$WEB_ENV"; rm -f "$tmp"
@@ -398,6 +408,7 @@ if [ "$MODE" = "restore-secret" ]; then
   [ "$(grep -cE '^JWT_SECRET=' "$stack_env")" = 1 ] || refuse "the stack .env does not have exactly one JWT_SECRET line"
   backup="$stack_env.bak-$(date -u +%Y%m%dT%H%M%SZ)"
   cp -p "$stack_env" "$backup"; chmod 600 "$backup"
+  prune_old_copies "$stack_env".bak-*
   tmp="$(mktemp)"
   NEW_SECRET="$storage_secret" awk '/^JWT_SECRET=/ { print "JWT_SECRET=" ENVIRON["NEW_SECRET"]; next } { print }' "$backup" > "$tmp"
   cat "$tmp" > "$stack_env"; rm -f "$tmp"
@@ -436,6 +447,7 @@ if [ "$MODE" = "feed-route" ]; then
   mkdir -p "$BACKUP_DIR"
   backup="$BACKUP_DIR/traefik-britelink.yml.bak-$(date -u +%Y%m%dT%H%M%SZ)"
   cp -p "$TRAEFIK_DYNAMIC" "$backup"
+  prune_old_copies "$BACKUP_DIR"/traefik-britelink.yml.bak-*
   # Temp file in the same directory (atomic rename) but without a .yml/.yaml/.toml extension, so the
   # file provider never loads a half-written copy.
   tmp="$(dirname "$TRAEFIK_DYNAMIC")/.britelink-feed.tmp"
@@ -491,6 +503,7 @@ if [ "$MODE" = "set-notice-version" ]; then
   if [ "$current" = "$value" ]; then echo "already $value; nothing changed"; exit 0; fi
   backup="$WEB_ENV.bak-$(date -u +%Y%m%dT%H%M%SZ)"
   cp -p "$WEB_ENV" "$backup"
+  prune_old_copies "$WEB_ENV".bak-*
   tmp="$(mktemp)"
   VALUE="$value" awk '/^VITE_PRIVACY_NOTICE_VERSION=/ { if (!done) print "VITE_PRIVACY_NOTICE_VERSION=" ENVIRON["VALUE"]; done = 1; next } { print } END { if (!done) print "VITE_PRIVACY_NOTICE_VERSION=" ENVIRON["VALUE"] }' "$backup" > "$tmp"
   cat "$tmp" > "$WEB_ENV"; rm -f "$tmp"

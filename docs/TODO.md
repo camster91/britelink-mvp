@@ -90,7 +90,8 @@ person), **code** (can be built in this repo), or **both**.
   signed webhook, checkout and cancellation follow from that. The database models one-off
   package orders today, not subscriptions.
 - **Off-site backup copy** (#8, Cameron). Built: each verified nightly dump is copied, encrypted,
-  to your Google Drive. It switches on once you add the two secrets in
+  to your Google Drive. Until you add the two secrets the nightly Backup run fails and emails you
+  (decided 2026-10-21). It switches on once you add them in
   `RECOVERY_OPERATIONS.md` → "Off-site copy in Google Drive". Point-in-time recovery is still open.
 - **Named alert owner and a test alert** (#7, Cameron).
 - **Staging rebuild and deployed proof** (#38, #39, #3, #37). `Staging` workflow → rebuild-and-verify.

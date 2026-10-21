@@ -62,9 +62,10 @@ jobs:
           bash "$work/scripts/backup-production.sh"
           REMOTE
 
-      # Off-site copy (#8): the newest verified dump, encrypted, to the owner's Google Drive. Skipped
-      # (with a notice) until both secrets exist; once they do, a failed copy fails the run, which
-      # emails the owner. The dump streams from the VPS straight into gpg, so the unencrypted data
+      # Off-site copy (#8): the newest verified dump, encrypted, to the owner's Google Drive. Until
+      # both secrets exist this step fails, so the run is red and emails the owner every night (owner
+      # decision 2026-10-21: a backup with no off-site copy must not look green). The verified dump
+      # on the VPS is already safe by then. A failed copy fails the run too. The dump streams from the VPS straight into gpg, so the unencrypted data
       # is never written to the runner's disk. Setup and restore: docs/RECOVERY_OPERATIONS.md.
       - name: Copy the verified backup to Google Drive (encrypted)
         env:
@@ -75,8 +76,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "$RCLONE_CONF" ] || [ -z "$PASSPHRASE" ]; then
-            echo "::notice::Off-site copy skipped: GDRIVE_RCLONE_CONFIG and BACKUP_ENCRYPTION_PASSPHRASE are not both set."
-            exit 0
+            echo "::error::No off-site copy: GDRIVE_RCLONE_CONFIG and BACKUP_ENCRYPTION_PASSPHRASE are not both set. Tonight's verified backup is on the VPS only. Set them up with docs/RECOVERY_OPERATIONS.md -> \"Off-site copy in Google Drive\"."
+            exit 1
           fi
           [ "${#PASSPHRASE}" -ge 20 ] || { echo "FAIL: BACKUP_ENCRYPTION_PASSPHRASE must be at least 20 characters" >&2; exit 1; }
           command -v rclone >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq rclone >/dev/null; }
