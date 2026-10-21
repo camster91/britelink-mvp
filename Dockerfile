@@ -33,6 +33,9 @@ ARG VITE_PRIVACY_NOTICE_VERSION=""
 # "true" only once the attachment malware scanner runs (scripts/attachment-scanner.mjs). Until then
 # uploads would sit in quarantine forever, so the message forms hide the file picker.
 ARG VITE_ATTACHMENTS_ENABLED=""
+# Public Cloudflare Turnstile site key for the person check before a sign-in email
+# (src/human-check.js). Empty means no check. Set it before turning the check on in the backend.
+ARG VITE_TURNSTILE_SITE_KEY=""
 # The commit being built. Absent on a local build, which yields version.json commit="unknown".
 # This is what makes the deployed revision readable at /version.json instead of requiring an SSH.
 ARG BRITELINK_BUILD_COMMIT=""
@@ -40,6 +43,7 @@ ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
 ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
 ENV VITE_PRIVACY_NOTICE_VERSION=$VITE_PRIVACY_NOTICE_VERSION
 ENV VITE_ATTACHMENTS_ENABLED=$VITE_ATTACHMENTS_ENABLED
+ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
 ENV BRITELINK_BUILD_COMMIT=$BRITELINK_BUILD_COMMIT
 
 RUN npm run build

@@ -263,6 +263,18 @@ case "$(env_of "$AUTH_CONTAINER" GOTRUE_MAILER_AUTOCONFIRM)" in
   ""|false) echo "email confirmation:                 required (safe)" ;;
   *) echo "email confirmation:                 PROBLEM -- GOTRUE_MAILER_AUTOCONFIRM is on; set it to false on the auth service and redeploy" ;;
 esac
+# Person check before sign-in emails (owner decision 2026-10-21). The secret is reported as
+# present/absent only.
+printf '%-34s  %s\n' "GOTRUE_RATE_LIMIT_EMAIL_SENT" "$(env_of "$AUTH_CONTAINER" GOTRUE_RATE_LIMIT_EMAIL_SENT | grep . || echo "(unset)")"
+case "$(env_of "$AUTH_CONTAINER" GOTRUE_SECURITY_CAPTCHA_ENABLED)" in
+  true)
+    if [ -n "$(env_of "$AUTH_CONTAINER" GOTRUE_SECURITY_CAPTCHA_SECRET)" ]; then
+      echo "person check before sign-in email:  on ($(env_of "$AUTH_CONTAINER" GOTRUE_SECURITY_CAPTCHA_PROVIDER), secret set)"
+    else
+      echo "person check before sign-in email:  PROBLEM -- on, but GOTRUE_SECURITY_CAPTCHA_SECRET is empty; nobody can get a sign-in link"
+    fi ;;
+  *) echo "person check before sign-in email:  off -- a script can use up the hourly sign-in email budget (docs/TODO.md)" ;;
+esac
 ext="$(env_of "$AUTH_CONTAINER" API_EXTERNAL_URL)"
 # Probe the exact address a sign-in email links to, with a dummy token: GoTrue answers 303 (redirect
 # to the site with "link expired"); a 404 means the link would never reach GoTrue.

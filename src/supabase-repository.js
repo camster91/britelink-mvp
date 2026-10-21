@@ -9,6 +9,7 @@ export function plainBackendMessage(failure = {}) {
   if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) return "We couldn't reach BriteLink. Check your connection and try again.";
   if (code === "PGRST301" || /jwt (expired|malformed)|invalid jwt|refresh token/i.test(message)) return "Your session has expired. Sign in again, then try once more.";
   if (code === "42501" && !/access required|membership required/i.test(message)) return "You don't have permission to do this. If you think you should, sign out and sign in again.";
+  if (/captcha/i.test(message)) return "We couldn't confirm you're a person. Please try again.";
   if (/row-level security|permission denied/i.test(message)) return "You don't have permission to do this. If you think you should, sign out and sign in again.";
   if (code === "23505") return "This was already saved. Reload the page to see the latest version.";
   if (code === "23503") return "Something this depends on has changed. Reload the page and try again.";
@@ -31,23 +32,26 @@ function unwrap(result, operation) {
 }
 
 export class SupabaseBriteLinkRepository {
-  constructor(client) { if (!client) throw new Error("Supabase client is required"); this.client = client; }
+  // humanCheck (src/human-check.js) returns a one-time token for the sign-in service's person check,
+  // or is null when the check is not configured.
+  constructor(client, { humanCheck = null } = {}) { if (!client) throw new Error("Supabase client is required"); this.client = client; this.humanCheck = humanCheck; }
+  async withHumanCheck(options) { return this.humanCheck ? { ...options, captchaToken: await this.humanCheck() } : options; }
 
   async session() { const result = await this.client.auth.getSession(); return unwrap(result, "Read session")?.session ?? null; }
   // Open free beta (2026-10-06): a new email gets an account too, and lands on "Set up your
   // household" (or, for staff, is added with the Staff workflow). The sign-in service's own
   // GOTRUE_DISABLE_SIGNUP still decides whether new accounts are allowed at all.
-  async signInWithEmail(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Sign-in redirect URL"), shouldCreateUser: true } }), "Send sign-in link"); }
+  async signInWithEmail(email, redirectTo) { const options = { emailRedirectTo: requireHttpUrl(redirectTo, "Sign-in redirect URL"), shouldCreateUser: true }; const address = requireEmail(email); return unwrap(await this.client.auth.signInWithOtp({ email: address, options: await this.withHumanCheck(options) }), "Send sign-in link"); }
   // The learner details ride along as signup metadata. Nothing is provisioned until the family
   // follows the link: provision_beta_household (migration 041) only serves a signed-in,
   // email-confirmed caller, so an unauthenticated visitor can no longer create or look up accounts.
-  async joinBeta(email, redirectTo, {learnerName,learnerGrade}={}) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true, data: { beta_learner_name: String(learnerName||"").trim(), beta_learner_grade: String(learnerGrade||"").trim() } } }), "Join beta"); }
+  async joinBeta(email, redirectTo, {learnerName,learnerGrade}={}) { const options = { emailRedirectTo: requireHttpUrl(redirectTo, "Beta redirect URL"), shouldCreateUser: true, data: { beta_learner_name: String(learnerName||"").trim(), beta_learner_grade: String(learnerGrade||"").trim() } }; const address = requireEmail(email); return unwrap(await this.client.auth.signInWithOtp({ email: address, options: await this.withHumanCheck(options) }), "Join beta"); }
   // The child's name and grade ride in the account's signup metadata only until the household
   // exists. Clearing them keeps the name out of the auth record and stops an erased household from
   // being silently re-created from that metadata on a later sign-in.
   async clearBetaSignupDetails() { return unwrap(await this.client.auth.updateUser({ data: { beta_learner_name: null, beta_learner_grade: null } }), "Clear signup details"); }
   async provisionBetaHousehold({learnerName,learnerGrade,jurisdiction="Ontario"}) {const rows=unwrap(await this.client.rpc("provision_beta_household",{learner_name:String(learnerName||"").trim(),learner_grade:String(learnerGrade||"").trim(),learner_jurisdiction:String(jurisdiction||"Ontario").trim()}),"Set up your household");return rows?.[0]??null}
-  async requestFreshSignIn(email, redirectTo) { return unwrap(await this.client.auth.signInWithOtp({ email: requireEmail(email), options: { emailRedirectTo: requireHttpUrl(redirectTo, "Reauthentication redirect URL"), shouldCreateUser: false } }), "Send fresh sign-in link"); }
+  async requestFreshSignIn(email, redirectTo) { const options = { emailRedirectTo: requireHttpUrl(redirectTo, "Reauthentication redirect URL"), shouldCreateUser: false }; const address = requireEmail(email); return unwrap(await this.client.auth.signInWithOtp({ email: address, options: await this.withHumanCheck(options) }), "Send fresh sign-in link"); }
   async signOut() {
     // A failed server call (offline, timeout) leaves the session in this browser, so a shared
     // device would stay signed in. Fall back to clearing it locally; the server-side refresh
