@@ -96,4 +96,8 @@ ENV BRITELINK_PRIVACY_NOTICE_VERSION=$VITE_PRIVACY_NOTICE_VERSION
 ENV BRITELINK_ATTACHMENTS_ENABLED=$VITE_ATTACHMENTS_ENABLED
 ENV BRITELINK_PUBLIC_CONFIG_SHA256=$BRITELINK_PUBLIC_CONFIG_SHA256
 EXPOSE 80
+# Coolify keeps the old container serving until the new one reports healthy, so a build that
+# starts but cannot serve the app never replaces a working one (owner decision 2026-10-21).
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD wget -q -O /dev/null http://127.0.0.1/version.json || exit 1
 CMD ["nginx", "-g", "daemon off;"]

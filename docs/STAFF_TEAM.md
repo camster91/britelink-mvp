@@ -24,6 +24,18 @@ A staff member opens a family from the **Workspace** list at the top of the staf
 
 Keep the team to the people who need it, and remove people when they leave.
 
+## Approve a new family
+
+A family that signs itself up waits for approval (migration 064, decided 2026-10-21). In the
+staff workspace it shows "waiting for approval" in the workspace list and a note at the top. An
+admin checks that the family looks genuine and presses **Approve this family**. Until then:
+
+- the family can set up and send its intake form;
+- staff cannot accept the intake or assign an educator;
+- the family's messages do not email staff.
+
+A fake signup can be closed without approving it.
+
 ## Add someone
 
 1. They go to https://britelink.ashbi.ca, enter their work email, press **Email me a sign-in
