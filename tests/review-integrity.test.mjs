@@ -937,3 +937,52 @@ test("migration 064 staff approve new families", async (t) => {
     await db.close();
   }
 });
+
+test("migration 065 deleting a family deletes its sign-in accounts", async (t) => {
+  const db = await database();
+  const parent = "5eed0000-0000-4000-8000-00000000ad66";
+  const request = "5eed0000-0000-4000-8000-0000000065e1";
+  const actAs = (userId) => db.exec(`set local role authenticated; select set_config('request.jwt.claim.sub', '${userId}', true); select set_config('request.jwt.claim.iat', '${Math.floor(Date.now() / 1000)}', true);`);
+  try {
+    await t.test("the guardian's account and sign-in log go; a co-guardian with another family stays", async () => {
+      await db.exec("begin");
+      try {
+        await db.query(`insert into auth.users(id, email, email_confirmed_at) values ($1, 'leaving@britelink.invalid', now())`, [parent]);
+        await actAs(parent);
+        const family = (await db.query(`select * from public.provision_beta_household('Ada', 'Grade 3', 'Ontario')`)).rows[0];
+        // The deletion job runs as the service, signed in as nobody.
+        await db.exec("reset role; select set_config('request.jwt.claim.sub', '', true);");
+        await db.query(`insert into public.memberships(household_id, user_id, role) values ($1, $2, 'guardian')`, [family.household_id, users.guardianA]);
+        await db.exec(`create table if not exists auth.audit_log_entries(id uuid primary key default gen_random_uuid(), payload json)`);
+        await db.query(`insert into auth.audit_log_entries(payload) values (json_build_object('actor_id', $1::text, 'actor_username', 'leaving@britelink.invalid')), (json_build_object('actor_id', $2::text))`, [parent, users.guardianA]);
+        await db.query(`insert into public.privacy_requests(id, household_id, requested_by, kind, status) values ($1, $2, $3, 'deletion', 'scheduled')`, [request, family.household_id, parent]);
+        await db.query(`insert into public.deletion_jobs(household_id, privacy_request_id, status, eligible_at, approved_by, approval_basis, identity_verified, co_guardian_reviewed)
+          values ($1, $2, 'scheduled', now() - interval '1 minute', $3, 'Synthetic approved deletion for testing', true, true)`, [family.household_id, request, users.adminA]);
+        await db.exec(`update public.retention_execution_controls set execution_enabled = true, enablement_basis = 'Synthetic test enablement'`);
+        const jobs = (await db.query(`select * from public.admin_execute_due_deletion_jobs(5) where target_household = $1`, [family.household_id])).rows;
+        assert.deepEqual(jobs.map((job) => [job.job_status, job.failure_code]), [["completed", null]]);
+        const accounts = (await db.query(`select id from auth.users where id = any($1::uuid[]) order by id`, [[parent, users.guardianA]])).rows.map((row) => row.id);
+        assert.deepEqual(accounts, [users.guardianA]);
+        const log = (await db.query(`select payload->>'actor_id' as actor from auth.audit_log_entries`)).rows.map((row) => row.actor);
+        assert.deepEqual(log, [users.guardianA]);
+        const ledger = (await db.query(`select outcome, accounts_erased from public.retention_execution_ledger where household_ref = $1`, [family.household_id])).rows;
+        assert.deepEqual(ledger, [{ outcome: "completed", accounts_erased: 1 }]);
+      } finally {
+        await db.exec("reset role");
+        await db.exec("rollback");
+      }
+    });
+
+    await t.test("no client can erase accounts directly", async () => {
+      await db.exec("begin");
+      try {
+        await actAs(users.adminA);
+        await assert.rejects(() => db.query(`select public.erase_guardian_accounts(array[$1]::uuid[])`, [users.guardianA]), /permission denied/);
+      } finally {
+        await db.exec("rollback");
+      }
+    });
+  } finally {
+    await db.close();
+  }
+});
