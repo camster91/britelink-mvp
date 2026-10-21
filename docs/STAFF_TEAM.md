@@ -69,8 +69,8 @@ many families they're in.
   assigned (migration 058), so put at least one admin on the team.
 - Case limits are counted per family, as they always were. With one case per family, that limit
   rarely bites; a limit across all families would be a later change.
-- When an admin reassigns a case, the previous educator leaves that family unless they still hold
-  another open case there (migration 062). Recording an absence does not remove them, since it may
-  be temporary. An educator still keeps access to a family after its case closes.
+- When an admin reassigns a case, or a case closes, is cancelled or refunded, its educator leaves
+  that family unless they still hold another open case there (migration 062). Recording an absence
+  does not remove them, since it may be temporary.
 - Anyone leaving a family (staff or a co-parent) has the calendar links they made there switched
   off, so a link never outlives its maker's access.

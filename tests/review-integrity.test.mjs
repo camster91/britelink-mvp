@@ -706,6 +706,15 @@ test("migration 062 staff access follows the work", async (t) => {
       });
     });
 
+    await t.test("closing a case takes its educator out of the family", async () => {
+      await inTx(async () => {
+        await assign(first);
+        await db.query(`update public.service_cases set status = 'closed' where id = $1`, [CASE_A]);
+        assert.equal(await roleIn(first), undefined);
+        assert.equal(await roleIn(users.adminA), "admin");
+      });
+    });
+
     await t.test("an educator who still holds another open case in the family stays", async () => {
       await inTx(async () => {
         await assign(first);

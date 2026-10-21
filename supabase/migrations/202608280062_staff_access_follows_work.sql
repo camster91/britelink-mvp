@@ -3,7 +3,7 @@
 -- WHY
 --   061 made an educator a member of a family only when an admin assigns them its case. Two gaps
 --   were left:
---   - Reassigning a case never took the previous educator out of the family. They kept reading
+--   - Reassigning or closing a case never took the educator out of the family. They kept reading
 --     its plans, messages and learning notes (every staff read is membership-based), so one
 --     stolen educator login still exposed every family that educator had ever been given.
 --   - Admins are members of every family (owner decision 2026-10-15), and nine parent actions
@@ -17,7 +17,8 @@
 -- WHAT CHANGES
 --   1. release_unassigned_educators(): removes from a family every staff-team educator who no
 --      longer holds an open case there. staff_assign_case calls it, so reassigning a case takes
---      the previous educator out (their calendar links go too, by 061's trigger). An absence
+--      the previous educator out (their calendar links go too, by 061's trigger), and a trigger
+--      does the same when a case closes, is cancelled or refunded, by any path. An absence
 --      (staff_record_educator_absence) does not remove anyone: it may be temporary.
 --      Educators who are not on the staff team (pre-060 memberships) are left alone, as in 061.
 --   2. The nine parent actions accept only the guardian role. Their bodies are otherwise
@@ -546,3 +547,23 @@ create policy profiles_consent_limited_select on public.learner_profiles for sel
     and public.has_active_guardian_consent(household_id, learner_id)
   )
 );
+
+-- 4 ----------------------------------------------------------------------------------------------
+-- A case that ends (by staff, payment, refund or deletion) releases its educator, unless they
+-- still hold another open case in the family.
+create or replace function public.release_educators_when_case_ends()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform public.release_unassigned_educators(new.household_id);
+  return null;
+end $$;
+revoke all on function public.release_educators_when_case_ends() from public, anon, authenticated;
+
+drop trigger if exists service_cases_release_educators on public.service_cases;
+create trigger service_cases_release_educators
+  after update of status on public.service_cases
+  for each row
+  when (new.status in ('closed', 'cancelled', 'refunded', 'chargeback') and old.status is distinct from new.status)
+  execute function public.release_educators_when_case_ends();
