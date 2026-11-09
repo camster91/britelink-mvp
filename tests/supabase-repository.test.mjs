@@ -281,3 +281,15 @@ test("staff profile: a database without 061 means not staff; any other failure i
   assert.deepEqual(await repo({ data: [{ role: "educator", display_name: null }] }).getMyStaffProfile(), { role: "educator", display_name: null });
   await assert.rejects(() => repo({ data: null, error: { code: "57014", message: "timeout" } }).getMyStaffProfile(), /Check staff access: timeout/);
 });
+
+test("memberships still load from a backend without the approval column (before 064)", async () => {
+  const selects=[];
+  const client={auth:{getUser:async()=>({data:{user:{id:"user-a"}}})},from(){return {
+    select(columns){selects.push(columns);return this;},eq(){return this;},
+    async order(){return selects.at(-1).includes("approved_at")?{error:{message:"column households_1.approved_at does not exist",code:"42703"}}:{data:[{household_id:"house-a",role:"guardian",households:{id:"house-a",display_name:"A"}}]};},
+  };}};
+  const rows=await new SupabaseBriteLinkRepository(client).listMemberships();
+  assert.equal(rows.length,1);
+  assert.equal(rows[0].households.approved_at,undefined,"undefined counts as approved in the app");
+  assert.equal(selects.length,2);
+});

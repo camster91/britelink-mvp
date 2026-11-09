@@ -87,7 +87,15 @@ services:
       GOTRUE_SMTP_ADMIN_EMAIL: ${GOTRUE_SMTP_ADMIN_EMAIL:?set GOTRUE_SMTP_ADMIN_EMAIL in .env}
       GOTRUE_SMTP_SENDER_NAME: ${GOTRUE_SMTP_SENDER_NAME:-BriteLink}
       GOTRUE_MAILER_OTP_EXP: ${GOTRUE_MAILER_OTP_EXP:-3600}
-      GOTRUE_RATE_LIMIT_EMAIL_SENT: ${GOTRUE_RATE_LIMIT_EMAIL_SENT:-60}
+      # Sign-in emails the whole site may send per hour. Raised from 60 with the person check below
+      # (owner decision 2026-10-21): bots now need to pass it, so real families get more room.
+      GOTRUE_RATE_LIMIT_EMAIL_SENT: ${GOTRUE_RATE_LIMIT_EMAIL_SENT:-200}
+      # Person check (Cloudflare Turnstile) before any sign-in email. Turn it on only after the web
+      # app is built with VITE_TURNSTILE_SITE_KEY, or nobody can get a sign-in link. The secret is
+      # Turnstile's secret key and lives only in the backend .env.
+      GOTRUE_SECURITY_CAPTCHA_ENABLED: ${CAPTCHA_ENABLED:-false}
+      GOTRUE_SECURITY_CAPTCHA_PROVIDER: turnstile
+      GOTRUE_SECURITY_CAPTCHA_SECRET: ${CAPTCHA_SECRET:-}
     deploy:
       resources:
         limits:

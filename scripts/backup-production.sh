@@ -22,6 +22,15 @@ KEEP="${KEEP:-14}"
 CHECK_CONTAINER="britelink-backup-restore-check"
 
 fail() { echo "FAIL: $1" >&2; exit "${2:-1}"; }
+# Old copies hold secrets or family data. Keep the newest 3, and of the rest delete any older
+# than 30 days (owner decision 2026-10-21). Arguments: the copies, usually one glob.
+prune_old_copies() {
+  local f files
+  mapfile -t files < <(ls -1t -- "$@" 2>/dev/null || true)
+  for f in "${files[@]:3}"; do
+    if [ -n "$(find "$f" -maxdepth 0 -mtime +30 2>/dev/null)" ]; then rm -f -- "$f"; echo "  removed old copy $(basename "$f")"; fi
+  done
+}
 project="$(docker inspect "$DB_CONTAINER" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"
 if [ "$project" != "britelink-production" ]; then
   [[ "$project" =~ ^[a-z0-9]{20,40}$ ]] || fail "database project is not a supported production owner"
@@ -113,5 +122,7 @@ fi
 echo "== retention (keep newest $KEEP) =="
 mapfile -t old < <(ls -1t "$BACKUP_DIR"/nightly-*.dump 2>/dev/null | tail -n +$((KEEP + 1)))
 for f in "${old[@]}"; do rm -f -- "$f"; echo "  removed $(basename "$f")"; done
+# The full copies Migrate takes before applying changes (apply-pending-migrations.sh).
+prune_old_copies "$BACKUP_DIR"/pre-migrate-*.dump
 echo "  $(ls -1 "$BACKUP_DIR"/nightly-*.dump | wc -l) nightly dump(s) kept, $(du -ch "$BACKUP_DIR"/nightly-*.dump | tail -1 | cut -f1) total"
 echo "PASS: backed up and verified by restore."

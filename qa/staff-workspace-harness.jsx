@@ -101,7 +101,12 @@ const repository = {
       {
         household_id: "household-a",
         role: "admin",
-        households: { id: "household-a", display_name: "BriteLink Operations" },
+        households: {
+          id: "household-a",
+          display_name: "BriteLink Operations",
+          // A family that signed itself up and waits for approval (064).
+          ...(globalThis.staffQaWaitingFamily ? { approved_at: null } : {}),
+        },
       },
     ];
   },
@@ -511,6 +516,10 @@ const repository = {
   async signOut() {
     state.calls.push(["signOut"]);
   },
+};
+repository.approveStaffHousehold = async (householdId) => {
+  state.calls.push(["approveStaffHousehold", householdId]);
+  return now;
 };
 repository.acceptStaffIntake = async (input) => {
   state.calls.push(["acceptStaffIntake", input.householdId, input.caseId]);

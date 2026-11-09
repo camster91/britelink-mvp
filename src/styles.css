@@ -159,3 +159,5 @@
 .email-updates input[type=checkbox]{width:20px;height:20px}
 .email-updates p{margin:0;font-size:13px}
 .idle-warning{position:fixed;left:16px;right:16px;bottom:16px;z-index:60;max-width:640px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;background:var(--navy);color:#fff;font-size:14px;line-height:1.5;box-shadow:0 18px 40px #08132640}.idle-warning button{min-height:44px;padding:10px 16px;border:0;border-radius:9px;background:#fff;color:#081326;font-weight:800}
+.family-approval{display:grid;gap:12px;justify-items:start;margin:0 0 20px}.family-approval button{min-height:44px}
+.human-check{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:50;display:grid;gap:8px;justify-items:center;width:min(92vw,340px);padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;box-shadow:0 12px 40px #163a6826;color:#244b75;font-size:14px}.human-check p{margin:0}

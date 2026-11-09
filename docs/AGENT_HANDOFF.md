@@ -22,6 +22,10 @@ This section is the one place that says where production runs. Other docs link h
   - The GitHub Actions **Deploy** workflow (SSH to `/docker/britelink-web`) was switched off by
     hand on 2026-10-01 and stays off (`deploy/coolify-backend/PRODUCTION.md`). Do not turn it back
     on alongside Coolify: two release owners would race on every merge.
+  - The **Release** workflow (2026-10-21, `RELEASES.md`) is the approved way to release: it waits
+    for approval, has Coolify deploy one commit, and undoes a failed release. It does nothing
+    until `RELEASE_VIA_WORKFLOW` is `true`, which Cameron sets only after turning off Coolify's
+    automatic deployment.
   - Database migrations are **not** applied by a deploy. Run the Migrate workflow, with Cameron's
     go, before merging code that needs a new migration.
 - **Backend:** the self-hosted Supabase stack on the same VPS (`britelink-production`), served at
